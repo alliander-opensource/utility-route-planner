@@ -10,15 +10,15 @@ poetry install
 ```
 
 # Usage
-Running the main file will create utility routes for the five included cases in the `data/examples` folder. Optionally edit the configuration file `mcda_presets.py` to change the weights of the environmental criteria. 
+Running the main file will create utility routes for the five included cases in the `data/examples` folder. Optionally edit the configuration file `mcda_presets.py` to change the weights of the environmental criteria.
 ```bash
-python main.py
+poetry run python main.py
 ```
 The resulting geopackages and tifs are placed in the `data/processed` folder. View them in QGIS or similar GIS GUI.
 
 Run tests using pytest:
 ```bash
-pytest tests/
+poetry run python -m pytest tests/
 ```
 
 # License
