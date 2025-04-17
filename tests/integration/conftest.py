@@ -1,7 +1,7 @@
 import pytest
 
 from settings import Config
-from util.write import reset_geopackage
+from utility_route_planner.util.write import reset_geopackage
 
 
 @pytest.fixture

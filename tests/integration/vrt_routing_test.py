@@ -3,10 +3,10 @@ import pytest
 import shapely
 from shapely.geometry.linestring import LineString
 
-from models.lcpa.lcpa_engine import LcpaUtilityRouteEngine
-from models.mcda.mcda_engine import McdaCostSurfaceEngine
+from utility_route_planner.models.lcpa.lcpa_engine import LcpaUtilityRouteEngine
+from utility_route_planner.models.mcda.mcda_engine import McdaCostSurfaceEngine
 from settings import Config
-from util.write import write_to_file
+from utility_route_planner.util.write import write_to_file
 
 
 class TestVRTRouting:
