@@ -22,8 +22,8 @@ class ExistingUtilities(VectorPreprocessorBase):
         self, input_gdf: list[gpd.GeoDataFrame], criterion: RasterPresetCriteria
     ) -> gpd.GeoDataFrame:
         input_gdf = self._set_suitability_and_geometry_values(
-            input_gdf,  # type: ignore
-            criterion.weight_values,  # type: ignore
+            input_gdf,
+            criterion.weight_values,
             criterion.geometry_values,  # type: ignore
         )
         return input_gdf
