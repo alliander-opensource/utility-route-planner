@@ -4,7 +4,7 @@ easy feat considering the amount of involved design criteria. This research incl
 for automatic placement of utility network using a combination of geo-information and graph theory.
 
 # Installation
-To install the utility-route-designer package, run:
+To install the utility-route-designer package, use [Poetry](https://python-poetry.org/):
 ```bash
 poetry install
 ```
