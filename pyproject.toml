@@ -6,7 +6,7 @@ authors = [
     { name = "Jelmar Versleijen", email = "<jelmar.versleijen@alliander.com>" },
     { name = "Djesse Dirckx", email = "<djesse.dirckx@alliander.com>" },
 ]
-requires-python = "~=3.10"
+requires-python = "~=3.12"
 readme = "README.md"
 
 dependencies = [
