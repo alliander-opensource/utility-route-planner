@@ -3,8 +3,20 @@ The utility network needs to be expanded due to the energy transition. Finding a
 easy feat considering the amount of involved design criteria. This research includes the creation of a software package
 for automatic placement of utility network using a combination of geo-information and graph theory.
 
+Details on methodology can be found in publication: [Link to be added.]
+
+# Goals for sharing
+Our goal for sharing this software is to encourage research on utility route planning for distribution system operators.
+Researchers or education can use the real-life use cases presented in this repository to test their own algorithms. The software is not intended for production use.
+
+Remaining challenges solve are:
+- Constraining the route to a maximum length.
+- Giving alternative routes which are similar in costs (like seen in modern navigation systems).
+- Realistic road crossings. Road crossings are typically done at a 90 degree angle through a process called pipe ramming.
+- Alignment to existing infrastructure, resulting in a more "human-like" route.
+
 # Installation
-To install the utility-route-designer package, use [Poetry](https://python-poetry.org/):
+To install the utility-route-designer package, use Python 3.12 with [Poetry](https://python-poetry.org/):
 ```bash
 poetry install
 ```
@@ -14,12 +26,36 @@ Running the main file will create utility routes for the five included cases in 
 ```bash
 poetry run python main.py
 ```
-The resulting geopackages and tifs are placed in the `data/processed` folder. View them in QGIS or similar GIS GUI.
+The results are placed in the `data/processed` folder:
+- mcda_output.gpkg: contains the environmental criteria as vectors used in creating the suitability raster.
+- benchmark_suitability_raster.vrt: the suitability raster / cost-surface used for the least-cost path analysis.
+- lcpa_results.gpkg: contains the generated route as linestring.
 
+View them in QGIS or similar GIS GUI:
+![benchmark_results_overview.png](data/examples/benchmark_results_overview.png)
 Run tests using pytest:
 ```bash
 poetry run python -m pytest tests/
 ```
+
+Expanding criteria included in the `mcda_presets.py` can be done by:
+1. Adding a new class to the `criteria` folder.
+2. Implementing the `get_suitability` method.
+3. Adding the new class to the `mcda_presets.py` file. Set the group and weight of the new class.
+
+# Support
+If you have trouble installing, building, or using utility-route-planner, but you don't think you've encountered a
+genuine bug, you can ask a question in the Issues tab of the repository. If you have an idea for a new feature or a recommendation for existing features or documentation, you can also propose it in the Issues tab.
+
+## How to report a bug or a security vulnerability
+
+This project manages bug and enhancement using the GitHub issue tracker.
+
+# Contributing
+Please read CODE_OF_CONDUCT, CONTRIBUTING, for details on the process for submitting pull requests to us.
+
+# Project governance
+The lead developer is linked in the `about` section of this GitHub repository and is responsible for reviewing contributions from the community and general direction of development.
 
 # License
 utility-route-designer is under: [Apache License Version 2.0](https://www.apache.org/licenses/LICENSE-2.0)
