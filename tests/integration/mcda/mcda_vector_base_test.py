@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: Contributors to the utility-route-project and Alliander N.V.
+#
+# SPDX-License-Identifier: Apache-2.0
+
 from unittest.mock import Mock
 
 import geopandas as gpd

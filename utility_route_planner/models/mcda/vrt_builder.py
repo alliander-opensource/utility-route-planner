@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: Contributors to the utility-route-project and Alliander N.V.
+#
+# SPDX-License-Identifier: Apache-2.0
+
 # Based on the script generously provided by 12rambau on https://github.com/12rambau/rio-vrt
 from os.path import relpath
 from pathlib import Path

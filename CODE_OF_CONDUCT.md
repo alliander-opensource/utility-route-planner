@@ -1,6 +1,7 @@
 <!--
 SPDX-FileCopyrightText: 2014 Coraline Ada Ehmke
 
+SPDX-License-Identifier: Apache-2.0
 SPDX-License-Identifier: CC-BY-4.0
 -->
 

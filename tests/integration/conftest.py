@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: Contributors to the utility-route-project and Alliander N.V.
+#
+# SPDX-License-Identifier: Apache-2.0
+
 import pytest
 
 from settings import Config

@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: Contributors to the utility-route-project and Alliander N.V.
+
+SPDX-License-Identifier: Apache-2.0
+-->
+
 # utility-route-planner
 The utility network needs to be expanded due to the energy transition. Finding a location for new infrastructure is no
 easy feat considering the amount of involved design criteria. This research includes the creation of a software package

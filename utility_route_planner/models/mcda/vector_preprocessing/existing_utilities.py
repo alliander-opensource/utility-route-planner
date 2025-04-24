@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: Contributors to the utility-route-project and Alliander N.V.
+#
+# SPDX-License-Identifier: Apache-2.0
+
 from __future__ import annotations
 
 import pandas as pd

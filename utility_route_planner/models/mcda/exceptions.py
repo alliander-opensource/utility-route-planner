@@ -1,3 +1,8 @@
+# SPDX-FileCopyrightText: Contributors to the utility-route-project and Alliander N.V.
+#
+# SPDX-License-Identifier: Apache-2.0
+
+
 class InvalidGroupValue(Exception):
     pass
 
