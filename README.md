@@ -4,87 +4,96 @@ SPDX-FileCopyrightText: Contributors to the utility-route-project and Alliander 
 SPDX-License-Identifier: Apache-2.0
 -->
 
-# How to contribute
+# Utility Route Planner
 
-We'd love to accept your patches and contributions to this project. There are just a few guidelines you need to follow.
+This repository shares research on software for automatic placement of electricity cables using a combination of geo-information and graph theory.
 
-## Ways of contributing
+The utility network needs to be expanded due to the energy transition. Finding a location for new infrastructure is no easy feat considering the amount of involved design criteria. 
+This research includes the creation of a software package for automatic placement of utility network using a combination of geo-information and graph theory.
 
-Contribution does not necessarily mean committing code to the repository.
-We recognize different levels of contributions as shown below in increasing order of dedication.
+This research is being carried out at Alliander, a Dutch DSO, as part of [Jelmar Versleijen](https://research.wur.nl/en/persons/jelmar-versleijen)'s PhD with [Wagening University](https://www.wur.nl/en.htm). [Read more about research at Alliander](https://www.alliander.com/nl/alliander-en-open-research/).
 
-1. Use and test the project. Give feedback on the user experience or suggest new features.
-2. Report bugs or security vulnerabilities.
-3. Fix bugs.
-4. Improve the project by developing new features.
+Details on methodology can be found in publication: [Link to be added.]
 
-## Filing bugs, security vulnerabilities or feature requests
+# Goals for sharing
 
-You can file bugs against and feature requests for the project via GitHub Issues. Read [GitHub Help](https://docs.github.com/en/free-pro-team@latest/github/managing-your-work-on-github/creating-an-issue) for more information on using GitHub Issues.
+Our goal for sharing this software is to encourage research on utility route planning for distribution system operators.
+Researchers or education can use the real-life use cases presented in this repository to test their own algorithms. The software is not intended for production use.
 
-## Community guidelines
+Remaining challenges solve are:
 
-This project follows the following [Code of Conduct](CODE_OF_CONDUCT.md).
+- Constraining the route to a maximum length.
+- Giving alternative routes which are similar in costs (like seen in modern navigation systems).
+- Realistic road crossings. Road crossings are typically done at a 90 degree angle through a process called pipe ramming.
+- Alignment to existing infrastructure, resulting in a more "human-like" route.
 
-## REUSE compliance and source code headers
+# Installation
 
-All the files in the repository need to be [REUSE compliant](https://reuse.software/).
-We use the pipeline to automatically check this.
-If there are files which are not complying, the pipeline will fail the pull request will be blocked.
+To install the utility-route-designer package, use Python 3.12 with [Poetry](https://python-poetry.org/):
 
-This means that every file containing source code must include copyright and license information. This includes any JS/CSS files that you might be serving out to browsers. (This is to help well-intentioned people avoid accidental copying that doesn't comply with the license.)
-
-Apache 2.0 header:
-
-```text
-    SPDX-FileCopyrightText: Copyright Contributors to the <YOUR PROJECT NAME> project <YOUR_PROJECT_EMAIL_ADRESS@alliander.com>
-    SPDX-License-Identifier: Apache-2.0
+```bash
+poetry install
 ```
 
-## Git branching
+# Usage
 
-As this project is not intended for production usage, it applies a simple main/feature model for branching for minimal overhead. New features are developed in a feature branch and directly merged back into main.
+Running the main file will create utility routes for the five included cases in the `data/examples` folder. Optionally edit the configuration file `mcda_presets.py` to change the weights of the environmental criteria.
 
-## Signing the Developer Certificate of Origin (DCO)
+```bash
+poetry run python main.py
+```
 
-This project uses a Developer Certificate of Origin (DCO) to ensure that each commit was written by the author or that the author has the appropriate rights necessary to contribute the change.
-Specifically, we use [Developer Certificate of Origin, Version 1.1](http://developercertificate.org/), which is the same mechanism that the Linux® Kernel and many other communities use to manage code contributions.
-The DCO is considered one of the simplest tools for sign-offs from contributors as the representations are meant to be easy to read and indicating signoff is done as a part of the commit message.
+The results are placed in the `data/processed` folder:
 
-This means that each commit must include a DCO which looks like this:
+- mcda_output.gpkg: contains the environmental criteria as vectors used in creating the suitability raster
+- benchmark_suitability_raster.vrt: the suitability raster / cost-surface used for the least-cost path analysis
+- lcpa_results.gpkg: contains the generated route as linestring
 
-`Signed-off-by: Joe Smith <joe.smith@email.com>`
+View them in QGIS or similar GIS GUI:
 
-The project requires that the name used is your real name and the e-mail used is your real e-mail.
-Neither anonymous contributors nor those utilizing pseudonyms will be accepted.
+![benchmark_results_overview.png](data/examples/benchmark_results_overview.png)
+Run tests using pytest:
 
-There are other great tools out there to manage DCO signoffs for developers to make it much easier to do signoffs:
+```bash
+poetry run python -m pytest tests/
+```
 
-* Git makes it easy to add this line to your commit messages. Make sure the `user.name` and `user.email` are set in your git configs. Use `-s` or `--signoff` to add the Signed-off-by line to the end of the commit message.
-* [GitHub UI automatic signoff capabilities](https://github.blog/changelog/2022-06-08-admins-can-require-sign-off-on-web-based-commits/) for adding the signoff automatically to commits made with the GitHub browser UI. This one can only be activated by the GitHub org or repo admin.
-* [GitHub UI automatic signoff capabilities via custom plugin]( https://github.com/scottrigby/dco-gh-ui ) for adding the signoff automatically to commits made with the GitHub browser UI.
-* Additionally, it is possible to use shell scripting to automatically apply the sign-off. For an example for bash to be put into a .bashrc file, see [here](https://wiki.lfenergy.org/display/HOME/Contribution+and+Compliance+Guidelines+for+LF+Energy+Foundation+hosted+projects).
-* Alternatively, you can add `prepare-commit-msg hook` in .git/hooks directory. [See an example](https://github.com/Samsung/ONE-vscode/wiki/ONE-vscode-Developer's-Certificate-of-Origin).
+Expanding criteria included in the `mcda_presets.py` can be done by:
 
-## Code reviews
+1. Adding a new class to the `criteria` folder.
+2. Implementing the `get_suitability` method.
+3. Adding the new class to the `mcda_presets.py` file. Set the group and weight of the new class.
 
-All patches and contributions, including patches and contributions by project members, require review by one of the maintainers of the project.
-We use GitHub pull requests for this purpose.
-See [GitHub Help](https://help.github.com/articles/about-pull-requests/) for more information on using pull requests.
+# Support
 
-## Pull request process
+If you have trouble installing, building, or using utility-route-planner, but you don't think you've encountered a genuine bug, you can ask a question in the Issues tab of the repository.
+If you have an idea for a new feature or a recommendation for existing features or documentation, you can also propose it in the Issues tab.
 
-Contributions should be submitted as GitHub pull requests. See [Creating a pull request](https://docs.github.com/en/github/collaborating-with-issues-and-pull-requests/creating-a-pull-request) if you're unfamiliar with this concept.
+## How to report a bug or a security vulnerability
 
-Follow this process for a code change and pull request:
-1. Fork the repository.
-1. Make your change in a feature/description_of_your_change branch.
-1. Run the tests.
-1. Run the [pre-commit hooks](https://pre-commit.com/) to check for code style and other issues.
-1. Submit a pull request.
-1. Pull requests will be reviewed by one of the maintainers who may discuss, offer constructive feedback, request changes, or approve the work.
-1. Upon receiving the sign-off from one of the maintainers will merge it for you.
+This project manages bug and enhancement using the GitHub issue tracker.
 
-## Attribution
+# Contributing
 
-This CONTRIBUTING.md is adapted from Google, available at https://github.com/google/new-project/blob/master/docs/contributing.md.
+Please read CODE_OF_CONDUCT and CONTRIBUTING, for details on the process for submitting pull requests to us.
+
+# Project governance
+
+The lead developer is responsible for reviewing contributions from the community and general direction of development.
+When the community has grown to a size where it would be helpful, the project will set up independent community governance.
+
+The lead developer is [Jelmar Versleijen](https://github.com/JelmarVersleijen).
+
+# License
+
+utility-route-designer is under: [Apache License Version 2.0](https://www.apache.org/licenses/LICENSE-2.0)
+
+The software is largely dependent on data. Data is incorporated in the example folder and is licensed separately from the repo:
+
+- BGT: [CC PDM 1.0](https://creativecommons.org/publicdomain/mark/1.0/deed.en) downloaded from [PDOK](https://www.nationaalgeoregister.nl/geonetwork/srv/dut/catalog.search#/metadata/e01e63cd-6b3d-4c58-b34e-8d343a3c264b)
+- Natura2000: [CC PDM 1.0](https://creativecommons.org/publicdomain/mark/1.0/deed.en) downloaded from [PDOK](https://nationaalgeoregister.nl/geonetwork/srv/dut/catalog.search#/metadata/1601e160-91e8-4091-9aca-10294f819d42)
+- Alliander asset information: [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/deed.en) downloaded from ArcGIS Online: [gas](https://alliander.maps.arcgis.com/home/item.html?id=29b06805ca2b4d31bf82ad15f14d2392), [electricity](https://alliander.maps.arcgis.com/home/item.html?id=11b7bcf1b78b4462b91db0dff234cf78)
+
+Citing
+-------
+t.b.d.
