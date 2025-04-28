@@ -11,7 +11,7 @@ This repository shares research on software for automatic placement of electrici
 The utility network needs to be expanded due to the energy transition. Finding a location for new infrastructure is no easy feat considering the amount of involved design criteria. 
 This research includes the creation of a software package for automatic placement of utility network using a combination of geo-information and graph theory.
 
-This research is being carried out at Alliander, a Dutch DSO, as part of Jelmar Versleijen's PhD with [Wagening University](https://www.wur.nl/en.htm). [Read more about research at Alliander](https://www.alliander.com/nl/alliander-en-open-research/).
+This research is being carried out at Alliander, a Dutch DSO, as part of [Jelmar Versleijen](https://research.wur.nl/en/persons/jelmar-versleijen)'s PhD with [Wagening University](https://www.wur.nl/en.htm). [Read more about research at Alliander](https://www.alliander.com/nl/alliander-en-open-research/).
 
 Details on methodology can be found in publication: [Link to be added.]
 
@@ -82,7 +82,7 @@ Please read CODE_OF_CONDUCT and CONTRIBUTING, for details on the process for sub
 The lead developer is responsible for reviewing contributions from the community and general direction of development.
 When the community has grown to a size where it would be helpful, the project will set up independent community governance.
 
-The lead developer is [Jelmar Versleijen](https://research.wur.nl/en/persons/jelmar-versleijen).
+The lead developer is [Jelmar Versleijen](https://github.com/JelmarVersleijen).
 
 # License
 
