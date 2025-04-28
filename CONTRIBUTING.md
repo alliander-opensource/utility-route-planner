@@ -77,6 +77,7 @@ See [GitHub Help](https://help.github.com/articles/about-pull-requests/) for mor
 Contributions should be submitted as GitHub pull requests. See [Creating a pull request](https://docs.github.com/en/github/collaborating-with-issues-and-pull-requests/creating-a-pull-request) if you're unfamiliar with this concept.
 
 Follow this process for a code change and pull request:
+
 1. Fork the repository.
 1. Make your change in a feature/description_of_your_change branch.
 1. Run the tests.
