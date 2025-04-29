@@ -18,7 +18,6 @@ dependencies = [
     "structlog (>=25.1.0,<26.0.0)",
     "scikit-image (>=0.25.1,<0.26.0)",
     "pytest (>=8.3.4,<9.0.0)",
-    "igraph (>=0.11.8,<0.12.0)",
     "networkx (>=3.4.2,<4.0.0)",
     "cairocffi (>=1.7.1,<2.0.0)",
     "matplotlib (>=3.10.0,<4.0.0)",
