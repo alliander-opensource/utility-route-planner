@@ -147,9 +147,7 @@ def osm_graph_to_gdfs(graph: rx.PyGraph) -> tuple[gpd.GeoDataFrame, gpd.GeoDataF
 
 
 def get_angle_between_points(point_a: shapely.Point, point_b: shapely.Point, center_point: shapely.Point) -> float:
-    """
-    Calculate the angle between two points with respect to a center point.
-    """
+    """Calculate the angle between two points with respect to a center point."""
     vector_a = np.array([point_a.x - center_point.x, point_a.y - center_point.y])
     vector_b = np.array([point_b.x - center_point.x, point_b.y - center_point.y])
     cos_theta = np.dot(vector_a, vector_b) / (np.linalg.norm(vector_a) * np.linalg.norm(vector_b))
@@ -161,13 +159,37 @@ def get_angle_between_points(point_a: shapely.Point, point_b: shapely.Point, cen
     return float(angle_deg)
 
 
-def extend_linestring_towards_point(point_start, point_to_extend, distance):
+def extend_linestring_towards_point(
+    point_start: shapely.Point, point_to_extend: shapely.Point, distance: float
+) -> shapely.LineString:
     """Extend a linestring with only 2 points in a single direction for a given distance."""
-    # x0, y0 = point_start.x, point_start.y
-    # x1, y1 = point_to_extend.x, point_to_extend.y
     dx, dy = point_to_extend.x - point_start.x, point_to_extend.y - point_start.y
     length = np.hypot(dx, dy)
     dx, dy = dx / length, dy / length
     new_x = point_start.x + dx * distance
     new_y = point_start.y + dy * distance
     return shapely.LineString([point_start, (new_x, new_y)])
+
+
+def extend_linestring_from_centroid(line: shapely.LineString, target_length: float) -> shapely.LineString:
+    """Extend a linestring with only 2 points from its centroid to a target length."""
+    if len(line.coords) != 2:
+        raise ValueError("Input line must have exactly 2 points.")
+    if line.length >= target_length:
+        raise ValueError("Line is already longer than target length.")
+
+    centroid = line.centroid
+    coords = np.array(line.coords)
+    half_new = target_length / 2
+
+    # Get direction vectors at both ends
+    vec_start = coords[0] - coords[1]
+    vec_end = coords[-1] - coords[-2]
+    vec_start = vec_start / np.linalg.norm(vec_start)
+    vec_end = vec_end / np.linalg.norm(vec_end)
+
+    # Move from centroid outwards
+    new_start = tuple(centroid.coords[0] + vec_start * half_new)
+    new_end = tuple(centroid.coords[0] + vec_end * half_new)
+
+    return shapely.LineString([new_start, new_end])
