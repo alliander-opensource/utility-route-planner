@@ -215,6 +215,7 @@ class TestPipeRamming:
 
         pipe_ramming = GetPotentialPipeRammingCrossings(osm_graph, cost_surface_graph, debug=debug)
         pipe_ramming.create_street_segment_groups()
+        pipe_ramming.prepare_junction_crossings()
         segments_of_interest = pipe_ramming.prepare_segment_crossings()
         _ = pipe_ramming.get_crossings_per_segment(
             segment_group_to_cross, segments_of_interest.loc[segment_group_to_cross].geometry
