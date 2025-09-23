@@ -193,3 +193,14 @@ def extend_linestring_from_centroid(line: shapely.LineString, target_length: flo
     new_end = tuple(centroid.coords[0] + vec_end * half_new)
 
     return shapely.LineString([new_start, new_end])
+
+
+def split_polygon_by_linestrings(
+    polygon_to_split: shapely.Polygon, linestrings_for_splitting: list[shapely.LineString]
+) -> list[shapely.Polygon]:
+    """Split a polygon by a list of linestrings into a list of polygons."""
+    line_split_collection = [polygon_to_split.boundary, *linestrings_for_splitting]
+    merged_lines = shapely.ops.linemerge(line_split_collection)
+    border_lines = shapely.ops.unary_union(merged_lines)
+    split_polygon = [i for i in shapely.ops.polygonize(border_lines)]
+    return split_polygon
