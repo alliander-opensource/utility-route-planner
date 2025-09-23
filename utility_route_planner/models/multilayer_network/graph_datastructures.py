@@ -1,6 +1,7 @@
 #  SPDX-FileCopyrightText: Contributors to the utility-route-project and Alliander N.V.
 #  #
 #  SPDX-License-Identifier: Apache-2.0
+import enum
 from dataclasses import dataclass, field
 
 import shapely
@@ -47,9 +48,16 @@ class HexagonEdgeInfo(EdgeInfo):
     weight: float
 
 
+class PipeRammingOrigin(enum.StrEnum):
+    """Helps to identify the creator of the extra edge. Refers to the process that created the edge."""
+
+    JUNCTION = enum.auto()
+    STREET_SEGMENT = enum.auto()
+
+
 @dataclass
 class PipeRammingEdgeInfo(EdgeInfo):
-    osm_id_junction: int
-    group: int
-    osm_edge_id: int
+    osm_id_junction: int | None
+    segment_group: int
     weight: float
+    origin: PipeRammingOrigin
