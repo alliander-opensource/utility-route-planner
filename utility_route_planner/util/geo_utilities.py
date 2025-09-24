@@ -14,6 +14,7 @@ import geopandas as gpd
 
 from settings import Config
 from utility_route_planner.models.mcda.exceptions import InvalidRasterValues
+from utility_route_planner.util.write import write_results_to_geopackage
 
 logger = structlog.get_logger(__name__)
 
@@ -195,12 +196,39 @@ def extend_linestring_from_centroid(line: shapely.LineString, target_length: flo
     return shapely.LineString([new_start, new_end])
 
 
+# TODO make some tests here for all linestrings functions
+def extend_linestring_both_ends(line: shapely.LineString, amount: float) -> shapely.LineString:
+    coords = np.array(line.coords)
+    # Start direction: from first to second point
+    start_vec = coords[1] - coords[0]
+    start_unit = start_vec / np.linalg.norm(start_vec)
+    new_start = coords[0] - start_unit * amount
+
+    # End direction: from last-1 to last point
+    end_vec = coords[-2] - coords[-1]
+    end_unit = end_vec / np.linalg.norm(end_vec)
+    new_end = coords[-1] - end_unit * amount
+
+    new_coords = np.vstack([new_start, coords, new_end])
+    return shapely.LineString(new_coords)
+
+
 def split_polygon_by_linestrings(
-    polygon_to_split: shapely.Polygon, linestrings_for_splitting: list[shapely.LineString]
+    polygon_to_split: shapely.Polygon, linestrings_for_splitting: list[shapely.LineString], debug: bool = False
 ) -> list[shapely.Polygon]:
     """Split a polygon by a list of linestrings into a list of polygons."""
     line_split_collection = [polygon_to_split.boundary, *linestrings_for_splitting]
     merged_lines = shapely.ops.linemerge(line_split_collection)
     border_lines = shapely.ops.unary_union(merged_lines)
     split_polygon = [i for i in shapely.ops.polygonize(border_lines)]
+    if debug:
+        write_results_to_geopackage(
+            Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT, polygon_to_split, "polygon_to_split"
+        )
+        write_results_to_geopackage(
+            Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT,
+            shapely.MultiLineString(linestrings_for_splitting),
+            "linestrings_for_splitting",
+        )
+
     return split_polygon

@@ -162,87 +162,94 @@ class TestPipeRamming:
         assert group_110 == group_111 == group_112
         assert (edges["group"] == group_110).sum() == 3
 
-    def test_junction_find_crossings_single_degree_4(self, setup_pipe_ramming_example_polygon, debug=True):
+    def test_single_junction(self, setup_pipe_ramming_example_polygon, debug=False):
+        """For debugging specific junction."""
         if debug:
             reset_geopackage(Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT, truncate=False)
 
-        node_id_to_test = 499  # 386
+        node_id_to_test = 499  # 386 499
         project_area = shapely.Point(174967.12, 450898.60).buffer(200)
 
         osm_graph, mcda_engine, cost_surface_graph = setup_pipe_ramming_example_polygon(project_area)
 
         pipe_ramming = GetPotentialPipeRammingCrossings(osm_graph, cost_surface_graph, debug=debug)
         pipe_ramming.create_street_segment_groups()
-        junctions = pipe_ramming.prepare_junction_crossings()
-        crossing = pipe_ramming.get_crossing_for_junction(node_id_to_test, junctions.loc[node_id_to_test])
-        assert len(crossing) == 3
+        pipe_ramming.prepare_junction_crossings()
+        crossings = pipe_ramming.get_crossing_for_junction(
+            node_id_to_test,
+            pipe_ramming.junctions_of_interests.loc[node_id_to_test].osm_id,
+            pipe_ramming.junctions_of_interests.loc[node_id_to_test].geometry,
+            pipe_ramming.junctions_of_interests.loc[node_id_to_test].degree,
+        )
+        assert len(crossings) == 3
 
         # Test our newly found crossing in a shortest path.
-        pipe_ramming.add_crossings_to_graph(crossing)
-        path = rx.dijkstra_shortest_paths(pipe_ramming.cost_surface_graph, 165602, 139510, lambda x: x.weight)
-        path = path[139510]
+        pipe_ramming.add_crossings_to_graph(crossings)
+        source, target = 163023, 139510
+        edges, path, path_points = self._find_path(pipe_ramming, source, target, debug)
+        assert shapely.MultiLineString(edges).length == pytest.approx(44, abs=1)
+        assert len([i for i in crossings if i[0] and i[1] in path]) == 1, "One of the new edges should be in the path."
+
+    def test_single_street_segment_group(self, setup_pipe_ramming_example_polygon, debug=True):
+        """For debugging specific street-segment group."""
+        if debug:
+            reset_geopackage(Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT, truncate=False)
+        # Splitting the segment area for 3506 did not result in exactly two sides.
+
+        segment_group_to_cross = 3506  # 3760
+
+        # project_area = shapely.Point(174974, 451093).buffer(200)
+        osm_graph, mcda_engine, cost_surface_graph = setup_pipe_ramming_example_polygon()
+
+        pipe_ramming = GetPotentialPipeRammingCrossings(osm_graph, cost_surface_graph, debug=debug)
+        pipe_ramming.suitability_value_obstacles_threshold = 76
+        pipe_ramming.create_street_segment_groups()
+        pipe_ramming.prepare_junction_crossings()
+        segments_of_interest = pipe_ramming.prepare_segment_crossings()
+        crossings = pipe_ramming.get_crossings_per_segment(
+            segment_group_to_cross, segments_of_interest.loc[segment_group_to_cross].geometry
+        )
+        pipe_ramming.add_crossings_to_graph(crossings)
+        assert len(crossings) == 3
+
+        source, target = 104086, 95568
+        edges, path, path_points = self._find_path(pipe_ramming, source, target, debug)
+        assert shapely.MultiLineString(edges).length == pytest.approx(18, abs=1)
+        assert len([i for i in crossings if i[0] and i[1] in path]) == 1, "One of the new edges should be in the path."
+
+    @pytest.mark.skip(reason="Very slow test, only for local testing and debugging.")
+    def test_find_all_rammings_example_set(self, setup_pipe_ramming_example_polygon, debug=False):
+        if debug:
+            reset_geopackage(Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT, truncate=False)
+
+        osm_graph, mcda_engine, cost_surface_graph = setup_pipe_ramming_example_polygon()
+
+        pipe_ramming = GetPotentialPipeRammingCrossings(osm_graph, cost_surface_graph, debug=debug)
+        crossings = pipe_ramming.get_crossings()
+        assert len(crossings) > 0
+
+    @staticmethod
+    def _find_path(pipe_ramming: GetPotentialPipeRammingCrossings, source: int, target: int, debug: bool = False):
+        path = rx.dijkstra_shortest_paths(pipe_ramming.cost_surface_graph, source, target, lambda x: x.weight)
+        path = path[target]
         path_points = shapely.MultiPoint([pipe_ramming.cost_surface_graph.get_node_data(i).geometry for i in path])
         edges = []
         for current, next_ in zip(path, path[1:]):
             edges.append(pipe_ramming.cost_surface_graph.get_edge_data(current, next_).geometry)
-        path_linestring = shapely.MultiLineString(edges)
-        assert path_linestring.length == pytest.approx(53, abs=1)
-        assert len(path) == 51
 
         if debug:
             write_results_to_geopackage(
-                Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT, path_linestring, "pytest_path_result"
+                Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT, shapely.MultiLineString(edges), "pytest_path_result"
             )
             write_results_to_geopackage(
                 Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT, path_points, "pytest_nodes_result"
             )
 
-    def test_junction_find_crossings_with_custom_obstacles(self, setup_pipe_ramming_example_polygon, debug=False):
-        # Obstacle can be a random polygon, check that it is respected.
-        pass
+        return edges, path, path_points
 
-    def test_junction_find_crossings_nothing_found(self, setup_pipe_ramming_example_polygon, debug=False):
-        # Check that it works when there is no crossing possible.
-        pass
 
-    def test_street_segment_group_find_crossings_long(self, setup_pipe_ramming_example_polygon, debug=True):
-        if debug:
-            reset_geopackage(Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT, truncate=False)
-        segment_group_to_cross = 3760
-
-        project_area = shapely.Point(174974, 451093).buffer(200)
-        osm_graph, mcda_engine, cost_surface_graph = setup_pipe_ramming_example_polygon(project_area)
-
-        pipe_ramming = GetPotentialPipeRammingCrossings(osm_graph, cost_surface_graph, debug=debug)
-        pipe_ramming.create_street_segment_groups()
-        pipe_ramming.prepare_junction_crossings()
-        segments_of_interest = pipe_ramming.prepare_segment_crossings()
-        _ = pipe_ramming.get_crossings_per_segment(
-            segment_group_to_cross, segments_of_interest.loc[segment_group_to_cross].geometry
-        )
-
-    def test_street_segment_group_find_crossings_short(self):
-        pass
-
-    def test_find_all_crossings(self, setup_pipe_ramming_example_polygon, debug=True):
-        if debug:
-            reset_geopackage(Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT, truncate=False)
-
-        osm_graph, mcda_engine, cost_surface_graph = setup_pipe_ramming_example_polygon()
-        pipe_ramming = GetPotentialPipeRammingCrossings(osm_graph, cost_surface_graph, debug=debug)
-        _ = pipe_ramming.get_crossings()
-
-    @pytest.mark.skip(reason="First fix the junctions.")
-    def test_find_road_crossings(self, setup_pipe_ramming_example_polygon, debug=False):
-        if debug:
-            reset_geopackage(Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT, truncate=False)
-
-        osm_graph, mcda_engine = setup_pipe_ramming_example_polygon
-
-        obstacles = mcda_engine.processed_vectors["pand"]  # can be expanded with water, trees.
-        roads = mcda_engine.processed_vectors["wegdeel"]
-
-        crossings = GetPotentialPipeRammingCrossings(
-            osm_graph, Config.PATH_EXAMPLE_RASTER, roads, obstacles, debug=debug
-        )
-        crossings.get_crossings()
+class TestPipeRammingTheoryExamples:
+    # Setup clean cost-surface and osm graph.
+    # cost_surface: contain a bridge/tunnel situation, contain something with an obstacle
+    # osm_graph: just a few streets.
+    pass
