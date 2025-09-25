@@ -12,7 +12,7 @@ from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_utils
 from utility_route_planner.util.graph_utilities import create_edge_info
 from utility_route_planner.models.mcda.mcda_engine import McdaCostSurfaceEngine
 from utility_route_planner.models.multilayer_network.pipe_ramming import GetPotentialPipeRammingCrossings
-from utility_route_planner.util.geo_utilities import get_empty_geodataframe, osm_graph_to_gdfs
+from utility_route_planner.util.geo_utilities import osm_graph_to_gdfs
 from utility_route_planner.models.multilayer_network.osm_graph_preprocessing import OSMGraphPreprocessor
 from utility_route_planner.models.multilayer_network.graph_datastructures import OSMNodeInfo
 from utility_route_planner.util.write import reset_geopackage, write_results_to_geopackage
@@ -29,7 +29,7 @@ class TestPipeRamming:
                     .geometry
                 )
 
-            osm_graph_preprocessor = OSMGraphPreprocessor(load_osm_graph_pickle)
+            osm_graph_preprocessor = OSMGraphPreprocessor(load_osm_graph_pickle, project_area)
             osm_graph_preprocessed = osm_graph_preprocessor.preprocess_graph()
 
             mcda_engine = McdaCostSurfaceEngine(
@@ -119,7 +119,7 @@ class TestPipeRamming:
             edge[2].edge_id = edge_id
 
         # Enable debug for visual debugging in QGIS.
-        crossings = GetPotentialPipeRammingCrossings(osm_graph, rx.PyGraph(), get_empty_geodataframe(), debug=debug)
+        crossings = GetPotentialPipeRammingCrossings(osm_graph, rx.PyGraph(), debug)
         crossings.create_street_segment_groups()
 
         edges, nodes = crossings.osm_edges, crossings.osm_nodes
@@ -167,8 +167,8 @@ class TestPipeRamming:
         if debug:
             reset_geopackage(Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT, truncate=False)
 
-        node_id_to_test = 499  # 386 499
-        project_area = shapely.Point(174967.12, 450898.60).buffer(200)
+        node_id_to_test = 3
+        project_area = shapely.Point(174967.12, 450898.60).buffer(150)
 
         osm_graph, mcda_engine, cost_surface_graph = setup_pipe_ramming_example_polygon(project_area)
 
@@ -181,28 +181,27 @@ class TestPipeRamming:
             pipe_ramming.junctions_of_interests.loc[node_id_to_test].geometry,
             pipe_ramming.junctions_of_interests.loc[node_id_to_test].degree,
         )
-        assert len(crossings) == 3
+        assert len(crossings) == 5
 
         # Test our newly found crossing in a shortest path.
         pipe_ramming.add_crossings_to_graph(crossings)
-        source, target = 163023, 139510
+        source, target = 60326, 49553
         edges, path, path_points = self._find_path(pipe_ramming, source, target, debug)
-        assert shapely.MultiLineString(edges).length == pytest.approx(44, abs=1)
+        assert shapely.MultiLineString(edges).length == pytest.approx(24, abs=1)
         assert len([i for i in crossings if i[0] and i[1] in path]) == 1, "One of the new edges should be in the path."
 
-    def test_single_street_segment_group(self, setup_pipe_ramming_example_polygon, debug=True):
+    def test_single_street_segment_group(self, setup_pipe_ramming_example_polygon, debug=False):
         """For debugging specific street-segment group."""
         if debug:
             reset_geopackage(Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT, truncate=False)
-        # Splitting the segment area for 3506 did not result in exactly two sides.
 
-        segment_group_to_cross = 3506  # 3760
+        segment_group_to_cross = 48
 
-        # project_area = shapely.Point(174974, 451093).buffer(200)
-        osm_graph, mcda_engine, cost_surface_graph = setup_pipe_ramming_example_polygon()
+        project_area = shapely.Point(174974, 451093).buffer(150)
+        osm_graph, mcda_engine, cost_surface_graph = setup_pipe_ramming_example_polygon(project_area)
 
         pipe_ramming = GetPotentialPipeRammingCrossings(osm_graph, cost_surface_graph, debug=debug)
-        pipe_ramming.suitability_value_obstacles_threshold = 76
+        pipe_ramming.suitability_value_obstacles_threshold = 77
         pipe_ramming.create_street_segment_groups()
         pipe_ramming.prepare_junction_crossings()
         segments_of_interest = pipe_ramming.prepare_segment_crossings()
@@ -212,12 +211,11 @@ class TestPipeRamming:
         pipe_ramming.add_crossings_to_graph(crossings)
         assert len(crossings) == 3
 
-        source, target = 104086, 95568
+        source, target = 56672, 52688
         edges, path, path_points = self._find_path(pipe_ramming, source, target, debug)
-        assert shapely.MultiLineString(edges).length == pytest.approx(18, abs=1)
+        assert shapely.MultiLineString(edges).length == pytest.approx(12, abs=1)
         assert len([i for i in crossings if i[0] and i[1] in path]) == 1, "One of the new edges should be in the path."
 
-    @pytest.mark.skip(reason="Very slow test, only for local testing and debugging.")
     def test_find_all_rammings_example_set(self, setup_pipe_ramming_example_polygon, debug=False):
         if debug:
             reset_geopackage(Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT, truncate=False)
@@ -225,6 +223,8 @@ class TestPipeRamming:
         osm_graph, mcda_engine, cost_surface_graph = setup_pipe_ramming_example_polygon()
 
         pipe_ramming = GetPotentialPipeRammingCrossings(osm_graph, cost_surface_graph, debug=debug)
+        # Enable for visual checking without full debug mode which slows the test down.
+        pipe_ramming.plot_crossings = False
         crossings = pipe_ramming.get_crossings()
         assert len(crossings) > 0
 

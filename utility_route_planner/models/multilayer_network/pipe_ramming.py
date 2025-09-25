@@ -17,11 +17,11 @@ from utility_route_planner.util.geo_utilities import (
     osm_graph_to_gdfs,
     get_empty_geodataframe,
     get_angle_between_points,
-    extend_linestring_towards_point,
-    extend_linestring_from_centroid,
+    extrapolate_point_to_target,
     split_polygon_by_linestrings,
     extend_linestring_both_ends,
 )
+from utility_route_planner.util.timer import time_function
 from utility_route_planner.util.write import write_results_to_geopackage
 
 logger = structlog.get_logger(__name__)
@@ -87,15 +87,15 @@ class GetPotentialPipeRammingCrossings:
 
         crossing_collection = []
         # Finds crossings (parallel to the edge!) for junctions.
-        # self.prepare_junction_crossings()
-        # for idx, (node_id, junction) in enumerate(self.junctions_of_interests.iterrows(), 1):
-        #     if idx % 10 == 0 or idx == 1:
-        #         logger.info(f"Processing junction {idx}/{len(self.junctions_of_interests)}: node_id={node_id}")
-        #     crossing = self.get_crossing_for_junction(node_id, junction.osm_id, junction.geometry, junction.degree)
-        #     if len(crossing):
-        #         crossing_collection.extend(crossing)
-        #     else:
-        #         logger.warning(f"No crossings found for junction {node_id}.")
+        self.prepare_junction_crossings()
+        for idx, (node_id, junction) in enumerate(self.junctions_of_interests.iterrows(), 1):
+            if idx % 10 == 0 or idx == 1:
+                logger.info(f"Processing junction {idx}/{len(self.junctions_of_interests)}: node_id={node_id}")
+            crossing = self.get_crossing_for_junction(node_id, junction.osm_id, junction.geometry, junction.degree)
+            if len(crossing):
+                crossing_collection.extend(crossing)
+            else:
+                logger.warning(f"No crossings found for junction {node_id}.")
 
         # Find crossings (perpendicular to the edge!) for larger street segments.
         merged_segments_of_interest = self.prepare_segment_crossings()
@@ -112,7 +112,7 @@ class GetPotentialPipeRammingCrossings:
                     logger.warning(f"No crossings found for segment group {segment_group}.")
             except Exception as e:
                 logger.error(f"An error occurred for segment group {segment_group}: {e}")
-        # Add all crossings
+
         self.add_crossings_to_graph(crossing_collection)
 
         logger.info(f"Found and added {len(crossing_collection)} crossings.")
@@ -123,7 +123,11 @@ class GetPotentialPipeRammingCrossings:
         edge_ids = self.cost_surface_graph.add_edges_from(crossing_collection)
         [edge_info[2].set_edge_id(edge_id) for edge_id, edge_info in zip(edge_ids, crossing_collection)]
         if self.plot_crossings:
-            print("stahp")
+            write_results_to_geopackage(
+                self.out,
+                gpd.GeoDataFrame(data=[vars(i[2]) for i in crossing_collection]),
+                "pytest_crossings_added_to_graph",
+            )
 
     def create_street_segment_groups(self):
         """
@@ -221,6 +225,7 @@ class GetPotentialPipeRammingCrossings:
 
         return merged_segments[merged_segments["is_suitable"]]
 
+    @time_function
     def get_crossing_for_junction(
         self, node_id: int, osm_id: int, junction_area: shapely.Polygon, degree: int, prefix: str = "pytest_3_"
     ):
@@ -274,11 +279,11 @@ class GetPotentialPipeRammingCrossings:
 
         # Extend the linestrings of the edges outwards from the junction node prior to splitting
         adjacent_edges["extended"] = adjacent_edges.apply(
-            lambda row: extend_linestring_towards_point(
+            lambda row: extrapolate_point_to_target(
                 row["point_inner"],
                 row["point_outer"],
-                distance=self.max_pipe_ramming_length_m
-                * 3,  # Has to be long enough to cross/split the junction area polygon.
+                # long enough to cross/split the junction area polygon.
+                distance=self.max_pipe_ramming_length_m * 3,
             ),
             axis=1,
         )
@@ -339,11 +344,11 @@ class GetPotentialPipeRammingCrossings:
 
             crossing_collection.extend(
                 self._create_crossing_selection_to_add(
-                    best_crossings,
-                    closest_node_linestrings_filtered,
-                    closest_node_pairs,
-                    PipeRammingOrigin.STREET_SEGMENT,
-                    edge.group,
+                    crossings_to_add=best_crossings,
+                    closest_node_linestrings_filtered=closest_node_linestrings_filtered,
+                    closest_node_pairs=closest_node_pairs,
+                    origin=PipeRammingOrigin.JUNCTION,
+                    segment_group=edge.group,
                     node_id=node_id,
                     prefix=prefix,
                 )
@@ -369,6 +374,7 @@ class GetPotentialPipeRammingCrossings:
 
         return crossing_collection
 
+    @time_function
     def get_crossings_per_segment(
         self,
         segment_group: int,
@@ -398,10 +404,9 @@ class GetPotentialPipeRammingCrossings:
         segment_geometry_area = segment_geometry.buffer(self.max_pipe_ramming_length_m, cap_style="flat")
         sides = shapely.ops.split(segment_geometry_area, segment_geometry)
         if not int(shapely.get_num_geometries(sides)) == 2:
-            logger.warning(f"Splitting the segment area for {segment_group} did not result in exactly two sides.")
-            # TODO cleanup
             sides = shapely.ops.split(segment_geometry_area, extend_linestring_both_ends(segment_geometry, 1))
             if not int(shapely.get_num_geometries(sides)) == 2:
+                logger.warning(f"Splitting the segment area for {segment_group} did not result in exactly two sides.")
                 return []
 
         gdf_street_sides = gpd.GeoDataFrame(geometry=[i for i in sides.geoms], crs=Config.CRS)
@@ -422,7 +427,10 @@ class GetPotentialPipeRammingCrossings:
                 logger.warning(f"Street segment {segment_group} appears to be very short, skipping.")
                 continue
             if street.length < self.max_pipe_ramming_length_m * 2:
-                street = extend_linestring_from_centroid(street, self.max_pipe_ramming_length_m * 2 + 1)
+                # Ensure the linestring is longer than the buffered street segment is wide.
+                distance_to_stretch = (((self.max_pipe_ramming_length_m * 2) - street.length) / 2) + 0.5
+                street = extend_linestring_both_ends(street, distance_to_stretch)
+                assert street.length >= self.max_pipe_ramming_length_m * 2
             street_rotated = shapely.affinity.rotate(street, 90, origin="centroid")
             interval = np.linspace(0, street_rotated.length / 2, int((street_rotated.length / 2) // 1), endpoint=False)[
                 1:
@@ -472,11 +480,11 @@ class GetPotentialPipeRammingCrossings:
         ]
 
         crossings_to_add = self._create_crossing_selection_to_add(
-            selected_rammings,
-            closest_node_linestrings_filtered,
-            closest_node_pairs,
-            segment_group,
-            PipeRammingOrigin.STREET_SEGMENT,
+            crossings_to_add=selected_rammings,
+            closest_node_linestrings_filtered=closest_node_linestrings_filtered,
+            closest_node_pairs=closest_node_pairs,
+            segment_group=segment_group,
+            origin=PipeRammingOrigin.STREET_SEGMENT,
             prefix=prefix,
         )
 
@@ -496,7 +504,7 @@ class GetPotentialPipeRammingCrossings:
         unpassable_area: gpd.GeoSeries,
         prefix: str = "",
     ) -> tuple[gpd.GeoDataFrame, gpd.GeoDataFrame]:
-        rammings_without_obstacles = all_rammings.overlay(  # TODO this needs to be sped up
+        rammings_without_obstacles = all_rammings.overlay(
             gpd.GeoDataFrame(geometry=unpassable_area, crs=28992), how="difference"
         )
         rammings_without_obstacles = rammings_without_obstacles.explode().reset_index(drop=True)
@@ -529,8 +537,6 @@ class GetPotentialPipeRammingCrossings:
         prefix: str = "",
     ) -> tuple[gpd.GeoSeries, gpd.GeoDataFrame]:
         pairs = grid_with_cost_surface.loc[closest_node_pairs]
-        # TODO it can crash here
-        #  Check minimal distance, discard short and long crossings.
         closest_node_linestrings = pairs.groupby("index_right")["geometry"].apply(
             lambda points: shapely.LineString(points)
         )
