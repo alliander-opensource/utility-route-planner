@@ -4,13 +4,13 @@
 import pickle
 
 import pytest
-from networkx import MultiGraph
+from networkx import MultiDiGraph
 
 from settings import Config
 
 
 @pytest.fixture
-def load_osm_graph_pickle(refresh_example_graph=False) -> MultiGraph:
+def load_osm_graph_pickle(refresh_example_graph=False) -> MultiDiGraph:
     # Option to refresh to example osm graph.
     if refresh_example_graph:
         import geopandas as gpd
@@ -19,9 +19,9 @@ def load_osm_graph_pickle(refresh_example_graph=False) -> MultiGraph:
         project_area = (
             gpd.read_file(Config.PYTEST_PATH_GEOPACKAGE_MCDA, layer=Config.PYTEST_LAYER_NAME_PROJECT_AREA)
             .iloc[0]
-            .geometry.buffer(250)
+            .geometry
         )
-        osm_graph_downloader = OSMGraphDownloader(project_area, 50)
+        osm_graph_downloader = OSMGraphDownloader(project_area)
         project_area_graph = osm_graph_downloader.download_graph()
 
         with open(Config.PYTEST_OSM_GRAPH_PICKLE, "wb") as file:

@@ -14,8 +14,7 @@ class TestOSMGraphDownloader:
     @pytest.fixture
     def osm_district_setup(self) -> OSMGraphDownloader:
         project_area = gpd.read_file(Config.PYTEST_PATH_GEOPACKAGE_MCDA, layer=Config.PYTEST_LAYER_NAME_PROJECT_AREA)
-        max_cable_length = 50
-        osm_graph_downloader = OSMGraphDownloader(project_area, max_cable_length)
+        osm_graph_downloader = OSMGraphDownloader(project_area)
 
         return osm_graph_downloader
 
@@ -32,7 +31,7 @@ class TestOSMGraphDownloader:
     ):
         # Choose a point that is located in the North Sea (and therefore does not have a graph)
         northsea_polygon = gpd.GeoDataFrame(geometry=[shapely.Point(40466, 594514)], crs=Config.CRS)
-        osm_graph_downloader = OSMGraphDownloader(project_area_geometry=northsea_polygon, max_cable_length=1)
+        osm_graph_downloader = OSMGraphDownloader(project_area_geometry=northsea_polygon)
 
         with pytest.raises(NoGraphDataForProjectArea):
             osm_graph_downloader.download_graph()

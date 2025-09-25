@@ -15,9 +15,8 @@ logger = structlog.get_logger(__name__)
 
 
 class OSMGraphDownloader:
-    def __init__(self, project_area_geometry: Polygon | MultiPolygon, max_cable_length: int):
+    def __init__(self, project_area_geometry: Polygon | MultiPolygon):
         self.project_area_geometry = project_area_geometry
-        self.max_cable_length = max_cable_length
 
         ox.settings.log_console = False
         ox.settings.overpass_rate_limit = True
@@ -31,8 +30,7 @@ class OSMGraphDownloader:
     )
     def download_graph(self) -> nx.MultiGraph:
         logger.info("Start downloading graph from OSM")
-        buffered_project_area = self.project_area_geometry.buffer(self.max_cable_length)
-        reprojected_project_area = gpd.GeoSeries(buffered_project_area, crs=Config.CRS).to_crs(4326).iloc[0]
+        reprojected_project_area = gpd.GeoSeries(self.project_area_geometry, crs=Config.CRS).to_crs(4326).iloc[0]
 
         try:
             graph_wgs84 = ox.graph_from_polygon(reprojected_project_area, network_type="all", simplify=False)
