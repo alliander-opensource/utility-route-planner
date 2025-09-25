@@ -14,6 +14,7 @@ from utility_route_planner.models.multilayer_network.osm_graph_preprocessing imp
     OSMGraphPreprocessor,
 )
 from utility_route_planner.models.multilayer_network.graph_datastructures import OSMEdgeInfo, OSMNodeInfo
+from utility_route_planner.util.write import write_results_to_geopackage
 
 
 class TestOSMGraphPreprocessor:
@@ -165,3 +166,26 @@ class TestOSMGraphPreprocessor:
                 (rx_edge.geometry, rx_edge.length, rx_edge.osm_id) for rx_edge in rx_adjacent_edges.values()
             )
             assert rx_edge_props == nx_edge_props
+
+    def test_clip_graph_to_polygon(self, load_osm_graph_pickle: MultiDiGraph, debug: bool = False):
+        polygon = shapely.Point(174968.78, 451010.45).buffer(
+            100
+        )  # Note, this needs to be within the pickled OSM graph.
+
+        graph_preprocessor = OSMGraphPreprocessor(load_osm_graph_pickle, polygon, debug)
+        n_nodes_old, n_edges_old = (
+            graph_preprocessor.nx_graph.number_of_nodes(),
+            graph_preprocessor.nx_graph.number_of_edges(),
+        )
+        rx_graph = graph_preprocessor.preprocess_graph()
+
+        assert rx_graph.num_nodes() == 11 < n_nodes_old
+        assert rx_graph.num_edges() == 10 < n_edges_old
+
+        nodes, edges = osm_graph_to_gdfs(rx_graph)
+
+        assert all(nodes.within(polygon))
+        assert all(edges.within(polygon))
+        if debug:
+            write_results_to_geopackage(Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT, nodes, "pytest_clip_nodes")
+            write_results_to_geopackage(Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT, edges, "pytest_clip_edges")

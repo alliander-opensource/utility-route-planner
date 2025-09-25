@@ -8,14 +8,23 @@ import osmnx as ox
 import structlog
 import shapely
 
+from settings import Config
 from utility_route_planner.models.multilayer_network.graph_datastructures import OSMEdgeInfo, OSMNodeInfo
+from utility_route_planner.util.write import write_results_to_geopackage
 
 logger = structlog.get_logger(__name__)
 
 
 class OSMGraphPreprocessor:
-    def __init__(self, nx_graph: nx.MultiGraph):
+    def __init__(
+        self,
+        nx_graph: nx.MultiDiGraph,
+        polygon_for_clip: shapely.Polygon | shapely.MultiPolygon | None = None,
+        debug: bool = False,
+    ):
         self.nx_graph = nx_graph
+        self.polygon_for_clip = polygon_for_clip
+        self.debug = debug
 
     def preprocess_graph(self) -> rx.PyGraph:
         self.validate_input()
@@ -24,6 +33,8 @@ class OSMGraphPreprocessor:
         )
         self.nx_graph = ox.convert.to_undirected(self.nx_graph)
         self._remove_duplicate_edges_and_add_edge_id_and_length_properties()
+        if self.polygon_for_clip:
+            self.clip_graph_to_polygon()
         rx_graph = self._convert_to_rustworkx(self.nx_graph)
 
         return rx_graph
@@ -72,9 +83,27 @@ class OSMGraphPreprocessor:
         return rx_graph
 
     def validate_input(self):
-        if not isinstance(self.nx_graph, nx.MultiGraph):
-            raise TypeError("Input graph must be a NetworkX MultiGraph.")
+        if not isinstance(self.nx_graph, nx.MultiDiGraph):
+            raise TypeError("Input graph must be a NetworkX MultiDiGraph.")
         if self.nx_graph.number_of_edges() == 0:
             raise ValueError("Graph should have edges.")
         if self.nx_graph.number_of_nodes() == 0:
             raise ValueError("Graph should have nodes.")
+
+    def clip_graph_to_polygon(self) -> None:
+        """Clips the graph to the given polygon. Nodes and edges outside the polygon are removed."""
+        nodes = ox.graph_to_gdfs(self.nx_graph, edges=False)
+        nodes_to_remove = nodes[~nodes.intersects(self.polygon_for_clip)]
+        self.nx_graph.remove_nodes_from(nodes_to_remove.index)
+        logger.info(f"Clipped graph to polygon, removed {len(nodes_to_remove)} nodes.")
+
+        if self.debug:
+            write_results_to_geopackage(
+                Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT, self.polygon_for_clip, "pytest_polygon_for_clip"
+            )
+            write_results_to_geopackage(
+                Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT, nodes, "pytest_original_nodes"
+            )
+            write_results_to_geopackage(
+                Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT, nodes_to_remove, "pytest_nodes_to_remove"
+            )
