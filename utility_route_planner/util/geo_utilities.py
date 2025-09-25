@@ -149,6 +149,11 @@ def osm_graph_to_gdfs(graph: rx.PyGraph) -> tuple[gpd.GeoDataFrame, gpd.GeoDataF
 
 def get_angle_between_points(point_a: shapely.Point, point_b: shapely.Point, center_point: shapely.Point) -> float:
     """Calculate the angle between two points with respect to a center point."""
+    if point_a.equals(point_b):
+        raise ValueError("Point_a and point_b must not be the same.")
+    if center_point.equals(point_a) or center_point.equals(point_b):
+        raise ValueError("Center_point must not be equal to point_a or point_b.")
+
     vector_a = np.array([point_a.x - center_point.x, point_a.y - center_point.y])
     vector_b = np.array([point_b.x - center_point.x, point_b.y - center_point.y])
     cos_theta = np.dot(vector_a, vector_b) / (np.linalg.norm(vector_a) * np.linalg.norm(vector_b))
@@ -160,11 +165,16 @@ def get_angle_between_points(point_a: shapely.Point, point_b: shapely.Point, cen
     return float(angle_deg)
 
 
-def extend_linestring_towards_point(
-    point_start: shapely.Point, point_to_extend: shapely.Point, distance: float
+def extrapolate_point_to_target(
+    point_start: shapely.Point, direction_to_extend_to: shapely.Point, distance: float
 ) -> shapely.LineString:
-    """Extend a linestring with only 2 points in a single direction for a given distance."""
-    dx, dy = point_to_extend.x - point_start.x, point_to_extend.y - point_start.y
+    """Extend a point to a target point for a given distance."""
+    if point_start.equals(direction_to_extend_to):
+        raise ValueError("Point_start and point_to_extend must not be the same.")
+    if distance <= 0:
+        raise ValueError("Distance must be a positive value.")
+
+    dx, dy = direction_to_extend_to.x - point_start.x, direction_to_extend_to.y - point_start.y
     length = np.hypot(dx, dy)
     dx, dy = dx / length, dy / length
     new_x = point_start.x + dx * distance
@@ -172,45 +182,42 @@ def extend_linestring_towards_point(
     return shapely.LineString([point_start, (new_x, new_y)])
 
 
-def extend_linestring_from_centroid(line: shapely.LineString, target_length: float) -> shapely.LineString:
-    """Extend a linestring with only 2 points from its centroid to a target length."""
-    if len(line.coords) != 2:
-        raise ValueError("Input line must have exactly 2 points.")
-    if line.length >= target_length:
-        raise ValueError("Line is already longer than target length.")
+def extend_linestring_both_ends(line: shapely.LineString, distance: float, debug: bool = False) -> shapely.LineString:
+    """Extend a linestring at both ends by a given distance."""
+    if distance <= 0:
+        raise ValueError("Distance must be a positive value.")
 
-    centroid = line.centroid
     coords = np.array(line.coords)
-    half_new = target_length / 2
+    if len(coords) == 2:
+        center_start, center_end = np.array(line.centroid.coords)[0], np.array(line.centroid.coords)[0]
+    else:
+        center_start = coords[1]
+        center_end = coords[-2]
 
-    # Get direction vectors at both ends
-    vec_start = coords[0] - coords[1]
-    vec_end = coords[-1] - coords[-2]
-    vec_start = vec_start / np.linalg.norm(vec_start)
-    vec_end = vec_end / np.linalg.norm(vec_end)
-
-    # Move from centroid outwards
-    new_start = tuple(centroid.coords[0] + vec_start * half_new)
-    new_end = tuple(centroid.coords[0] + vec_end * half_new)
-
-    return shapely.LineString([new_start, new_end])
-
-
-# TODO make some tests here for all linestrings functions
-def extend_linestring_both_ends(line: shapely.LineString, amount: float) -> shapely.LineString:
-    coords = np.array(line.coords)
     # Start direction: from first to second point
-    start_vec = coords[1] - coords[0]
+    start_vec = center_start - coords[0]
     start_unit = start_vec / np.linalg.norm(start_vec)
-    new_start = coords[0] - start_unit * amount
+    new_start = coords[0] - start_unit * distance
 
     # End direction: from last-1 to last point
-    end_vec = coords[-2] - coords[-1]
+    end_vec = center_end - coords[-1]
     end_unit = end_vec / np.linalg.norm(end_vec)
-    new_end = coords[-1] - end_unit * amount
+    new_end = coords[-1] - end_unit * distance
 
-    new_coords = np.vstack([new_start, coords, new_end])
-    return shapely.LineString(new_coords)
+    if len(coords) == 2:
+        result = shapely.LineString([new_start, new_end])
+    else:
+        result = shapely.LineString(np.vstack([new_start, coords[1:-1], new_end]))
+
+    if debug:
+        write_results_to_geopackage(
+            Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT, line, "original_line", overwrite=True
+        )
+        write_results_to_geopackage(
+            Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT, result, "extended_line", overwrite=True
+        )
+
+    return result
 
 
 def split_polygon_by_linestrings(
@@ -223,12 +230,13 @@ def split_polygon_by_linestrings(
     split_polygon = [i for i in shapely.ops.polygonize(border_lines)]
     if debug:
         write_results_to_geopackage(
-            Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT, polygon_to_split, "polygon_to_split"
+            Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT, polygon_to_split, "polygon_to_split", overwrite=True
         )
         write_results_to_geopackage(
             Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT,
             shapely.MultiLineString(linestrings_for_splitting),
             "linestrings_for_splitting",
+            overwrite=True,
         )
 
     return split_polygon
