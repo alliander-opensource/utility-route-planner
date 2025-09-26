@@ -10,6 +10,7 @@ from utility_route_planner.models.multilayer_network.exceptions import NoGraphDa
 from utility_route_planner.models.multilayer_network.osm_graph_downloader import OSMGraphDownloader
 
 
+@pytest.mark.skip(reason="For manual testing only, requires internet connection.")
 class TestOSMGraphDownloader:
     @pytest.fixture
     def osm_district_setup(self) -> OSMGraphDownloader:
@@ -30,7 +31,7 @@ class TestOSMGraphDownloader:
         self, osm_district_setup: OSMGraphDownloader
     ):
         # Choose a point that is located in the North Sea (and therefore does not have a graph)
-        northsea_polygon = gpd.GeoDataFrame(geometry=[shapely.Point(40466, 594514)], crs=Config.CRS)
+        northsea_polygon = shapely.Point(40466, 594514).buffer(5)
         osm_graph_downloader = OSMGraphDownloader(project_area_geometry=northsea_polygon)
 
         with pytest.raises(NoGraphDataForProjectArea):
