@@ -9,10 +9,14 @@ import numpy as np
 import pandas as pd
 import rustworkx as rx
 import shapely
+import structlog
 from geopandas import GeoDataFrame
 
 from settings import Config
+from utility_route_planner.util.geo_utilities import get_empty_geodataframe
 from utility_route_planner.util.timer import time_function
+
+logger = structlog.get_logger(__name__)
 
 
 def get_hexagon_width_and_height(hexagon_size: float) -> tuple[float, float]:
@@ -36,6 +40,10 @@ def get_hexagon_width_and_height(hexagon_size: float) -> tuple[float, float]:
 def convert_hexagon_graph_to_gdfs(
     hexagon_graph: rx.PyGraph, edges: bool = True
 ) -> tuple[GeoDataFrame, None] | GeoDataFrame:
+    if hexagon_graph.num_nodes() == 0:
+        logger.warning("Hexagon graph is empty, returning empty GeoDataFrame.")
+        return get_empty_geodataframe()
+
     nodes_gdf = gpd.GeoDataFrame(hexagon_graph.nodes(), crs=Config.CRS)
 
     if edges:
