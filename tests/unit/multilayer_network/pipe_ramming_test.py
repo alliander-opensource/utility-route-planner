@@ -249,7 +249,54 @@ class TestPipeRamming:
 
 
 class TestPipeRammingTheoryExamples:
-    # Setup clean cost-surface and osm graph.
-    # cost_surface: contain a bridge/tunnel situation, contain something with an obstacle
-    # osm_graph: just a few streets.
-    pass
+    @pytest.fixture
+    def setup_theory_examples(self, debug=True):
+        # Setup clean cost-surface and osm graph.
+        # cost_surface: contain a bridge/tunnel situation, contain something with an obstacle
+        # osm_graph: just a few streets
+
+        # MCDA vectors
+        street = gpd.GeoDataFrame(
+            data=[
+                # Asphalt
+                [30, shapely.LineString([(0, 0), (100, 0)]).buffer(5, cap_style="flat")],
+                # Pavement north
+                [5, shapely.LineString([(0, 7), (100, 7)]).buffer(2, cap_style="flat")],
+                # Pavement south
+                [5, shapely.LineString([(0, -7), (100, -7)]).buffer(2, cap_style="flat")],
+            ],
+            columns=["suitability_value", "geometry"],
+            crs=Config.CRS,
+        )
+        buildings = gpd.GeoDataFrame(
+            data=[
+                [120, shapely.Point(15, -20).buffer(5)],
+                [120, shapely.Point(75, -35).buffer(5)],
+                [120, shapely.LineString([(15, 15), (45, 15)]).buffer(5, cap_style="flat")],
+            ],
+            columns=["suitability_value", "geometry"],
+            crs=Config.CRS,
+        )
+        private_property = gpd.GeoDataFrame(
+            data=[
+                [80, shapely.LineString([(0, 23.5), (100, 23.5)]).buffer(25, cap_style="flat")],
+                [80, shapely.LineString([(0, -23.5), (100, -23.5)]).buffer(25, cap_style="flat")],
+            ],
+            columns=["suitability_value", "geometry"],
+            crs=Config.CRS,
+        )
+        trees = gpd.GeoDataFrame(
+            data=[[20, shapely.Point().buffer(5)]], columns=["suitability_value", "geometry"], crs=Config.CRS
+        )
+        out = Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT
+        if debug:
+            reset_geopackage(out, truncate=False)
+            write_results_to_geopackage(out, street, "pytest_theory_street", overwrite=True)
+            write_results_to_geopackage(out, buildings, "pytest_theory_buildings", overwrite=True)
+            write_results_to_geopackage(out, private_property, "pytest_theory_private_property", overwrite=True)
+            write_results_to_geopackage(out, trees, "pytest_theory_trees", overwrite=True)
+
+        return tuple([street, buildings, trees])
+
+    def test_theory_junction_crossing(self, setup_theory_examples):
+        (_,) = setup_theory_examples
