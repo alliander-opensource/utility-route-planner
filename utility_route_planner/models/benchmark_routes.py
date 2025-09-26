@@ -61,6 +61,6 @@ class BenchmarkRouteCollection:
             4: self.route_4,
             5: self.route_5,
         }
-        if route_numbers:
+        if not route_numbers:
             return list(route_map.values())
         return [route_map[n] for n in route_numbers if n in route_map]

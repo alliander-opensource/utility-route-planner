@@ -61,7 +61,7 @@ if __name__ == "__main__":
     reset_geopackage(Config.PATH_GEOPACKAGE_LCPA_OUTPUT, truncate=True)
     route_collection = BenchmarkRouteCollection()
 
-    cases_to_run = [5]  # 1 to 5, or [] for all
+    cases_to_run = [1, 2, 3, 4, 5]  # 1 to 5, or [] for all
     for case in route_collection.get_routes(cases_to_run):
         human_designed_route = (
             gpd.read_file(case.path_geopackage, layer=case.layer_name_human_designed_route).iloc[0].geometry
