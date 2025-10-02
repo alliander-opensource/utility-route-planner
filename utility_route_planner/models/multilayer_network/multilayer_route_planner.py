@@ -21,10 +21,14 @@ class MultilayerRouteEngine:
         osm_graph: rx.PyGraph,
         gdf_cost_surface_nodes: gpd.GeoDataFrame,
         prefix: str = "",
+        write_output: bool = True,
     ):
         self.cost_surface_graph = cost_surface_graph
         self.gdf_cost_surface_nodes = gdf_cost_surface_nodes
         self.osm_graph = osm_graph
+        self.result_route: shapely.LineString = shapely.LineString()
+        self.result_route_node_indices = list[rx.NodeIndices]
+        self.write_output = write_output
         self.prefix = prefix
 
     @time_function
@@ -33,18 +37,28 @@ class MultilayerRouteEngine:
         source = self.gdf_cost_surface_nodes.distance(start).idxmin()
         target = self.gdf_cost_surface_nodes.distance(end).idxmin()
 
-        path = rx.dijkstra_shortest_paths(self.cost_surface_graph, source, target, lambda x: x.weight)
-        path = path[target]
-        path_points = shapely.MultiPoint([self.cost_surface_graph.get_node_data(i).geometry for i in path])
+        # HexagonEdgeInfo.weight is used as edge weight for dijkstra
+        path_node_indices = rx.dijkstra_shortest_paths(self.cost_surface_graph, source, target, lambda x: x.weight)
+        path_node_indices = path_node_indices[target]
+        path_points = shapely.MultiPoint([self.cost_surface_graph.get_node_data(i).geometry for i in path_node_indices])
         edges = []
-        for current, next_ in zip(path, path[1:]):
+        for current, next_ in zip(path_node_indices, path_node_indices[1:]):
             edges.append(self.cost_surface_graph.get_edge_data(current, next_).geometry)
 
         result_linestring = shapely.MultiLineString(edges)
+        result_linestring = shapely.line_merge(result_linestring)
+        if isinstance(result_linestring, shapely.geometry.MultiLineString):
+            logger.warning("Resulting route is not a single linestring, this should not occur.")
 
-        write_results_to_geopackage(
-            Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT, result_linestring, f"{self.prefix}multilayer_route_edges"
-        )
-        write_results_to_geopackage(
-            Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT, path_points, f"{self.prefix}multilayer_route_points"
-        )
+        self.result_route = result_linestring
+        self.result_route_node_indices = path_node_indices
+
+        if self.write_output:
+            write_results_to_geopackage(
+                Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT,
+                self.result_route,
+                f"{self.prefix}multilayer_route_edges",
+            )
+            write_results_to_geopackage(
+                Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT, path_points, f"{self.prefix}multilayer_route_points"
+            )
