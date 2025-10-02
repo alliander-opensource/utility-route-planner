@@ -149,8 +149,6 @@ def osm_graph_to_gdfs(graph: rx.PyGraph) -> tuple[gpd.GeoDataFrame, gpd.GeoDataF
 
 def get_angle_between_points(point_a: shapely.Point, point_b: shapely.Point, center_point: shapely.Point) -> float:
     """Calculate the angle between two points with respect to a center point."""
-    if point_a.equals(point_b):
-        raise ValueError("Point_a and point_b must not be the same.")
     if center_point.equals(point_a) or center_point.equals(point_b):
         raise ValueError("Center_point must not be equal to point_a or point_b.")
 
