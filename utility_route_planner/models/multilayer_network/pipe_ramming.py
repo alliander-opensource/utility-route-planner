@@ -1,6 +1,8 @@
 # SPDX-FileCopyrightText: Contributors to the utility-route-project and Alliander N.V.
 #
 # SPDX-License-Identifier: Apache-2.0
+import pathlib
+
 import numpy as np
 import pandas as pd
 import shapely
@@ -32,6 +34,13 @@ class GetPotentialPipeRammingCrossings:
         self,
         osm_graph: rx.PyGraph,
         cost_surface_graph: rx.PyGraph,
+        threshold_edge_length_crossing_m: float = Config.THRESHOLD_EDGE_LENGTH_CROSSING_M,
+        max_pipe_ramming_length_m: float = Config.MAX_PIPE_RAMMING_LENGTH_M,
+        min_pipe_ramming_length_m: float = Config.MIN_PIPE_RAMMING_LENGTH_M,
+        suitability_value_crossing_threshold: float = Config.SUITABILITY_VALUE_CROSSING_THRESHOLD,
+        suitability_value_obstacles_threshold: float = Config.SUITABILITY_VALUE_OBSTACLES_THRESHOLD,
+        hexagon_size: float = Config.HEXAGON_SIZE,
+        debug_out: pathlib.Path = Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT,
         debug: bool = False,
     ):
         self.osm_graph = osm_graph
@@ -41,18 +50,18 @@ class GetPotentialPipeRammingCrossings:
         self.cost_surface_nodes = convert_hexagon_graph_to_gdfs(self.cost_surface_graph, edges=False)
         self.junctions_of_interests = get_empty_geodataframe()
         # Minimum length of a street segment to be considered for adding pipe ramming crossings.
-        self.threshold_edge_length_crossing_m = 30
+        self.threshold_edge_length_crossing_m = threshold_edge_length_crossing_m
         # Maximum/minimum length possible of a pipe ramming crossings.
-        self.max_pipe_ramming_length_m = 15
-        self.min_pipe_ramming_length_m = 3
+        self.max_pipe_ramming_length_m = max_pipe_ramming_length_m
+        self.min_pipe_ramming_length_m = min_pipe_ramming_length_m
         # Cost surface value below which we consider a crossing suitable.
-        self.suitability_value_crossing_threshold = 10
+        self.suitability_value_crossing_threshold = suitability_value_crossing_threshold
         # Cost surface value above which we consider unsuitable for crossing.
-        self.suitability_value_obstacles_threshold = 76
-        self.hexagon_size = Config.HEXAGON_SIZE
+        self.suitability_value_obstacles_threshold = suitability_value_obstacles_threshold
+        self.hexagon_size = hexagon_size
         # Debugging options
         self.debug = debug
-        self.out = Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT
+        self.out = debug_out
         self.plot_crossings = False
 
         # Do some monkey checks on input.

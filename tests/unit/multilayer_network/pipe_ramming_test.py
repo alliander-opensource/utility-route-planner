@@ -9,6 +9,7 @@ import shapely
 from settings import Config
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_graph_builder import HexagonGraphBuilder
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_utils import convert_hexagon_graph_to_gdfs
+from utility_route_planner.models.multilayer_network.multilayer_route_planner import MultilayerRouteEngine
 from utility_route_planner.util.graph_utilities import create_edge_info
 from utility_route_planner.models.mcda.mcda_engine import McdaCostSurfaceEngine
 from utility_route_planner.models.multilayer_network.pipe_ramming import GetPotentialPipeRammingCrossings
@@ -119,7 +120,7 @@ class TestPipeRamming:
             edge[2].edge_id = edge_id
 
         # Enable debug for visual debugging in QGIS.
-        crossings = GetPotentialPipeRammingCrossings(osm_graph, rx.PyGraph(), debug)
+        crossings = GetPotentialPipeRammingCrossings(osm_graph, rx.PyGraph(), debug=debug)
         crossings.create_street_segment_groups()
 
         edges, nodes = crossings.osm_edges, crossings.osm_nodes
@@ -185,10 +186,19 @@ class TestPipeRamming:
 
         # Test our newly found crossing in a shortest path.
         pipe_ramming.add_crossings_to_graph(crossings)
-        source, target = 60326, 49553
-        edges, path, path_points = self._find_path(pipe_ramming, source, target, debug)
-        assert shapely.MultiLineString(edges).length == pytest.approx(24, abs=1)
-        assert len([i for i in crossings if i[0] and i[1] in path]) == 1, "One of the new edges should be in the path."
+        start_end = shapely.LineString([(174971.62, 450911.846), (174971.62, 450888.463)])
+        multilayer_route_engine = MultilayerRouteEngine(
+            pipe_ramming.cost_surface_graph,
+            pipe_ramming.osm_graph,
+            pipe_ramming.cost_surface_nodes,
+            prefix="pytest_junction_",
+        )
+        multilayer_route_engine.find_route(start_end)
+
+        assert multilayer_route_engine.result_route.length == pytest.approx(24, abs=1)
+        assert len([i for i in crossings if i[0] and i[1] in multilayer_route_engine.result_route_node_indices]) == 1, (
+            "One of the new edges should be in the path."
+        )
 
     def test_single_street_segment_group(self, setup_pipe_ramming_example_polygon, debug=False):
         """For debugging specific street-segment group."""
@@ -211,10 +221,19 @@ class TestPipeRamming:
         pipe_ramming.add_crossings_to_graph(crossings)
         assert len(crossings) == 3
 
-        source, target = 56672, 52688
-        edges, path, path_points = self._find_path(pipe_ramming, source, target, debug)
-        assert shapely.MultiLineString(edges).length == pytest.approx(12, abs=1)
-        assert len([i for i in crossings if i[0] and i[1] in path]) == 1, "One of the new edges should be in the path."
+        start_end = shapely.LineString([(174927.5, 451098.452), (174932, 451089.791)])
+        multilayer_route_engine = MultilayerRouteEngine(
+            pipe_ramming.cost_surface_graph,
+            pipe_ramming.osm_graph,
+            pipe_ramming.cost_surface_nodes,
+            prefix="pytest_junction_",
+        )
+        multilayer_route_engine.find_route(start_end)
+
+        assert multilayer_route_engine.result_route.length == pytest.approx(12, abs=1)
+        assert len([i for i in crossings if i[0] and i[1] in multilayer_route_engine.result_route_node_indices]) == 1, (
+            "One of the new edges should be in the path."
+        )
 
     def test_find_all_rammings_example_set(self, setup_pipe_ramming_example_polygon, debug=False):
         if debug:
@@ -228,34 +247,26 @@ class TestPipeRamming:
         crossings = pipe_ramming.get_crossings()
         assert len(crossings) > 0
 
-    @staticmethod
-    def _find_path(pipe_ramming: GetPotentialPipeRammingCrossings, source: int, target: int, debug: bool = False):
-        path = rx.dijkstra_shortest_paths(pipe_ramming.cost_surface_graph, source, target, lambda x: x.weight)
-        path = path[target]
-        path_points = shapely.MultiPoint([pipe_ramming.cost_surface_graph.get_node_data(i).geometry for i in path])
-        edges = []
-        for current, next_ in zip(path, path[1:]):
-            edges.append(pipe_ramming.cost_surface_graph.get_edge_data(current, next_).geometry)
-
-        if debug:
-            write_results_to_geopackage(
-                Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT, shapely.MultiLineString(edges), "pytest_path_result"
-            )
-            write_results_to_geopackage(
-                Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT, path_points, "pytest_nodes_result"
-            )
-
-        return edges, path, path_points
-
 
 class TestPipeRammingTheoryExamples:
     @pytest.fixture
-    def setup_theory_examples(self, debug=True):
-        # Setup clean cost-surface and osm graph.
-        # cost_surface: contain a bridge/tunnel situation, contain something with an obstacle
-        # osm_graph: just a few streets
+    def setup_theory_examples(self):
+        def _setup(debug: bool = False):
+            # Setup clean debug geopackage for plotting.
+            if debug:
+                out = Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT
+                reset_geopackage(out, truncate=False)
+                return out
+            return None
 
+        return _setup
+
+    def test_theory_junction_crossing(self, setup_theory_examples):
+        pass
+
+    def test_theory_street_segment_crossing(self, setup_theory_examples, debug=False):
         # MCDA vectors
+        out = setup_theory_examples(debug=debug)
         street = gpd.GeoDataFrame(
             data=[
                 # Asphalt
@@ -270,33 +281,135 @@ class TestPipeRammingTheoryExamples:
         )
         buildings = gpd.GeoDataFrame(
             data=[
-                [120, shapely.Point(15, -20).buffer(5)],
                 [120, shapely.Point(75, -35).buffer(5)],
-                [120, shapely.LineString([(15, 15), (45, 15)]).buffer(5, cap_style="flat")],
+                [120, shapely.LineString([(10, 15), (45, 15)]).buffer(5, cap_style="flat")],
+                [120, shapely.LineString([(5, -15), (45, -15)]).buffer(5, cap_style="flat")],
+                [120, shapely.LineString([(55, -15), (95, -15)]).buffer(5, cap_style="flat")],
             ],
             columns=["suitability_value", "geometry"],
             crs=Config.CRS,
         )
         private_property = gpd.GeoDataFrame(
             data=[
-                [80, shapely.LineString([(0, 23.5), (100, 23.5)]).buffer(25, cap_style="flat")],
-                [80, shapely.LineString([(0, -23.5), (100, -23.5)]).buffer(25, cap_style="flat")],
+                [70, shapely.LineString([(0, 30), (100, 30)]).buffer(21, cap_style="flat")],
+                [70, shapely.LineString([(0, -30), (100, -30)]).buffer(21, cap_style="flat")],
             ],
             columns=["suitability_value", "geometry"],
             crs=Config.CRS,
         )
+        # Note that enabling/disabling these trees changes the selected crossings
         trees = gpd.GeoDataFrame(
-            data=[[20, shapely.Point().buffer(5)]], columns=["suitability_value", "geometry"], crs=Config.CRS
+            data=[
+                [20, shapely.Point(30, -8).buffer(4)],
+                [20, shapely.Point(65, 9).buffer(4)],
+            ],
+            columns=["suitability_value", "geometry"],
+            crs=Config.CRS,
         )
-        out = Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT
+
+        # Create cost-surface
+        raster_criteria_groups = {
+            "street": "a",
+            "buildings": "a",
+            "private_property": "a",
+            "trees": "b",
+        }
+        preprocessed_vectors = {
+            "street": street,
+            "buildings": buildings,
+            "private_property": private_property,
+            "trees": trees,
+        }
+        hexagon_graph_builder = HexagonGraphBuilder(
+            private_property.union_all(),
+            raster_criteria_groups,
+            preprocessed_vectors,
+            hexagon_size=1,
+        )
+        cost_surface_graph = hexagon_graph_builder.build_graph()
+
+        # Simple OSM graph, just one street.
+        osm_graph = rx.PyGraph()
+
+        node1 = OSMNodeInfo(osm_id=1, geometry=shapely.Point(0, 0))
+        node2 = OSMNodeInfo(osm_id=2, geometry=shapely.Point(100, 0))
+
+        node_ids = osm_graph.add_nodes_from([node1, node2])
+        node1.node_id, node2.node_id = node_ids
+
+        edges_to_add = [(node1.node_id, node2.node_id, create_edge_info(100, node1, node2))]
+
+        edge_ids = osm_graph.add_edges_from(edges_to_add)
+        for edge, edge_id in zip(edges_to_add, edge_ids):
+            edge[2].edge_id = edge_id
+
+        pipe_ramming = GetPotentialPipeRammingCrossings(
+            osm_graph=osm_graph,
+            cost_surface_graph=cost_surface_graph,
+            threshold_edge_length_crossing_m=30,
+            max_pipe_ramming_length_m=15,
+            min_pipe_ramming_length_m=3,
+            suitability_value_crossing_threshold=10,
+            suitability_value_obstacles_threshold=80,
+            hexagon_size=hexagon_graph_builder.hexagon_size,
+            debug_out=Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT,
+            debug=debug,
+        )
+        crossings = pipe_ramming.get_crossings()
+
+        assert len(crossings) == 3
+        # Crossings should not intersect any obstacles above the suitability_value_obstacles_threshold
+        assert (
+            len(
+                [
+                    i
+                    for i in crossings
+                    if any(
+                        pipe_ramming.cost_surface_nodes[
+                            pipe_ramming.cost_surface_nodes.suitability_value
+                            > pipe_ramming.suitability_value_obstacles_threshold
+                        ].intersects(i[2].geometry.buffer(hexagon_graph_builder.hexagon_size))
+                    )
+                ]
+            )
+            == 0
+        )
+
+        multi_layer_route_engine = MultilayerRouteEngine(
+            pipe_ramming.cost_surface_graph,
+            pipe_ramming.osm_graph,
+            pipe_ramming.cost_surface_nodes,
+            prefix="pytest_theory_",
+            write_output=False,
+        )
+        multi_layer_route_engine.find_route(shapely.LineString([(1, 8), (98, -6)]))
+
+        # Route should cross the street once using a crossing
+        crossing_edge_id_pair = [
+            (i[0], i[1]) for i in crossings if i[0] and i[1] in multi_layer_route_engine.result_route_node_indices
+        ]
+        pipe_ramming_edge = pipe_ramming.cost_surface_graph.get_edge_data(
+            crossing_edge_id_pair[0][0], crossing_edge_id_pair[0][1]
+        )
+        assert multi_layer_route_engine.result_route.contains(pipe_ramming_edge.geometry)
+        assert multi_layer_route_engine.result_route.length == pytest.approx(123, abs=1)
+        assert isinstance(multi_layer_route_engine.result_route, shapely.LineString)
+
         if debug:
-            reset_geopackage(out, truncate=False)
             write_results_to_geopackage(out, street, "pytest_theory_street", overwrite=True)
             write_results_to_geopackage(out, buildings, "pytest_theory_buildings", overwrite=True)
             write_results_to_geopackage(out, private_property, "pytest_theory_private_property", overwrite=True)
             write_results_to_geopackage(out, trees, "pytest_theory_trees", overwrite=True)
 
-        return tuple([street, buildings, trees])
+            cost_surface_nodes = convert_hexagon_graph_to_gdfs(cost_surface_graph, edges=False)
+            write_results_to_geopackage(out, cost_surface_nodes, "pytest_theory_cost_surface_nodes", overwrite=True)
+            write_results_to_geopackage(
+                out,
+                shapely.MultiLineString([i[2].geometry for i in crossings]),
+                "pytest_theory_crossings",
+                overwrite=True,
+            )
 
-    def test_theory_junction_crossing(self, setup_theory_examples):
-        (_,) = setup_theory_examples
+            write_results_to_geopackage(
+                out, multi_layer_route_engine.result_route, "pytest_theory_result_route", overwrite=True
+            )
