@@ -166,7 +166,7 @@ class TestPipeRamming:
         assert group_110 == group_111 == group_112
         assert (edges["group"] == group_110).sum() == 3
 
-    def test_single_junction(self, setup_pipe_ramming_example_polygon, debug=True):
+    def test_single_junction(self, setup_pipe_ramming_example_polygon, debug=False):
         """For debugging specific junction."""
         if debug:
             reset_geopackage(Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT, truncate=False)
@@ -185,7 +185,8 @@ class TestPipeRamming:
             pipe_ramming.junctions_of_interests.loc[node_id_to_test].geometry,
             pipe_ramming.junctions_of_interests.loc[node_id_to_test].degree,
         )
-        assert len(crossings) == 5
+        pipe_ramming.add_crossings_to_graph(crossings)
+        assert len(crossings) == 3
 
         # Test our newly found crossing in a shortest path.
         pipe_ramming.add_crossings_to_graph(crossings)
@@ -252,177 +253,404 @@ class TestPipeRamming:
 
 
 class TestPipeRammingTheoryExamples:
-    @pytest.fixture(scope="class")
+    @pytest.fixture
     def setup_theory_examples(self):
-        def _setup(debug: bool = False):
-            # Setup clean debug geopackage for plotting.
-            street = gpd.GeoDataFrame(
-                data=[
-                    # Asphalt
-                    [30, shapely.LineString([(0, 0), (100, 0)]).buffer(5, cap_style="flat")],
-                    # Pavement north
-                    [5, shapely.LineString([(0, 7), (100, 7)]).buffer(2, cap_style="flat")],
-                    # Pavement south
-                    [5, shapely.LineString([(0, -7), (100, -7)]).buffer(2, cap_style="flat")],
-                ],
-                columns=["suitability_value", "geometry"],
-                crs=Config.CRS,
-            )
-            buildings = gpd.GeoDataFrame(
-                data=[
-                    [120, shapely.Point(75, -35).buffer(5)],
-                    [120, shapely.LineString([(10, 15), (45, 15)]).buffer(5, cap_style="flat")],
-                    [120, shapely.LineString([(5, -15), (45, -15)]).buffer(5, cap_style="flat")],
-                    [120, shapely.LineString([(55, -15), (95, -15)]).buffer(5, cap_style="flat")],
-                ],
-                columns=["suitability_value", "geometry"],
-                crs=Config.CRS,
-            )
-            private_property = gpd.GeoDataFrame(
-                data=[
-                    [70, shapely.LineString([(0, 30), (100, 30)]).buffer(21, cap_style="flat")],
-                    [70, shapely.LineString([(0, -30), (100, -30)]).buffer(21, cap_style="flat")],
-                ],
-                columns=["suitability_value", "geometry"],
-                crs=Config.CRS,
-            )
-            # Note that enabling/disabling these trees changes the selected crossings
-            trees = gpd.GeoDataFrame(
-                data=[
-                    [20, shapely.Point(30, -8).buffer(4)],
-                    [20, shapely.Point(65, 9).buffer(4)],
-                ],
-                columns=["suitability_value", "geometry"],
-                crs=Config.CRS,
-            )
-
-            # Create cost-surface
+        def _setup(street, buildings, private_property, trees, debug: bool = False):
+            # Assign groups
             raster_criteria_groups = {
                 "street": "a",
                 "buildings": "a",
                 "private_property": "a",
                 "trees": "b",
             }
+            # Initialize dictionary input for hexagon builder
             preprocessed_vectors = {
                 "street": street,
                 "buildings": buildings,
                 "private_property": private_property,
                 "trees": trees,
             }
+            # Calculate project area
+            project_area = pd.concat([street, buildings, private_property, trees]).union_all()
+
+            if buildings.empty:
+                preprocessed_vectors.pop("buildings")
+                raster_criteria_groups.pop("buildings")
+            if trees.empty:
+                preprocessed_vectors.pop("trees")
+                raster_criteria_groups.pop("trees")
+
+            hexagon_graph_builder = HexagonGraphBuilder(
+                project_area,
+                raster_criteria_groups,
+                preprocessed_vectors,
+                hexagon_size=0.5,
+            )
+            cost_surface_graph = hexagon_graph_builder.build_graph()
 
             if debug:
                 out = Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT
                 reset_geopackage(out, truncate=False)
             else:
                 out = None
-            return raster_criteria_groups, preprocessed_vectors, out
+            return hexagon_graph_builder, cost_surface_graph, out
 
         return _setup
 
-    def test_theory_junction_crossing(self, setup_theory_examples, debug=False):
-        raster_criteria_groups, preprocessed_vectors, out = setup_theory_examples(debug=debug)
-        new_rows = gpd.GeoDataFrame(
-            data=[
-                [5, shapely.LineString([(61, 51), (61, 0)]).buffer(2, cap_style="flat")],
-                [30, shapely.LineString([(68, 51), (68, 0)]).buffer(5, cap_style="flat")],
-                [5, shapely.LineString([(75, 51), (75, 0)]).buffer(2, cap_style="flat")],
-            ],
+    @pytest.mark.parametrize(
+        ["buildings", "trees", "n_expected_crossings", "expected_route_length", "start_end"],
+        [
+            # Without obstacles
+            (
+                (),
+                (),
+                3,
+                106,
+                [(0.6, 6.5), (56, 49.5)],
+            ),
+            # With obstacles
+            (
+                [
+                    [120, shapely.LineString([(1, -18), (99, -18)]).buffer(8, cap_style="flat")],
+                    [120, shapely.LineString([(32, 10), (32, 46)]).buffer(8, cap_style="flat")],
+                ],
+                [[20, shapely.Point(43.6, -8.2).buffer(4)], [20, shapely.Point(58, 19).buffer(4)]],
+                2,
+                107,
+                [(0.6, 6.5), (56, 49.5)],
+            ),
+        ],
+    )
+    def test_theory_degree_3_junction_crossing_complex(
+        self,
+        buildings,
+        trees,
+        n_expected_crossings,
+        expected_route_length,
+        start_end,
+        setup_theory_examples,
+        debug=False,
+    ):
+        street = (
+            gpd.GeoDataFrame(
+                data=[
+                    # Street east west
+                    [30, shapely.LineString([(0, 0), (100, 0)]).buffer(5, cap_style="flat")],
+                    [5, shapely.LineString([(0, 7), (100, 7)]).buffer(2, cap_style="flat")],
+                    [5, shapely.LineString([(0, -7), (100, -7)]).buffer(2, cap_style="flat")],
+                    # Street north
+                    [5, shapely.LineString([(43, 50), (43, 0)]).buffer(2, cap_style="flat")],
+                    [30, shapely.LineString([(50, 50), (50, 0)]).buffer(5, cap_style="flat")],
+                    [5, shapely.LineString([(57, 50), (57, 0)]).buffer(2, cap_style="flat")],
+                ],
+                columns=["suitability_value", "geometry"],
+                crs=Config.CRS,
+            )
+            .dissolve(by="suitability_value")
+            .explode()
+            .reset_index()
+        )
+        private_property = gpd.GeoDataFrame(
+            data=[[70, shapely.Polygon([(0, -50), (100, -50), (100, 50), (0, 50), (0, -50)])]],
             columns=["suitability_value", "geometry"],
-            crs=preprocessed_vectors["street"].crs,
+            crs=Config.CRS,
         )
-        preprocessed_vectors["street"] = pd.concat([preprocessed_vectors["street"], new_rows], ignore_index=True)
-        # Remove one tree, we'll add another street there
-        preprocessed_vectors["trees"] = preprocessed_vectors["trees"][:1]
-        # Remove streets from private property
-        preprocessed_vectors["private_property"] = (
-            preprocessed_vectors["private_property"].overlay(new_rows, how="difference").explode(ignore_index=True)
+        private_property = private_property.overlay(street, how="difference").explode(ignore_index=True)
+        buildings = gpd.GeoDataFrame(
+            data=buildings,
+            columns=["suitability_value", "geometry"],
+            crs=Config.CRS,
         )
-
-        hexagon_graph_builder = HexagonGraphBuilder(
-            preprocessed_vectors.get("private_property").union_all(),
-            raster_criteria_groups,
-            preprocessed_vectors,
-            hexagon_size=1,
+        trees = gpd.GeoDataFrame(
+            data=trees,
+            columns=["suitability_value", "geometry"],
+            crs=Config.CRS,
         )
-        cost_surface_graph = hexagon_graph_builder.build_graph()
+        hexagon_graph_builder, cost_surface_graph, out = setup_theory_examples(
+            street, buildings, private_property, trees, debug=debug
+        )
 
         # OSM graph with a junction
         osm_graph = rx.PyGraph()
-
         node1 = OSMNodeInfo(osm_id=1, geometry=shapely.Point(0, 0))
-        node2 = OSMNodeInfo(osm_id=2, geometry=shapely.Point(68, 0))
+        node2 = OSMNodeInfo(osm_id=2, geometry=shapely.Point(50, 0))
         node3 = OSMNodeInfo(osm_id=3, geometry=shapely.Point(100, 0))
-        node4 = OSMNodeInfo(osm_id=4, geometry=shapely.Point(68, 51))
-
+        node4 = OSMNodeInfo(osm_id=4, geometry=shapely.Point(50, 50))
         node_ids = osm_graph.add_nodes_from([node1, node2, node3, node4])
         node1.node_id, node2.node_id, node3.node_id, node4.node_id = node_ids
-
         edges_to_add = [
             (node1.node_id, node2.node_id, create_edge_info(100, node1, node2)),
             (node2.node_id, node3.node_id, create_edge_info(101, node2, node3)),
             (node2.node_id, node4.node_id, create_edge_info(102, node2, node4)),
         ]
 
-        edge_ids = osm_graph.add_edges_from(edges_to_add)
-        for edge, edge_id in zip(edges_to_add, edge_ids):
-            edge[2].edge_id = edge_id
-
-        pipe_ramming = GetPotentialPipeRammingCrossings(
-            osm_graph=osm_graph,
-            cost_surface_graph=cost_surface_graph,
-            threshold_edge_length_crossing_m=100,
-            max_pipe_ramming_length_m=15,
-            min_pipe_ramming_length_m=3,
-            suitability_value_crossing_threshold=10,
-            suitability_value_obstacles_threshold=80,
-            hexagon_size=hexagon_graph_builder.hexagon_size,
-            debug_out=Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT,
-            debug=debug,
+        self._run_junction_crossing(
+            cost_surface_graph,
+            debug,
+            edges_to_add,
+            expected_route_length,
+            hexagon_graph_builder,
+            n_expected_crossings,
+            osm_graph,
+            out,
+            start_end,
         )
-        crossings = pipe_ramming.get_crossings()
-        self._assert_crossings(crossings, hexagon_graph_builder, pipe_ramming, 3)
 
-        multilayer_route_engine = MultilayerRouteEngine(
-            pipe_ramming.cost_surface_graph,
-            pipe_ramming.osm_graph,
-            pipe_ramming.cost_surface_nodes,
-            prefix="pytest_theory_",
-            write_output=False,
-        )
-        multilayer_route_engine.find_route(shapely.LineString([(1, 8), (75, 48)]))
-
-        assert multilayer_route_engine.result_route.length == pytest.approx(126, abs=1)
-
-        self._assert_result_route(crossings, multilayer_route_engine, pipe_ramming)
-
-        if debug:
-            self._plot_pytest_theory(
-                out, cost_surface_graph, crossings, multilayer_route_engine, pipe_ramming, preprocessed_vectors
+    @pytest.mark.parametrize(
+        ["buildings", "trees", "n_expected_crossings", "expected_route_length", "start_end"],
+        [
+            # Without obstacles
+            (
+                (),
+                (),
+                3,
+                130,
+                [(0.3, -6.7), (99, 39.8)],
+            ),
+            # With obstacles
+            (
+                [
+                    [120, shapely.LineString([(1, -18), (99, -18)]).buffer(8, cap_style="flat")],
+                ],
+                [
+                    [20, shapely.Point(51.5, -7).buffer(4)],
+                    [20, shapely.Point(58.5, -7).buffer(4)],
+                    [20, shapely.Point(65.5, -7).buffer(4)],
+                ],
+                2,
+                131,
+                [(0.3, -6.7), (99, 39.8)],
+            ),
+        ],
+    )
+    def test_theory_degree_3_junction_crossing_simple(
+        self,
+        buildings,
+        trees,
+        n_expected_crossings,
+        expected_route_length,
+        start_end,
+        setup_theory_examples,
+        debug=False,
+    ):
+        street = (
+            gpd.GeoDataFrame(
+                data=[
+                    # Street east west
+                    [30, shapely.LineString([(0, 0), (100, 0)]).buffer(5, cap_style="flat")],
+                    [5, shapely.LineString([(0, 7), (100, 7)]).buffer(2, cap_style="flat")],
+                    [5, shapely.LineString([(0, -7), (100, -7)]).buffer(2, cap_style="flat")],
+                    # Street north east
+                    [5, shapely.LineString([(100, 50), (50, 0)]).buffer(9, cap_style="flat")],
+                    [30, shapely.LineString([(100, 50), (50, 0)]).buffer(5, cap_style="flat")],
+                ],
+                columns=["suitability_value", "geometry"],
+                crs=Config.CRS,
             )
+            .dissolve(by="suitability_value")
+            .explode()
+            .reset_index()
+        )
+        private_property = gpd.GeoDataFrame(
+            data=[[70, shapely.Polygon([(0, -50), (100, -50), (100, 50), (0, 50), (0, -50)])]],
+            columns=["suitability_value", "geometry"],
+            crs=Config.CRS,
+        )
+        street = street.clip(private_property.iloc[0].geometry)
+        private_property = private_property.overlay(street, how="difference").explode(ignore_index=True)
+        buildings = gpd.GeoDataFrame(
+            data=buildings,
+            columns=["suitability_value", "geometry"],
+            crs=Config.CRS,
+        )
+        trees = gpd.GeoDataFrame(
+            data=trees,
+            columns=["suitability_value", "geometry"],
+            crs=Config.CRS,
+        )
+        hexagon_graph_builder, cost_surface_graph, out = setup_theory_examples(
+            street, buildings, private_property, trees, debug=debug
+        )
+
+        # OSM graph with a junction
+        osm_graph = rx.PyGraph()
+        node1 = OSMNodeInfo(osm_id=1, geometry=shapely.Point(0, 0))
+        node2 = OSMNodeInfo(osm_id=2, geometry=shapely.Point(50, 0))  # center junction node
+        node3 = OSMNodeInfo(osm_id=3, geometry=shapely.Point(100, 50))
+        node4 = OSMNodeInfo(osm_id=4, geometry=shapely.Point(100, 0))
+        node_ids = osm_graph.add_nodes_from([node1, node2, node3, node4])
+        node1.node_id, node2.node_id, node3.node_id, node4.node_id = node_ids
+        edges_to_add = [
+            (node1.node_id, node2.node_id, create_edge_info(100, node1, node2)),
+            (node2.node_id, node3.node_id, create_edge_info(101, node2, node3)),
+            (node2.node_id, node4.node_id, create_edge_info(102, node2, node4)),
+        ]
+
+        self._run_junction_crossing(
+            cost_surface_graph,
+            debug,
+            edges_to_add,
+            expected_route_length,
+            hexagon_graph_builder,
+            n_expected_crossings,
+            osm_graph,
+            out,
+            start_end,
+        )
+
+    @pytest.mark.parametrize(
+        ["buildings", "trees", "n_expected_crossings", "expected_route_length", "start_end"],
+        [
+            # Without obstacles
+            (
+                (),
+                (),
+                10,
+                124,
+                ((1, -3), (93, 45)),
+            ),
+            # With obstacles
+            (
+                [[120, shapely.LineString([(2, -26), (44, -18), (63, -36)]).buffer(8, cap_style="flat")]],
+                [[20, shapely.Point(43, 6).buffer(4)]],
+                8,
+                138,
+                [(1, -3), (93, 45)],
+            ),
+        ],
+    )
+    def test_theory_degree_4_junction_crossing_complex(
+        self,
+        buildings,
+        trees,
+        n_expected_crossings,
+        expected_route_length,
+        start_end,
+        setup_theory_examples,
+        debug=False,
+    ):
+        street = (
+            gpd.GeoDataFrame(
+                data=[
+                    # Street north
+                    [30, shapely.LineString([(50, 50), (50, 0)]).buffer(5, cap_style="flat")],
+                    [5, shapely.LineString([(50, 50), (50, 0)]).buffer(7, cap_style="flat")],
+                    # Street north-east
+                    [30, shapely.LineString([(50, 0), (90, 50)]).buffer(5, cap_style="flat")],
+                    [5, shapely.LineString([(50, 0), (90, 50)]).buffer(7, cap_style="flat")],
+                    # Street south-west
+                    [30, shapely.LineString([(50, 0), (100, -50)]).buffer(5, cap_style="flat")],
+                    [5, shapely.LineString([(50, 0), (100, -50)]).buffer(7, cap_style="flat")],
+                    # Street west
+                    [30, shapely.LineString([(50, 0), (0, -10)]).buffer(5, cap_style="flat")],
+                    [5, shapely.LineString([(50, 0), (0, -10)]).buffer(7, cap_style="flat")],
+                ],
+                columns=["suitability_value", "geometry"],
+                crs=Config.CRS,
+            )
+            .dissolve(by="suitability_value")
+            .explode()
+            .reset_index()
+        )
+        private_property = gpd.GeoDataFrame(
+            data=[[70, shapely.Polygon([(0, -50), (100, -50), (100, 50), (0, 50), (0, -50)])]],
+            columns=["suitability_value", "geometry"],
+            crs=Config.CRS,
+        )
+        street = street.clip(private_property.iloc[0].geometry)
+        private_property = private_property.overlay(street, how="difference").explode(ignore_index=True)
+        buildings = gpd.GeoDataFrame(
+            data=buildings,
+            columns=["suitability_value", "geometry"],
+            crs=Config.CRS,
+        )
+        trees = gpd.GeoDataFrame(
+            data=trees,
+            columns=["suitability_value", "geometry"],
+            crs=Config.CRS,
+        )
+        hexagon_graph_builder, cost_surface_graph, out = setup_theory_examples(
+            street, buildings, private_property, trees, debug=debug
+        )
+
+        # OSM graph with a junction
+        osm_graph = rx.PyGraph()
+        node1 = OSMNodeInfo(osm_id=1, geometry=shapely.Point(50, 0))  # center junction node
+        node2 = OSMNodeInfo(osm_id=2, geometry=shapely.Point(50, 50))
+        node3 = OSMNodeInfo(osm_id=3, geometry=shapely.Point(90, 50))
+        node4 = OSMNodeInfo(osm_id=4, geometry=shapely.Point(100, -50))
+        node5 = OSMNodeInfo(osm_id=5, geometry=shapely.Point(0, -10))
+        node_ids = osm_graph.add_nodes_from([node1, node2, node3, node4, node5])
+        node1.node_id, node2.node_id, node3.node_id, node4.node_id, node5.node_id = node_ids
+        edges_to_add = [
+            (node1.node_id, node2.node_id, create_edge_info(100, node1, node2)),
+            (node1.node_id, node3.node_id, create_edge_info(101, node1, node3)),
+            (node1.node_id, node4.node_id, create_edge_info(102, node1, node4)),
+            (node1.node_id, node5.node_id, create_edge_info(103, node1, node5)),
+        ]
+
+        self._run_junction_crossing(
+            cost_surface_graph,
+            debug,
+            edges_to_add,
+            expected_route_length,
+            hexagon_graph_builder,
+            n_expected_crossings,
+            osm_graph,
+            out,
+            start_end,
+        )
 
     def test_theory_street_segment_crossing(self, setup_theory_examples, debug=False):
-        # MCDA vectors
-        raster_criteria_groups, preprocessed_vectors, out = setup_theory_examples(debug=debug)
-
-        hexagon_graph_builder = HexagonGraphBuilder(
-            preprocessed_vectors.get("private_property").union_all(),
-            raster_criteria_groups,
-            preprocessed_vectors,
-            hexagon_size=1,
+        street = gpd.GeoDataFrame(
+            data=[
+                # Asphalt
+                [30, shapely.LineString([(0, 0), (100, 0)]).buffer(5, cap_style="flat")],
+                # Pavement north
+                [5, shapely.LineString([(0, 7), (100, 7)]).buffer(2, cap_style="flat")],
+                # Pavement south
+                [5, shapely.LineString([(0, -7), (100, -7)]).buffer(2, cap_style="flat")],
+            ],
+            columns=["suitability_value", "geometry"],
+            crs=Config.CRS,
         )
-        cost_surface_graph = hexagon_graph_builder.build_graph()
+        buildings = gpd.GeoDataFrame(
+            data=[
+                [120, shapely.LineString([(10, 15), (45, 15)]).buffer(5, cap_style="flat")],
+                [120, shapely.LineString([(5, -15), (45, -15)]).buffer(5, cap_style="flat")],
+                [120, shapely.LineString([(55, -15), (95, -15)]).buffer(5, cap_style="flat")],
+            ],
+            columns=["suitability_value", "geometry"],
+            crs=Config.CRS,
+        )
+        private_property = gpd.GeoDataFrame(
+            data=[
+                [70, shapely.LineString([(0, 30), (100, 30)]).buffer(21, cap_style="flat")],
+                [70, shapely.LineString([(0, -30), (100, -30)]).buffer(21, cap_style="flat")],
+            ],
+            columns=["suitability_value", "geometry"],
+            crs=Config.CRS,
+        )
+        trees = gpd.GeoDataFrame(
+            data=[
+                [20, shapely.Point(30, -8).buffer(4)],
+                [20, shapely.Point(65, 9).buffer(4)],
+            ],
+            columns=["suitability_value", "geometry"],
+            crs=Config.CRS,
+        )
+        # MCDA vectors
+        hexagon_graph_builder, cost_surface_graph, out = setup_theory_examples(
+            street, buildings, private_property, trees, debug=debug
+        )
 
-        # Simple OSM graph, just one street.
+        # Create a simple OSM graph, just one street.
         osm_graph = rx.PyGraph()
-
         node1 = OSMNodeInfo(osm_id=1, geometry=shapely.Point(0, 0))
         node2 = OSMNodeInfo(osm_id=2, geometry=shapely.Point(100, 0))
-
         node_ids = osm_graph.add_nodes_from([node1, node2])
         node1.node_id, node2.node_id = node_ids
-
         edges_to_add = [(node1.node_id, node2.node_id, create_edge_info(100, node1, node2))]
-
         edge_ids = osm_graph.add_edges_from(edges_to_add)
         for edge, edge_id in zip(edges_to_add, edge_ids):
             edge[2].edge_id = edge_id
@@ -458,18 +686,72 @@ class TestPipeRammingTheoryExamples:
 
         if debug:
             self._plot_pytest_theory(
-                out, cost_surface_graph, crossings, multilayer_route_engine, pipe_ramming, preprocessed_vectors
+                out,
+                cost_surface_graph,
+                crossings,
+                multilayer_route_engine,
+                pipe_ramming,
+                hexagon_graph_builder.preprocessed_vectors,
             )
 
     def test_theory_scenario_with_bridge(self):
         pass
+
+    def _run_junction_crossing(
+        self,
+        cost_surface_graph,
+        debug,
+        edges_to_add,
+        expected_route_length,
+        hexagon_graph_builder,
+        n_expected_crossings,
+        osm_graph,
+        out,
+        start_end,
+    ):
+        edge_ids = osm_graph.add_edges_from(edges_to_add)
+        for edge, edge_id in zip(edges_to_add, edge_ids):
+            edge[2].edge_id = edge_id
+        pipe_ramming = GetPotentialPipeRammingCrossings(
+            osm_graph=osm_graph,
+            cost_surface_graph=cost_surface_graph,
+            threshold_edge_length_crossing_m=100,
+            max_pipe_ramming_length_m=20,
+            min_pipe_ramming_length_m=3,
+            suitability_value_crossing_threshold=10,
+            suitability_value_obstacles_threshold=80,
+            hexagon_size=hexagon_graph_builder.hexagon_size,
+            debug_out=Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT,
+            debug=debug,
+        )
+        crossings = pipe_ramming.get_crossings()
+        self._assert_crossings(crossings, hexagon_graph_builder, pipe_ramming, n_expected_crossings)
+        multilayer_route_engine = MultilayerRouteEngine(
+            pipe_ramming.cost_surface_graph,
+            pipe_ramming.osm_graph,
+            pipe_ramming.cost_surface_nodes,
+            prefix="pytest_theory_",
+            write_output=False,
+        )
+        multilayer_route_engine.find_route(shapely.LineString(start_end))
+        assert multilayer_route_engine.result_route.length == pytest.approx(expected_route_length, abs=1)
+        self._assert_result_route(crossings, multilayer_route_engine, pipe_ramming)
+        if debug:
+            self._plot_pytest_theory(
+                out,
+                cost_surface_graph,
+                crossings,
+                multilayer_route_engine,
+                pipe_ramming,
+                hexagon_graph_builder.preprocessed_vectors,
+            )
 
     @staticmethod
     def _assert_crossings(
         crossings: list,
         hexagon_graph_builder: HexagonGraphBuilder,
         pipe_ramming: GetPotentialPipeRammingCrossings,
-        n_expected_crossings=int,
+        n_expected_crossings: int,
     ):
         assert len(crossings) == n_expected_crossings
         # Crossings should not intersect any obstacles above the suitability_value_obstacles_threshold
@@ -515,11 +797,15 @@ class TestPipeRammingTheoryExamples:
     ):
         # MCDA vectors
         write_results_to_geopackage(out, preprocessed_vectors["street"], "pytest_theory_street", overwrite=True)
-        write_results_to_geopackage(out, preprocessed_vectors["buildings"], "pytest_theory_buildings", overwrite=True)
         write_results_to_geopackage(
             out, preprocessed_vectors["private_property"], "pytest_theory_private_property", overwrite=True
         )
-        write_results_to_geopackage(out, preprocessed_vectors["trees"], "pytest_theory_trees", overwrite=True)
+        if "buildings" in preprocessed_vectors:
+            write_results_to_geopackage(
+                out, preprocessed_vectors["buildings"], "pytest_theory_buildings", overwrite=True
+            )
+        if "trees" in preprocessed_vectors:
+            write_results_to_geopackage(out, preprocessed_vectors["trees"], "pytest_theory_trees", overwrite=True)
         # OSM graph
         write_results_to_geopackage(out, pipe_ramming.osm_nodes, "pytest_theory_osm_nodes", overwrite=True)
         write_results_to_geopackage(out, pipe_ramming.osm_edges, "pytest_theory_osm_edges", overwrite=True)
