@@ -293,7 +293,7 @@ class TestAssignSuitabilityValuesToGrid:
         gpd.testing.assert_geodataframe_equal(expected_suitability_values, result)
 
 
-@pytest.skip(reason="TODO: Add new coordinates after bug fix")
+@pytest.mark.skip(reason="TODO: Add new coordinates after bug fix")
 class TestCartesianToAxialConversion:
     def test_conversion(self, grid_constructor: HexagonGridBuilder):
         center_points = gpd.GeoDataFrame(
