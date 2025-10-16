@@ -238,7 +238,6 @@ class GetPotentialPipeRammingCrossings:
     def get_crossing_for_junction(
         self, node_id: int, osm_id: int, junction_area: shapely.Polygon, degree: int, prefix: str = "pytest_3_"
     ):
-        # TODO discuss what can be done in bulk and what needs to be done per junction.
         # Create rectangles which simulate potential crossings.
         minx, miny, maxx, maxy = junction_area.bounds
         boxes = [
@@ -247,7 +246,6 @@ class GetPotentialPipeRammingCrossings:
         ]
         center_outer_point = shapely.Point(self.osm_nodes.loc[node_id].geometry.x, maxy)
         all_rammings = gpd.GeoDataFrame(data=boxes, columns=["geometry"], crs=Config.CRS)
-        # TODO filter the two crossings/rectangles closest to the center?
         all_rammings["distance_to_junction_center"] = all_rammings.distance(self.osm_nodes.loc[node_id].geometry)
 
         # Check for edges which are almost 180 degrees apart, create straight crossings for those.
@@ -298,7 +296,7 @@ class GetPotentialPipeRammingCrossings:
         )
 
         # First, split the buffered junction by the osm_edges to create the sides to connect.
-        street_sides = split_polygon_by_linestrings(junction_area, adjacent_edges["extended"].to_list())
+        street_sides = split_polygon_by_linestrings(junction_area.envelope, adjacent_edges["extended"].to_list())
 
         # Second, intersect the hexagon_nodes eligible for creating crossings to each created side.
         street_sides = gpd.GeoDataFrame(street_sides, columns=["geometry"], crs=Config.CRS)
@@ -605,6 +603,12 @@ class GetPotentialPipeRammingCrossings:
                 lambda x: x.weight,
                 closest_node_pairs[index].iloc[1],
             )
+            crossing_weight = int(weight[closest_node_pairs[index].iloc[1]] / 3)
+            if crossing_weight <= 0:
+                logger.warning(
+                    f"Calculated crossing weight for segment group {segment_group} is {crossing_weight}, setting to 1."
+                )
+                crossing_weight = 1
             crossing_to_add = (
                 int(closest_node_pairs[index].iloc[0]),
                 int(closest_node_pairs[index].iloc[1]),
@@ -613,7 +617,7 @@ class GetPotentialPipeRammingCrossings:
                     segment_group=segment_group,
                     origin=origin,
                     # TODO-discuss: what is the cost of going through the cost surface?
-                    weight=int(weight[closest_node_pairs[index].iloc[1]] / 5),
+                    weight=crossing_weight,
                     length=closest_node_linestrings_filtered[index].length,
                     geometry=closest_node_linestrings_filtered[index],
                 ),
