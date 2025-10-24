@@ -395,7 +395,7 @@ class GetPotentialPipeRammingCrossings:
 
         # Determine points per segment where crossings can be added. Skip the first and last meters as this is near a
         # junction and handled separately.
-        intervals = np.linspace(
+        crossing_intervals = np.linspace(
             self.max_pipe_ramming_length_m,
             segment_geometry.length - self.max_pipe_ramming_length_m,
             int(
@@ -405,7 +405,7 @@ class GetPotentialPipeRammingCrossings:
             + 1,
             endpoint=True,
         )
-        crossing_points = shapely.MultiPoint([segment_geometry.interpolate(dist) for dist in intervals])
+        crossing_points = shapely.MultiPoint([segment_geometry.interpolate(dist) for dist in crossing_intervals])
 
         # Subset the cost surface nodes to those within the area of interest (buffered street).
         segment_geometry_area = segment_geometry.buffer(self.max_pipe_ramming_length_m, cap_style="flat")
@@ -456,28 +456,27 @@ class GetPotentialPipeRammingCrossings:
 
         # Assign potential crossings to the crossing points.
         all_rammings = gpd.GeoDataFrame(geometry=all_ramming_rectangles, crs=Config.CRS)
-        gdf_crossing_points = (
-            gpd.GeoDataFrame(geometry=gpd.GeoSeries(crossing_points), crs=Config.CRS).explode().reset_index(drop=True)
-        )
-        all_rammings = all_rammings.sjoin_nearest(
-            gdf_crossing_points, rsuffix="nearest_crossing", distance_col="distance_to_crossing"
-        )
 
-        # Clip the potential crossings with obstacles to remove unsuitable crossings.
+        # Select the closest crossing point for each potential crossing rectangle.
+        all_rammings_projected = np.array([segment_geometry.project(p) for p in all_rammings.centroid.array])
+        closest_crossing_idx = np.abs(all_rammings_projected[:, None] - crossing_intervals[None, :]).argmin(axis=1)
+        all_rammings["index_nearest_crossing"] = closest_crossing_idx
+
+        # Clip the potential crossings with obstacles and cost-surface to remove unsuitable crossings.
         unpassable_area, unpassable_area_polygon = self._get_unpassable_area(cost_surface_nodes_segment, prefix)
         potential_rammings, grid_with_cost_surface = self._filter_all_rammings(
             cost_surface_nodes_segment, all_rammings, unpassable_area, prefix
         )
 
+        # Will contain duplicates as multiple crossing rectangles can match to the same crossing point
         grid_with_cost_surface = grid_with_cost_surface[
             grid_with_cost_surface["index_right"].isin(potential_rammings.index)
         ]
         grid_with_cost_surface["distance_to_street"] = grid_with_cost_surface.distance(segment_geometry)
-        closest_node_pairs = (
-            grid_with_cost_surface[grid_with_cost_surface["index_right"].isin(potential_rammings.index)]
-            .groupby(["index_right", "idx_street_side"])["distance_to_street"]
-            .idxmin()
-        )
+        closest_node_pairs = grid_with_cost_surface.groupby(["index_right", "idx_street_side"])[
+            "distance_to_street"
+        ].idxmin()
+        # TODO select closests distance_to_street first per index_right per ramming rectangle
         closest_node_linestrings_filtered, valid_rammings = self._filter_rammings_on_execution_space(
             potential_rammings, closest_node_pairs, grid_with_cost_surface, unpassable_area_polygon, prefix
         )
@@ -543,10 +542,28 @@ class GetPotentialPipeRammingCrossings:
         unpassable_area_polygon: shapely.MultiPolygon | shapely.Polygon,
         prefix: str = "",
     ) -> tuple[gpd.GeoSeries, gpd.GeoDataFrame]:
-        pairs = grid_with_cost_surface.loc[closest_node_pairs]
-        closest_node_linestrings = pairs.groupby("index_right")["geometry"].apply(
-            lambda points: shapely.LineString(points)
+        # TODO rename and remove assert
+        closest_node_pairs2 = closest_node_pairs.reset_index()
+        closest_node_pairs2 = closest_node_pairs2.merge(
+            grid_with_cost_surface.drop_duplicates(subset="node_id")[["geometry"]],
+            left_on="distance_to_street",
+            right_index=True,
+            how="left",
         )
+        closest_node_linestrings = gpd.GeoSeries(
+            closest_node_pairs2.groupby("index_right")["geometry"].apply(
+                lambda geoms: shapely.LineString(geoms.tolist())
+            )
+        )
+        assert closest_node_linestrings.apply(lambda x: shapely.get_num_points(x)).unique() == np.array(2)
+
+        # old
+        # pairs = grid_with_cost_surface.drop_duplicates(subset="node_id").loc[closest_node_pairs]
+        # # TODO Index_right is not unique and will lienstrings with more than 2 points.
+        # closest_node_linestrings = pairs.groupby("index_right")["geometry"].apply(
+        #     lambda points: shapely.LineString(points)
+        # )
+
         closest_node_linestrings_filtered = closest_node_linestrings[
             (closest_node_linestrings.length >= self.min_pipe_ramming_length_m)
             & (closest_node_linestrings.length <= self.max_pipe_ramming_length_m)
