@@ -212,7 +212,6 @@ class TestPipeRamming:
             "One of the new edges should be in the path."
         )
 
-    @pytest.mark.skip
     def test_single_street_segment_group(self, setup_pipe_ramming_example_polygon, debug=False):
         """For debugging specific street-segment group."""
         if debug:
