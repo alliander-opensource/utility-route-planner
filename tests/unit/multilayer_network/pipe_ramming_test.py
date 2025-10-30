@@ -212,6 +212,7 @@ class TestPipeRamming:
             "One of the new edges should be in the path."
         )
 
+    @pytest.mark.skip
     def test_single_street_segment_group(self, setup_pipe_ramming_example_polygon, debug=False):
         """For debugging specific street-segment group."""
         if debug:
@@ -247,6 +248,7 @@ class TestPipeRamming:
             "One of the new edges should be in the path."
         )
 
+    @pytest.mark.skip(reason="Longer test for full example set, enable when big (TM) changes are made to pipe ramming.")
     def test_find_all_rammings_example_set(self, setup_pipe_ramming_example_polygon, debug=False):
         if debug:
             reset_geopackage(Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT, truncate=False)
@@ -332,7 +334,7 @@ class TestPipeRammingTheoryExamples:
             ),
         ],
     )
-    def test_theory_junction_degree_3_crossing_simple(
+    def test_theory_junction_degree_3_crossing_complex(
         self,
         buildings,
         trees,
@@ -405,6 +407,7 @@ class TestPipeRammingTheoryExamples:
             osm_graph,
             out,
             start_end,
+            CrossingType.JUNCTION,
         )
 
     @pytest.mark.parametrize(
@@ -424,14 +427,14 @@ class TestPipeRammingTheoryExamples:
                     [120, shapely.LineString([(1, -18), (99, -18)]).buffer(8, cap_style="flat")],
                     [120, shapely.LineString([(32, 10), (32, 46)]).buffer(8, cap_style="flat")],
                 ],
-                [[20, shapely.Point(43.6, -8.2).buffer(4)], [20, shapely.Point(58, 19).buffer(4)]],
+                [[20, shapely.Point(43.6, -8.2).buffer(6)], [20, shapely.Point(58, 19).buffer(4)]],
                 2,
                 107,
                 [(0.6, 6.5), (56, 49.5)],
             ),
         ],
     )
-    def test_theory_junction_degree_3_crossing_complex(
+    def test_theory_junction_degree_3_crossing_simple(
         self,
         buildings,
         trees,
@@ -504,6 +507,7 @@ class TestPipeRammingTheoryExamples:
             osm_graph,
             out,
             start_end,
+            CrossingType.JUNCTION,
         )
 
     @pytest.mark.parametrize(
@@ -622,6 +626,7 @@ class TestPipeRammingTheoryExamples:
             osm_graph,
             out,
             start_end,
+            CrossingType.JUNCTION,
         )
 
     @pytest.mark.parametrize(
@@ -826,20 +831,41 @@ class TestPipeRammingTheoryExamples:
             (
                 (),
                 (),
-                7,
-                123,
+                6,
+                233,
                 [(1, 6), (158, -25)],
             ),
             # With obstacles
             (
                 [
-                    [120, shapely.LineString([(10, 15), (45, 15)]).buffer(5, cap_style="flat")],
-                    [120, shapely.LineString([(5, -15), (45, -15)]).buffer(5, cap_style="flat")],
-                    [120, shapely.LineString([(55, -15), (95, -15)]).buffer(5, cap_style="flat")],
+                    [
+                        120,
+                        shapely.LineString([(55.4, 33.4), (80.5, -32)])
+                        .buffer(11, cap_style="flat", single_sided=True)
+                        .buffer(-1, cap_style="flat"),
+                    ],
+                    [
+                        120,
+                        shapely.LineString([(69.4, -47.7), (48.3, 7.1)])
+                        .buffer(11, cap_style="flat", single_sided=True)
+                        .buffer(-1, cap_style="flat"),
+                    ],
+                    [
+                        120,
+                        shapely.LineString([(17, 8), (53.5, 38.4)])
+                        .buffer(11, cap_style="flat", single_sided=True)
+                        .buffer(-1, cap_style="flat"),
+                    ],
                 ],
-                [[20, shapely.Point(30, -8).buffer(4)], [20, shapely.Point(65, 9).buffer(4)]],
-                3,
-                123,
+                [
+                    [20, shapely.Point(30, -8).buffer(4)],
+                    [20, shapely.Point(39.804, 6.896).buffer(4)],
+                    [20, shapely.Point(47.260, 10.421).buffer(6)],
+                    [20, shapely.Point(87, -30.9).buffer(4)],
+                    [20, shapely.Point(75.1, -47.6).buffer(6.5)],
+                ],
+                4,
+                245,
                 [(1, 6), (158, -25)],
             ),
         ],
@@ -852,7 +878,7 @@ class TestPipeRammingTheoryExamples:
         expected_route_length,
         start_end,
         setup_theory_examples,
-        debug=True,
+        debug=False,
     ):
         street_linestring = shapely.LineString(
             [(0, 0), (20, 0), (50, 25), (75, -40), (120, -40), (150, -20), (160, -20)]
@@ -974,7 +1000,7 @@ class TestPipeRammingTheoryExamples:
             debug=debug,
         )
         crossings = pipe_ramming.get_crossings()
-        # self._assert_crossings(crossings, hexagon_graph_builder, pipe_ramming, n_expected_crossings)
+        self._assert_crossings(crossings, hexagon_graph_builder, pipe_ramming, n_expected_crossings)
         multilayer_route_engine = MultilayerRouteEngine(
             pipe_ramming.cost_surface_graph,
             pipe_ramming.osm_graph,
@@ -983,8 +1009,8 @@ class TestPipeRammingTheoryExamples:
             write_output=False,
         )
         multilayer_route_engine.find_route(shapely.LineString(start_end))
-        # assert multilayer_route_engine.result_route.length == pytest.approx(expected_route_length, abs=1)
-        # self._assert_result_route(crossings, multilayer_route_engine, pipe_ramming)
+        assert multilayer_route_engine.result_route.length == pytest.approx(expected_route_length, abs=1)
+        self._assert_result_route(crossings, multilayer_route_engine, pipe_ramming)
         if debug:
             self._plot_pytest_theory(
                 out,

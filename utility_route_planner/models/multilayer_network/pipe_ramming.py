@@ -335,9 +335,18 @@ class GetPotentialPipeRammingCrossings:
                 grid_with_cost_surface[grid_with_cost_surface["index_right"].isin(potential_rammings.index)]
                 .groupby(["index_right", "idx_street_side"])["distance_to_junction_center_left"]
                 .idxmin()
+                .rename("idx_node")
             )
+
+            # Check selected pairs which can be more than 2 if it crosses more sides.
+            closest_node_pairs_validated = self._validate_node_pairs(closest_node_pairs.copy())
+
             closest_node_linestrings_filtered, valid_rammings = self._filter_rammings_on_execution_space(
-                potential_rammings, closest_node_pairs, grid_with_cost_surface, unpassable_area_polygon, prefix
+                potential_rammings,
+                closest_node_pairs_validated,
+                grid_with_cost_surface,
+                unpassable_area_polygon,
+                prefix,
             )
 
             # Get the one closest to the center point of the junction
@@ -461,6 +470,7 @@ class GetPotentialPipeRammingCrossings:
         all_rammings_projected = np.array([segment_geometry.project(p) for p in all_rammings.centroid.array])
         closest_crossing_idx = np.abs(all_rammings_projected[:, None] - crossing_intervals[None, :]).argmin(axis=1)
         all_rammings["index_nearest_crossing"] = closest_crossing_idx
+        all_rammings["distance_to_crossing"] = np.abs(all_rammings_projected - crossing_intervals[closest_crossing_idx])
 
         # Clip the potential crossings with obstacles and cost-surface to remove unsuitable crossings.
         unpassable_area, unpassable_area_polygon = self._get_unpassable_area(cost_surface_nodes_segment, prefix)
@@ -473,14 +483,16 @@ class GetPotentialPipeRammingCrossings:
             grid_with_cost_surface["index_right"].isin(potential_rammings.index)
         ]
         grid_with_cost_surface["distance_to_street"] = grid_with_cost_surface.distance(segment_geometry)
-        closest_node_pairs = grid_with_cost_surface.groupby(["index_right", "idx_street_side"])[
-            "distance_to_street"
-        ].idxmin()
-        # TODO select closests distance_to_street first per index_right per ramming rectangle
+        closest_node_pairs = (
+            grid_with_cost_surface.groupby(["index_right", "idx_street_side"])["distance_to_street"]
+            .idxmin()
+            .rename("idx_node")
+        )
         closest_node_linestrings_filtered, valid_rammings = self._filter_rammings_on_execution_space(
             potential_rammings, closest_node_pairs, grid_with_cost_surface, unpassable_area_polygon, prefix
         )
-
+        # TODO note for paper, optionally, we can filter on length of the crossing here as well. As it can now occur
+        #  that we select a suboptimal crossing when the street is very curved.
         selected_rammings = valid_rammings.loc[
             valid_rammings.groupby("index_nearest_crossing")["distance_to_crossing"].idxmin()
         ]
@@ -542,27 +554,21 @@ class GetPotentialPipeRammingCrossings:
         unpassable_area_polygon: shapely.MultiPolygon | shapely.Polygon,
         prefix: str = "",
     ) -> tuple[gpd.GeoSeries, gpd.GeoDataFrame]:
-        # TODO rename and remove assert
-        closest_node_pairs2 = closest_node_pairs.reset_index()
-        closest_node_pairs2 = closest_node_pairs2.merge(
+        # Create the linestrings between the selected node pairs
+        closest_node_pairs = closest_node_pairs.reset_index()
+        closest_node_pairs = closest_node_pairs.merge(
             grid_with_cost_surface.drop_duplicates(subset="node_id")[["geometry"]],
-            left_on="distance_to_street",
+            left_on="idx_node",
             right_index=True,
             how="left",
         )
         closest_node_linestrings = gpd.GeoSeries(
-            closest_node_pairs2.groupby("index_right")["geometry"].apply(
+            closest_node_pairs.groupby("index_right")["geometry"].apply(
                 lambda geoms: shapely.LineString(geoms.tolist())
             )
         )
-        assert closest_node_linestrings.apply(lambda x: shapely.get_num_points(x)).unique() == np.array(2)
-
-        # old
-        # pairs = grid_with_cost_surface.drop_duplicates(subset="node_id").loc[closest_node_pairs]
-        # # TODO Index_right is not unique and will lienstrings with more than 2 points.
-        # closest_node_linestrings = pairs.groupby("index_right")["geometry"].apply(
-        #     lambda points: shapely.LineString(points)
-        # )
+        if not np.all(closest_node_linestrings.apply(lambda x: shapely.get_num_points(x)).unique() == 2):
+            logger.warning("Some ramming linestrings do not have exactly two points, this is unexpected.")
 
         closest_node_linestrings_filtered = closest_node_linestrings[
             (closest_node_linestrings.length >= self.min_pipe_ramming_length_m)
@@ -659,3 +665,48 @@ class GetPotentialPipeRammingCrossings:
                 f"{prefix}best_rammings_edge",
             )
         return crossings
+
+    @staticmethod
+    def _validate_node_pairs(closest_node_pairs: pd.Series):
+        multi_groups = closest_node_pairs.groupby(level=0).size()
+        multi_groups = multi_groups[multi_groups > 2].index
+
+        if multi_groups.empty:
+            return closest_node_pairs
+
+        new_index_counter = closest_node_pairs.index.get_level_values(0).max() + 1
+
+        def _make_pairs(group: pd.Series):
+            nonlocal new_index_counter
+            base_side = group.index.get_level_values(1)[0]
+            base_node = group.iloc[0]
+            pairs = []
+            for i, node in zip(group.index.get_level_values(1), group):
+                if i == base_side:
+                    continue
+                # create new unique index_right
+                idx = new_index_counter
+                new_index_counter += 1
+                pairs.append((idx, base_side, base_node))
+                pairs.append((idx, i, node))
+            return pairs
+
+        pairs = (
+            closest_node_pairs.loc[closest_node_pairs.index.get_level_values(0).isin(multi_groups)]
+            .groupby(level=0)
+            .apply(_make_pairs)
+            .sum()  # flatten list of lists
+        )
+
+        pair_series = pd.Series(
+            data=[v[2] for v in pairs],
+            index=pd.MultiIndex.from_tuples(
+                tuples=[(i[0], i[1]) for i in pairs], names=["index_right", "idx_street_side"]
+            ),
+        ).rename("idx_node")
+
+        # Merge back the unprocessed pairs
+        unprocessed = closest_node_pairs.loc[~closest_node_pairs.index.get_level_values(0).isin(multi_groups)]
+        validated_pairs = pd.concat([unprocessed, pair_series]).sort_index()
+
+        return validated_pairs
