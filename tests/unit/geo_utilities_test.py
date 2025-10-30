@@ -30,7 +30,6 @@ class TestGetAngleBetweenPoints:
     @pytest.mark.parametrize(
         "point_a, point_b, center_point, expected_exception",
         [
-            # (shapely.Point(0, 0), shapely.Point(0, 0), shapely.Point(1, 1), ValueError),
             (shapely.Point(1, 1), shapely.Point(2, 2), shapely.Point(1, 1), ValueError),
             (shapely.Point(2, 2), shapely.Point(1, 1), shapely.Point(1, 1), ValueError),
         ],
