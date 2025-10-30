@@ -1097,3 +1097,58 @@ class TestPipeRammingTheoryExamples:
         write_results_to_geopackage(
             out, multilayer_route_engine.result_route, "pytest_theory_result_route", overwrite=True
         )
+
+
+class TestPipeRammingUtils:
+    def test_validate_node_pairs_merges_multi_groups(self):
+        # Create a MultiIndex Series with more than 2 entries for one group
+        idx = pd.MultiIndex.from_tuples(
+            [
+                (1, "a"),
+                (1, "b"),
+                (1, "c"),  # group 1 has 3 entries
+                (2, "a"),
+                (2, "b"),  # group 2 has 2 entries
+            ],
+            names=["index_right", "idx_street_side"],
+        )
+        s = pd.Series([10, 20, 30, 40, 50], index=idx)
+
+        result = GetPotentialPipeRammingCrossings._validate_node_pairs(s)
+
+        # Group 1 should be split into new pairs, group 2 should remain unchanged
+        assert isinstance(result, pd.Series)
+        assert set(result.index.get_level_values(0)) >= {2, 3, 4}  # Group 1 is replaced with 3 and 4
+        # Check that all original nodes are present
+        assert set(result.values) >= {10, 20, 30, 40, 50}
+
+        idx_expected = pd.MultiIndex.from_tuples(
+            [
+                (2, "a"),
+                (2, "b"),
+                (3, "a"),
+                (3, "b"),
+                (4, "a"),
+                (4, "c"),
+            ],
+            names=["index_right", "idx_street_side"],
+        )
+        expected = pd.Series([40, 50, 10, 20, 10, 30], index=idx_expected)
+        pd.testing.assert_series_equal(result, expected)
+
+    def test_validate_node_pairs_no_multi_groups(self):
+        # Only groups with <=2 entries
+        idx = pd.MultiIndex.from_tuples(
+            [
+                (1, "a"),
+                (1, "b"),
+                (2, "a"),
+                (2, "b"),
+            ],
+            names=["index_right", "idx_street_side"],
+        )
+        s = pd.Series([10, 20, 30, 40], index=idx)
+
+        result = GetPotentialPipeRammingCrossings._validate_node_pairs(s)
+        # Should return the input unchanged
+        pd.testing.assert_series_equal(result, s)
