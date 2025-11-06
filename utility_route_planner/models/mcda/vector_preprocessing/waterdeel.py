@@ -58,7 +58,9 @@ class Waterdeel(VectorPreprocessorBase):
                 input_gdf["class"].eq(key), input_gdf["geometry"].buffer(value), input_gdf["geometry"]
             )
 
-        # Do not double-count suitability values for the same type of vegetation object when they overlap.
-        input_gdf = input_gdf.dissolve(by=["class", "suitability_value"]).explode().reset_index()
+        # Do not double-count suitability values when they overlap.
+        input_gdf = (
+            input_gdf.dissolve(by=["class", "suitability_value", "relatieveHoogteligging"]).explode().reset_index()
+        )
 
         return input_gdf

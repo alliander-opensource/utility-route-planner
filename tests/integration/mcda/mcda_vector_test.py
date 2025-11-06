@@ -82,20 +82,31 @@ class TestVectorPreprocessing:
         }
         input_gdf = gpd.GeoDataFrame(
             [
-                ["greppel, droge sloot", "WaardeOnbekend", shapely.Polygon([[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]])],
-                ["waterloop", "WaardeOnbekend", shapely.Polygon([[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]])],
-                ["waterloop", "rivier", shapely.Polygon([[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]])],
-                ["waterloop", "sloot", shapely.Polygon([[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]])],
-                ["waterloop", "kanaal", shapely.Polygon([[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]])],
-                ["waterloop", "beek", shapely.Polygon([[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]])],
-                ["waterloop", "gracht", shapely.Polygon([[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]])],
-                ["waterloop", "bron", shapely.Polygon([[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]])],
-                ["watervlakte", "haven", shapely.Polygon([[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]])],
-                ["watervlakte", "meer, plas, ven, vijver", shapely.Polygon([[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]])],
-                ["zee", "WaardeOnbekend", shapely.Polygon([[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]])],
-                ["zee", "WaardeOnbekend", shapely.Polygon([[0, 0], [2, 0], [2, 2], [0, 1], [0, 0]])],
+                [
+                    "greppel, droge sloot",
+                    "WaardeOnbekend",
+                    0,
+                    shapely.Polygon([[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]),
+                ],
+                ["waterloop", "WaardeOnbekend", 0, shapely.Polygon([[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]])],
+                ["waterloop", "rivier", 0, shapely.Polygon([[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]])],
+                ["waterloop", "sloot", 0, shapely.Polygon([[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]])],
+                ["waterloop", "kanaal", 0, shapely.Polygon([[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]])],
+                ["waterloop", "beek", 0, shapely.Polygon([[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]])],
+                ["waterloop", "gracht", 0, shapely.Polygon([[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]])],
+                ["waterloop", "gracht", 1, shapely.Polygon([[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]])],
+                ["waterloop", "bron", 0, shapely.Polygon([[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]])],
+                ["watervlakte", "haven", 0, shapely.Polygon([[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]])],
+                [
+                    "watervlakte",
+                    "meer, plas, ven, vijver",
+                    0,
+                    shapely.Polygon([[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]),
+                ],
+                ["zee", "WaardeOnbekend", 0, shapely.Polygon([[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]])],
+                ["zee", "WaardeOnbekend", 0, shapely.Polygon([[0, 0], [2, 0], [2, 2], [0, 1], [0, 0]])],
             ],
-            columns=["class", "plus-type", "geometry"],
+            columns=["class", "plus-type", "relatieveHoogteligging", "geometry"],
             crs=Config.CRS,
             geometry="geometry",
         )
@@ -103,7 +114,7 @@ class TestVectorPreprocessing:
         reclassified_gdf = Waterdeel._set_suitability_values(input_gdf, weight_values)
         pd.testing.assert_series_equal(
             reclassified_gdf["sv_1"],
-            pd.Series([-10, 1, 1, 1, 1, 1, 1, 1, 2, 2, 3, 3]),
+            pd.Series([-10, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 3, 3]),
             check_names=False,
             check_exact=True,
             check_dtype=False,
@@ -119,6 +130,7 @@ class TestVectorPreprocessing:
                     60,
                     70,
                     80,
+                    80,
                     90,
                     100,
                     110,
@@ -131,16 +143,16 @@ class TestVectorPreprocessing:
         )
         pd.testing.assert_series_equal(
             reclassified_gdf["suitability_value"],
-            pd.Series([-10, 1, 40, 50, 60, 70, 80, 90, 100, 110, 3, 3]),
+            pd.Series([-10, 1, 40, 50, 60, 70, 80, 80, 90, 100, 110, 3, 3]),
             check_names=False,
             check_exact=True,
             check_dtype=False,
         )
 
         buffered_gdf = Waterdeel._update_geometry_values(reclassified_gdf, {"zee": 20})
-        assert len(buffered_gdf) == 11  # Zee is dissolved into one geometry.
-        assert buffered_gdf.iloc[:10].area.round(1).unique().tolist() == [1.0]
-        assert buffered_gdf.iloc[[10]].area.round(1).tolist() == [1402.4]
+        assert len(buffered_gdf) == 12  # Zee is dissolved into one geometry.
+        assert buffered_gdf.iloc[:11].area.round(1).unique().tolist() == [1.0]
+        assert buffered_gdf.iloc[[11]].area.round(1).tolist() == [1402.4]
 
     def test_begroeid_terreindeel(self):
         weight_values = {
@@ -1073,28 +1085,29 @@ class TestVectorPreprocessing:
         }
         gdf_1 = gpd.GeoDataFrame(
             [
-                ["haag", shapely.Polygon([[0, 0], [5, 0], [5, 5], [0, 0]])],  # will be merged
-                ["haag", shapely.Polygon([[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]])],  # will be merged
-                ["waardeOnbekend", shapely.Polygon()],
+                ["haag", 0, shapely.Polygon([[0, 0], [5, 0], [5, 5], [0, 0]])],  # will be merged
+                ["haag", 0, shapely.Polygon([[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]])],  # will be merged
+                ["waardeOnbekend", 0, shapely.Polygon()],
             ],
-            columns=["plus-type", "geometry"],
+            columns=["plus-type", "relatieveHoogteligging", "geometry"],
             crs=Config.CRS,
             geometry="geometry",
         )
         gdf_2 = gpd.GeoDataFrame(
             [
-                ["boom", shapely.Point(1, 1)],  # will be merged
-                ["boom", shapely.Point(2, 2)],  # will be merged
-                ["boom", shapely.Point(100, 100)],
+                ["boom", 0, shapely.Point(1, 1)],  # will be merged
+                ["boom", 0, shapely.Point(2, 2)],  # will be merged
+                ["boom", 1, shapely.Point(2, 2)],  # will not be merged
+                ["boom", 0, shapely.Point(100, 100)],
             ],
-            columns=["plus-type", "geometry"],
+            columns=["plus-type", "relatieveHoogteligging", "geometry"],
             crs=Config.CRS,
             geometry="geometry",
         )
         reclassified_gdf = VegetationObject._set_suitability_values([gdf_1, gdf_2], weight_values)
         pd.testing.assert_series_equal(
             reclassified_gdf["sv_1"],
-            pd.Series([1, 1, 2, 2, 2]),
+            pd.Series([1, 1, 2, 2, 2, 2]),
             check_names=False,
             check_exact=True,
             check_dtype=False,
@@ -1102,7 +1115,7 @@ class TestVectorPreprocessing:
         )
         pd.testing.assert_series_equal(
             reclassified_gdf["suitability_value"],
-            pd.Series([1, 1, 2, 2, 2]),
+            pd.Series([1, 1, 2, 2, 2, 2]),
             check_names=False,
             check_exact=True,
             check_dtype=False,
@@ -1111,7 +1124,7 @@ class TestVectorPreprocessing:
         assert "waardeOnbekend" not in reclassified_gdf["plus-type"]
 
         reclassified_gdf = VegetationObject._update_geometry_values(reclassified_gdf, {"boom": 5})
-        assert reclassified_gdf.is_empty.value_counts().get(False) == 3
+        assert reclassified_gdf.is_empty.value_counts().get(False) == 4
         assert reclassified_gdf.is_empty.value_counts().get(True) is None
         assert reclassified_gdf.geom_type.unique().tolist() == ["Polygon"]
 

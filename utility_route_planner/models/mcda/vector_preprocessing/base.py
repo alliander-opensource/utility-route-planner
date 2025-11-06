@@ -34,19 +34,22 @@ class VectorPreprocessorBase(abc.ABC):
         """Name of the criterion"""
 
     @time_function
-    def execute(self, general: RasterPresetGeneral, criterion: RasterPresetCriteria) -> tuple[bool, gpd.GeoDataFrame]:
+    def execute(
+        self, general: RasterPresetGeneral, criterion: RasterPresetCriteria
+    ) -> tuple[bool, gpd.GeoDataFrame, list]:
         """Run all methods in order for a criteria returning the processed geodataframe with suitability values."""
         logger.info(f"Start preprocessing: {self.criterion}.")
 
         prepared_gdfs = self.prepare_input_data(general.project_area_geometry, criterion, general.path_input_geopackage)
         if len(prepared_gdfs) == 1 and prepared_gdfs[0].empty:
-            return False, get_empty_geodataframe()  # Nothing to process when there is no data available, return.
+            return False, get_empty_geodataframe(), []  # Nothing to process when there is no data available, return.
         processed_gdf = self.specific_preprocess(prepared_gdfs, criterion)
         if not self.is_valid_result(processed_gdf):
-            return False, get_empty_geodataframe()
+            return False, get_empty_geodataframe(), []
+        height_levels = self.get_height_levels(processed_gdf)
         self.write_to_file(general.prefix, processed_gdf)
 
-        return True, processed_gdf
+        return True, processed_gdf, height_levels
 
     @staticmethod
     def prepare_input_data(
@@ -54,18 +57,18 @@ class VectorPreprocessorBase(abc.ABC):
     ) -> list[gpd.GeoDataFrame]:
         """Check existing layers in geopackage / clip data / check if gdf is empty / filter historic BGT data"""
         prepared_input = []
+        available_layers = fiona.listlayers(path_geopackage_mcda_input)
         for layer_name in criterion.layer_names:
-            if layer_name not in fiona.listlayers(path_geopackage_mcda_input):
+            if layer_name not in available_layers:
                 logger.warning(f"Layer name: {layer_name} is not available in geopackage, skipping.")
                 gdf = get_empty_geodataframe()
             else:
                 gdf = gpd.read_file(
                     path_geopackage_mcda_input, layer=layer_name, engine="pyogrio", bbox=project_area.bounds
                 ).clip(project_area)
-            # TODO determine a proper datasource (nl extract) which has one of either fields, not both: https://geoforum.nl/t/bgt-begroeid-terreindeel-en-ondersteunend-wegdeel-steeds-vaker-niet-leesbaar-via-gdal/9295/15
-            if gdf.columns.__contains__("eindRegistratie"):  # BGT data has this attribute, filter historic items.
+            if "eindRegistratie" in gdf.columns:  # BGT data has this attribute, filter historic items.
                 gdf = gdf.loc[gdf["eindRegistratie"].isna()]
-            if gdf.columns.__contains__("terminationDate"):  # BGT data has this attribute, filter historic items.
+            if "terminationDate" in gdf.columns:  # BGT data has this attribute, filter historic items.
                 gdf = gdf.loc[gdf["terminationDate"].isna()]
             gdf["suitability_value"] = pandas.NA  # Placeholder value
             if not gdf.empty:
@@ -94,6 +97,15 @@ class VectorPreprocessorBase(abc.ABC):
             )
             raise InvalidSuitabilityValue
         return True
+
+    def get_height_levels(self, processed_gdf: gpd.GeoDataFrame) -> list:
+        """Get unique height levels from the processed geodataframe, if available."""
+        if "relatieveHoogteligging" not in processed_gdf.columns:
+            logger.info(f"No height levels found for criterion: {self.criterion}.")
+            return []
+        height_levels = processed_gdf["relatieveHoogteligging"].unique().tolist()
+        logger.info(f"Found height levels: {height_levels} for criterion: {self.criterion}.")
+        return height_levels
 
     def write_to_file(self, prefix, validated_gdf: gpd.GeoDataFrame) -> None:
         """Write to the geopackage for debugging and rasterizing."""
