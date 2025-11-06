@@ -102,7 +102,7 @@ class VectorPreprocessorBase(abc.ABC):
         """Get unique height levels from the processed geodataframe, if available."""
         if "relatieveHoogteligging" not in processed_gdf.columns:
             logger.info(f"No height levels found for criterion: {self.criterion}.")
-            return []
+            return [0]
         height_levels = processed_gdf["relatieveHoogteligging"].unique().tolist()
         logger.info(f"Found height levels: {height_levels} for criterion: {self.criterion}.")
         return height_levels
