@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: Contributors to the utility-route-project and Alliander N.V.
 #
 # SPDX-License-Identifier: Apache-2.0
+import copy
 
 import geopandas as gpd
 import pytest
@@ -40,7 +41,7 @@ class TestVRTRouting:
         preprocessed_vectors: McdaCostSurfaceEngine,
         start_end_point_route,
     ) -> shapely.LineString:
-        mcda_engine = preprocessed_vectors
+        mcda_engine = copy.deepcopy(preprocessed_vectors)  # Ensure we do not mutate the original fixture
 
         # Use a max block size that exceeds the width & height of the project area (to force using a single tiff)
         max_block_size = 2048
@@ -66,8 +67,8 @@ class TestVRTRouting:
         max_block_size: int,
         debug: bool = False,
     ):
+        mcda_engine = copy.deepcopy(preprocessed_vectors)  # Ensure we do not mutate the original fixture
         # Given the set of preprocessed vectors, preprocess the rasters given the max block size
-        mcda_engine = preprocessed_vectors
         raster_path_vrt = mcda_engine.preprocess_rasters(
             mcda_engine.processed_vectors, cell_size=0.5, max_block_size=max_block_size, run_in_parallel=False
         )
