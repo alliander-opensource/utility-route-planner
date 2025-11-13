@@ -61,3 +61,13 @@ class PipeRammingEdgeInfo(EdgeInfo):
     segment_group: int
     weight: float
     origin: PipeRammingOrigin
+
+
+# TODO check if we need this class, or can use HexagonEdgeInfo instead (id = init false gave problems)
+@dataclass
+class HexagonEdgeHeightLevelInfo:
+    edge_id: int
+    weight: float
+    height_level: int
+    length: float
+    geometry: shapely.LineString
