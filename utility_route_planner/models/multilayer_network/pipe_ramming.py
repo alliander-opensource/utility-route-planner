@@ -626,6 +626,7 @@ class GetPotentialPipeRammingCrossings:
                 lambda x: x.weight,
                 closest_node_pairs[index].iloc[1],
             )
+            # TODO-discuss: what is the cost of going through the cost surface this way?
             crossing_weight = int(weight[closest_node_pairs[index].iloc[1]] / 3)
             if crossing_weight <= 0:
                 logger.warning(
@@ -639,9 +640,7 @@ class GetPotentialPipeRammingCrossings:
                     osm_id_junction=node_id,
                     segment_group=segment_group,
                     origin=origin,
-                    # TODO-discuss: what is the cost of going through the cost surface?
                     weight=crossing_weight,
-                    length=closest_node_linestrings_filtered[index].length,
                     geometry=closest_node_linestrings_filtered[index],
                 ),
             )

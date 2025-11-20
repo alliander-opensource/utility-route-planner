@@ -66,7 +66,7 @@ class OSMGraphPreprocessor:
             (
                 nx_rx_node_mapping[u],
                 nx_rx_node_mapping[v],
-                OSMEdgeInfo(edge.get("length", 0), edge.get("geometry", shapely.LineString()), edge.get("osmid", 0)),
+                OSMEdgeInfo(geometry=edge.get("geometry", shapely.LineString()), osm_id=edge.get("osmid", 0)),
             )
             for u, v, edge in nx_graph.edges(data=True)
         ]

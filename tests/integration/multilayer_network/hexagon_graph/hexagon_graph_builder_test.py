@@ -271,12 +271,12 @@ class TestHexagonGraphBuilderWithHeightLevels:
                 gdf = processed_criteria_vectors[criterion][
                     processed_criteria_vectors[criterion]["relatieveHoogteligging"] == height_level
                 ]
-                processed_criteria_per_height_level[criterion] = gdf
+                processed_criteria_per_height_level[criterion] = gdf  # type: ignore
 
             hexagon_graph_builder = HexagonGraphBuilder(
                 project_area=project_area,
                 raster_groups=raster_groups,
-                preprocessed_vectors=processed_criteria_per_height_level,
+                preprocessed_vectors=processed_criteria_per_height_level,  # type: ignore
                 hexagon_size=self.hexagon_size,
             )
             graph = hexagon_graph_builder.build_graph()
@@ -291,13 +291,13 @@ class TestHexagonGraphBuilderWithHeightLevels:
             gdf_osm_edges=gpd.GeoDataFrame(gpd.GeoSeries(road_geom), columns=["geometry"], crs=Config.CRS),
             debug=debug,
         )
-        hexagon_graph_composer.compose()
+        merged_graph = hexagon_graph_composer.compose()
 
         route_engine = MultilayerRouteEngine(
-            graphs_per_height[0], rx.PyGraph(), hexagon_graph_composer.gdf_main_nodes, write_output=debug
+            merged_graph, rx.PyGraph(), hexagon_graph_composer.gdf_main_nodes, write_output=debug
         )
         route_engine.find_route(shapely.LineString([(6, 95), (6, 5)]))  # route should go under the bridge here (grass)
-        route_engine.find_route(shapely.LineString([(3, 65), (98, 65)]))  # route should go over the bridge here
+        route_engine.find_route(shapely.LineString([(3, 65), (98, 95)]))  # route should go over the bridge here
 
     def test_build_graph_with_multiple_height_levels_with_osm(self):
         """E.g., a road tunnel, a road and a bicycle bridge crossing each other."""

@@ -14,7 +14,7 @@ from settings import Config
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_graph_builder import HexagonGraphBuilder
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_utils import convert_hexagon_graph_to_gdfs
 from utility_route_planner.models.multilayer_network.multilayer_route_planner import MultilayerRouteEngine
-from utility_route_planner.util.graph_utilities import create_edge_info
+from utility_route_planner.util.graph_utilities import create_osm_edge_info
 from utility_route_planner.models.mcda.mcda_engine import McdaCostSurfaceEngine
 from utility_route_planner.models.multilayer_network.pipe_ramming import GetPotentialPipeRammingCrossings
 from utility_route_planner.util.geo_utilities import osm_graph_to_gdfs
@@ -111,19 +111,19 @@ class TestPipeRamming:
         ) = node_ids
 
         edges_to_add = [
-            (node1.node_id, node2.node_id, create_edge_info(100, node1, node2)),
-            (node2.node_id, node3.node_id, create_edge_info(101, node2, node3)),
-            (node3.node_id, node4.node_id, create_edge_info(102, node3, node4)),
-            (node2.node_id, node5.node_id, create_edge_info(103, node2, node5)),
-            (node5.node_id, node6.node_id, create_edge_info(104, node5, node6)),
-            (node6.node_id, node7.node_id, create_edge_info(105, node6, node7)),
-            (node7.node_id, node8.node_id, create_edge_info(106, node7, node8)),
-            (node8.node_id, node9.node_id, create_edge_info(107, node8, node9)),
-            (node6.node_id, node9.node_id, create_edge_info(108, node6, node9)),
-            (node9.node_id, node10.node_id, create_edge_info(109, node9, node10)),
-            (node10.node_id, node11.node_id, create_edge_info(110, node10, node11)),
-            (node10.node_id, node12.node_id, create_edge_info(111, node10, node12)),
-            (node11.node_id, node12.node_id, create_edge_info(112, node11, node2)),
+            (node1.node_id, node2.node_id, create_osm_edge_info(100, node1, node2)),
+            (node2.node_id, node3.node_id, create_osm_edge_info(101, node2, node3)),
+            (node3.node_id, node4.node_id, create_osm_edge_info(102, node3, node4)),
+            (node2.node_id, node5.node_id, create_osm_edge_info(103, node2, node5)),
+            (node5.node_id, node6.node_id, create_osm_edge_info(104, node5, node6)),
+            (node6.node_id, node7.node_id, create_osm_edge_info(105, node6, node7)),
+            (node7.node_id, node8.node_id, create_osm_edge_info(106, node7, node8)),
+            (node8.node_id, node9.node_id, create_osm_edge_info(107, node8, node9)),
+            (node6.node_id, node9.node_id, create_osm_edge_info(108, node6, node9)),
+            (node9.node_id, node10.node_id, create_osm_edge_info(109, node9, node10)),
+            (node10.node_id, node11.node_id, create_osm_edge_info(110, node10, node11)),
+            (node10.node_id, node12.node_id, create_osm_edge_info(111, node10, node12)),
+            (node11.node_id, node12.node_id, create_osm_edge_info(112, node11, node2)),
         ]
 
         edge_ids = osm_graph.add_edges_from(edges_to_add)
@@ -391,9 +391,9 @@ class TestPipeRammingTheoryExamples:
         node_ids = osm_graph.add_nodes_from([node1, node2, node3, node4])
         node1.node_id, node2.node_id, node3.node_id, node4.node_id = node_ids
         edges_to_add = [
-            (node1.node_id, node2.node_id, create_edge_info(100, node1, node2)),
-            (node2.node_id, node3.node_id, create_edge_info(101, node2, node3)),
-            (node2.node_id, node4.node_id, create_edge_info(102, node2, node4)),
+            (node1.node_id, node2.node_id, create_osm_edge_info(100, node1, node2)),
+            (node2.node_id, node3.node_id, create_osm_edge_info(101, node2, node3)),
+            (node2.node_id, node4.node_id, create_osm_edge_info(102, node2, node4)),
         ]
 
         self._run_crossing(
@@ -491,9 +491,9 @@ class TestPipeRammingTheoryExamples:
         node_ids = osm_graph.add_nodes_from([node1, node2, node3, node4])
         node1.node_id, node2.node_id, node3.node_id, node4.node_id = node_ids
         edges_to_add = [
-            (node1.node_id, node2.node_id, create_edge_info(100, node1, node2)),
-            (node2.node_id, node3.node_id, create_edge_info(101, node2, node3)),
-            (node2.node_id, node4.node_id, create_edge_info(102, node2, node4)),
+            (node1.node_id, node2.node_id, create_osm_edge_info(100, node1, node2)),
+            (node2.node_id, node3.node_id, create_osm_edge_info(101, node2, node3)),
+            (node2.node_id, node4.node_id, create_osm_edge_info(102, node2, node4)),
         ]
 
         self._run_crossing(
@@ -609,10 +609,10 @@ class TestPipeRammingTheoryExamples:
         node_ids = osm_graph.add_nodes_from([node1, node2, node3, node4, node5])
         node1.node_id, node2.node_id, node3.node_id, node4.node_id, node5.node_id = node_ids
         edges_to_add = [
-            (node1.node_id, node2.node_id, create_edge_info(100, node1, node2)),
-            (node2.node_id, node3.node_id, create_edge_info(101, node2, node3)),
-            (node2.node_id, node4.node_id, create_edge_info(102, node2, node4)),
-            (node2.node_id, node5.node_id, create_edge_info(103, node2, node5)),
+            (node1.node_id, node2.node_id, create_osm_edge_info(100, node1, node2)),
+            (node2.node_id, node3.node_id, create_osm_edge_info(101, node2, node3)),
+            (node2.node_id, node4.node_id, create_osm_edge_info(102, node2, node4)),
+            (node2.node_id, node5.node_id, create_osm_edge_info(103, node2, node5)),
         ]
 
         self._run_crossing(
@@ -713,10 +713,10 @@ class TestPipeRammingTheoryExamples:
         node_ids = osm_graph.add_nodes_from([node1, node2, node3, node4, node5])
         node1.node_id, node2.node_id, node3.node_id, node4.node_id, node5.node_id = node_ids
         edges_to_add = [
-            (node1.node_id, node2.node_id, create_edge_info(105, node1, node2)),
-            (node1.node_id, node3.node_id, create_edge_info(106, node1, node3)),
-            (node1.node_id, node4.node_id, create_edge_info(107, node1, node4)),
-            (node1.node_id, node5.node_id, create_edge_info(108, node1, node5)),
+            (node1.node_id, node2.node_id, create_osm_edge_info(105, node1, node2)),
+            (node1.node_id, node3.node_id, create_osm_edge_info(106, node1, node3)),
+            (node1.node_id, node4.node_id, create_osm_edge_info(107, node1, node4)),
+            (node1.node_id, node5.node_id, create_osm_edge_info(108, node1, node5)),
         ]
 
         self._run_crossing(
@@ -808,7 +808,7 @@ class TestPipeRammingTheoryExamples:
         node2 = OSMNodeInfo(osm_id=2, geometry=shapely.Point(100, 0))
         node_ids = osm_graph.add_nodes_from([node1, node2])
         node1.node_id, node2.node_id = node_ids
-        edges_to_add = [(node1.node_id, node2.node_id, create_edge_info(100, node1, node2))]
+        edges_to_add = [(node1.node_id, node2.node_id, create_osm_edge_info(100, node1, node2))]
 
         self._run_crossing(
             cost_surface_graph,
@@ -938,12 +938,12 @@ class TestPipeRammingTheoryExamples:
             node_ids
         )
         edges_to_add = [
-            (node1.node_id, node2.node_id, create_edge_info(100, node1, node2)),
-            (node2.node_id, node3.node_id, create_edge_info(101, node2, node3)),
-            (node3.node_id, node4.node_id, create_edge_info(102, node3, node4)),
-            (node4.node_id, node5.node_id, create_edge_info(103, node4, node5)),
-            (node5.node_id, node6.node_id, create_edge_info(104, node5, node6)),
-            (node6.node_id, node7.node_id, create_edge_info(105, node6, node7)),
+            (node1.node_id, node2.node_id, create_osm_edge_info(100, node1, node2)),
+            (node2.node_id, node3.node_id, create_osm_edge_info(101, node2, node3)),
+            (node3.node_id, node4.node_id, create_osm_edge_info(102, node3, node4)),
+            (node4.node_id, node5.node_id, create_osm_edge_info(103, node4, node5)),
+            (node5.node_id, node6.node_id, create_osm_edge_info(104, node5, node6)),
+            (node6.node_id, node7.node_id, create_osm_edge_info(105, node6, node7)),
         ]
 
         self._run_crossing(

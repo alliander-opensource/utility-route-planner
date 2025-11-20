@@ -3,6 +3,7 @@
 #  SPDX-License-Identifier: Apache-2.0
 import enum
 from dataclasses import dataclass, field
+from typing import Optional
 
 import shapely
 
@@ -31,11 +32,14 @@ class HexagonNodeInfo(NodeInfo):
 @dataclass
 class EdgeInfo:
     edge_id: int = field(init=False)
-    length: float
+    length: float = field(init=False)
     geometry: shapely.LineString
 
     def set_edge_id(self, edge_id: int):
         self.edge_id = edge_id
+
+    def __post_init__(self):
+        self.length = round(self.geometry.length, 2)
 
 
 @dataclass
@@ -46,6 +50,8 @@ class OSMEdgeInfo(EdgeInfo):
 @dataclass
 class HexagonEdgeInfo(EdgeInfo):
     weight: float
+    connects_height_levels: bool = False
+    height_level: Optional[int] = None  # Only the non-main height level gets assigned explicitly.
 
 
 class PipeRammingOrigin(enum.StrEnum):
@@ -61,13 +67,3 @@ class PipeRammingEdgeInfo(EdgeInfo):
     segment_group: int
     weight: float
     origin: PipeRammingOrigin
-
-
-# TODO check if we need this class, or can use HexagonEdgeInfo instead (id = init false gave problems)
-@dataclass
-class HexagonEdgeHeightLevelInfo:
-    edge_id: int
-    weight: float
-    height_level: int
-    length: float
-    geometry: shapely.LineString

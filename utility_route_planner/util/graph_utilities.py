@@ -6,7 +6,5 @@ import shapely
 from utility_route_planner.models.multilayer_network.graph_datastructures import OSMNodeInfo, OSMEdgeInfo
 
 
-def create_edge_info(osm_id: int, start_node: OSMNodeInfo, end_node: OSMNodeInfo) -> OSMEdgeInfo:
-    geometry = shapely.LineString([start_node.geometry, end_node.geometry])
-    length = geometry.length
-    return OSMEdgeInfo(osm_id=osm_id, length=length, geometry=geometry)
+def create_osm_edge_info(osm_id: int, start_node: OSMNodeInfo, end_node: OSMNodeInfo) -> OSMEdgeInfo:
+    return OSMEdgeInfo(osm_id=osm_id, geometry=shapely.LineString([start_node.geometry, end_node.geometry]))

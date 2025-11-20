@@ -28,11 +28,11 @@ class TestOSMGraphPreprocessor:
         graph.add_node(2, osmid=2, x=0, y=-2)
 
         # Two-way edges between node 0 and 1
-        graph.add_edge(0, 1, 0, osmid=0, geometry=shapely.LineString([(0, 0), (0, 1)]), length=1)
-        graph.add_edge(1, 0, 0, osmid=1, geometry=shapely.LineString([(0, 1), (0, 0)]), length=1)
+        graph.add_edge(0, 1, 0, osmid=0, geometry=shapely.LineString([(0, 0), (0, 1)]))
+        graph.add_edge(1, 0, 0, osmid=1, geometry=shapely.LineString([(0, 1), (0, 0)]))
 
         # Oneway edge from node 0 to 2
-        graph.add_edge(0, 2, 0, osmid=2, geometry=shapely.LineString([(0, 0), (0, -2)]), length=2)
+        graph.add_edge(0, 2, 0, osmid=2, geometry=shapely.LineString([(0, 0), (0, -2)]))
 
         return graph
 
@@ -47,7 +47,7 @@ class TestOSMGraphPreprocessor:
 
     def test_duplicate_edges_are_removed(self, unprocessed_directed_graph: MultiDiGraph):
         # Add duplicate edge
-        unprocessed_directed_graph.add_edge(0, 1, 1, osmid=0, geometry=shapely.LineString([(0, 0), (0, 1)]), length=1)
+        unprocessed_directed_graph.add_edge(0, 1, 1, osmid=0, geometry=shapely.LineString([(0, 0), (0, 1)]))
         graph_preprocessor = OSMGraphPreprocessor(unprocessed_directed_graph)
         preprocessed_graph = graph_preprocessor.preprocess_graph()
 
@@ -105,7 +105,6 @@ class TestOSMGraphPreprocessor:
             OSMEdgeInfo(
                 osm_id=126,
                 geometry=shapely.LineString([preprocessed_graph[0].geometry, preprocessed_graph[1].geometry]),
-                length=1,
             ),
         )
         preprocessed_graph.get_edge_data(0, 1).edge_id = idx_5
@@ -115,7 +114,6 @@ class TestOSMGraphPreprocessor:
             OSMEdgeInfo(
                 osm_id=127,
                 geometry=shapely.LineString([preprocessed_graph[idx_2].geometry, preprocessed_graph[idx_3].geometry]),
-                length=2,
             ),
         )
         preprocessed_graph.get_edge_data(idx_2, idx_3).edge_id = idx_6
@@ -161,7 +159,7 @@ class TestOSMGraphPreprocessor:
             assert len(rx_adjacent_edges) == len(nx_adjacent_edges)
 
             # Check if the edge properties are the same
-            nx_edge_props = set((i[2]["geometry"], i[2]["length"], i[2]["osmid"]) for i in nx_adjacent_edges)
+            nx_edge_props = set((i[2]["geometry"], round(i[2]["length"], 2), i[2]["osmid"]) for i in nx_adjacent_edges)
             rx_edge_props = set(
                 (rx_edge.geometry, rx_edge.length, rx_edge.osm_id) for rx_edge in rx_adjacent_edges.values()
             )

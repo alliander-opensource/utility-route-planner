@@ -50,7 +50,7 @@ class HexagonGraphBuilder:
         hexagon_edge_generator = HexagonEdgeGenerator(hexagonal_grid)
         for edges in hexagon_edge_generator.generate():
             hexagonal_edges = [
-                (edge.node_id_source, edge.node_id_target, HexagonEdgeInfo(edge.length, edge.geometry, edge.weight))
+                (edge.node_id_source, edge.node_id_target, HexagonEdgeInfo(edge.geometry, edge.weight))
                 for edge in edges.itertuples(index=False)
             ]
             edge_ids = self.graph.add_edges_from(hexagonal_edges)
