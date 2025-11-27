@@ -9,10 +9,13 @@ import shapely
 import rustworkx as rx
 
 from settings import Config
+from utility_route_planner.models.multilayer_network.graph_datastructures import OSMNodeInfo
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_graph_builder import HexagonGraphBuilder
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_graph_composer import HexagonGraphComposer
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_utils import convert_hexagon_graph_to_gdfs
 from utility_route_planner.models.multilayer_network.multilayer_route_planner import MultilayerRouteEngine
+from utility_route_planner.util.geo_utilities import osm_graph_to_gdfs
+from utility_route_planner.util.graph_utilities import create_osm_edge_info
 from utility_route_planner.util.write import reset_geopackage, write_results_to_geopackage
 
 
@@ -183,18 +186,55 @@ class TestHexagonGraphBuilderWithHeightLevels:
     def clean_start(self):
         reset_geopackage(self.out, truncate=False)
 
-    def test_build_graph_with_a_tunnels_with_osm(self):
+    def test_build_graph_with_two_tunnels_and_osm(self):
         """E.g., a road and a bicycle tunnel crossing each other."""
-        pass
+        _ = shapely.Polygon([(0, 0), (0, 100), (100, 100), (100, 0)])
+        # Large road without sidewalks
+        road_geom = shapely.LineString([(0, 50), (100, 50)])
+        bicycle_road_north_geom = shapely.LineString([(50, 80), (50, 100)])
+        bicycle_tunnel_geom = shapely.LineString([(50, 20), (50, 80)])
+        bicycle_road_south_geom = shapely.LineString([(50, 0), (50, 20)])
+
+        _ = gpd.GeoDataFrame(
+            data=[
+                [10, 0, road_geom.buffer(10, cap_style="flat")],
+                [5, 1, bicycle_tunnel_geom.buffer(3, cap_style="flat")],
+                [5, 0, bicycle_road_north_geom.buffer(3, cap_style="flat")],
+                [5, 0, bicycle_road_south_geom.buffer(3, cap_style="flat")],
+            ],
+            geometry="geometry",
+            crs=Config.CRS,
+            columns=["suitability_value", "relatieveHoogteligging", "geometry"],
+        )
+
+        # osm
 
     def test_build_graph_with_a_bridge_without_osm(self, debug: bool = True):
         """E.g., a road on a bridge crossing water. Could also be an ecoduct crossing a motorway."""
         project_area = shapely.Polygon([(0, 0), (0, 100), (100, 100), (100, 0)])
-        # Road on a bridge with pavement
+        # Road on a bridge with sidewalks
         road_geom_west = shapely.LineString([(0, 50), (30, 50)])
         bridge_geom = shapely.LineString([(30, 50), (70, 50)])
         road_geom_east = shapely.LineString([(70, 50), (100, 50)])
+
+        # Create OSM graph
         road_geom = shapely.line_merge(shapely.MultiLineString([road_geom_west, bridge_geom, road_geom_east]))
+        osm_graph = rx.PyGraph()
+        node1 = OSMNodeInfo(osm_id=1, geometry=shapely.get_point(road_geom, 0))
+        node2 = OSMNodeInfo(osm_id=2, geometry=shapely.get_point(road_geom, -1))
+        node_ids = osm_graph.add_nodes_from([node1, node2])
+        node1.node_id, node2.node_id = node_ids
+        edges_to_add = [
+            (node1.node_id, node2.node_id, create_osm_edge_info(100, node1, node2)),
+        ]
+        edge_ids = osm_graph.add_edges_from(edges_to_add)
+        for edge, edge_id in zip(edges_to_add, edge_ids):
+            edge[2].edge_id = edge_id
+        gdf_osm_nodes, gdf_osm_edges = osm_graph_to_gdfs(osm_graph)
+        if debug:
+            write_results_to_geopackage(self.out, gdf_osm_nodes, "pytest_osm_nodes", overwrite=True)
+            write_results_to_geopackage(self.out, gdf_osm_edges, "pytest_osm_edges", overwrite=True)
+
         road = gpd.GeoDataFrame(
             data=[
                 # west
@@ -262,21 +302,57 @@ class TestHexagonGraphBuilderWithHeightLevels:
             "grassland": "a",
         }
 
-        # Build hexagon graphs per height level
+        # TODO continue here Djesse plot for debugging weird graph height bug
+        # hexagon_graph_builder = HexagonGraphBuilder(
+        #     project_area=project_area,
+        #     raster_groups=raster_groups,
+        #     preprocessed_vectors=processed_criteria_vectors,
+        #     hexagon_size=self.hexagon_size,
+        # )
+        # graph = hexagon_graph_builder.build_graph()
+        # nodes, edges = convert_hexagon_graph_to_gdfs(graph)
+        # write_results_to_geopackage(self.out, nodes, "pytest_bug_nodes", overwrite=True)
+        # write_results_to_geopackage(self.out, edges, "pytest_bug_edges", overwrite=True)
+
+        hexagon_graph_composer, merged_graph = self._build_and_merge_graphs(
+            debug,
+            processed_criteria_per_height_level,
+            processed_criteria_vectors,
+            project_area,
+            raster_groups,
+            gdf_osm_edges,
+        )
+
+        route_engine = MultilayerRouteEngine(
+            merged_graph, rx.PyGraph(), hexagon_graph_composer.gdf_main_nodes, write_output=debug
+        )
+        route_engine.find_route(shapely.LineString([(6, 95), (6, 5)]))  # route should go under the bridge here (grass)
+        route_engine.find_route(shapely.LineString([(3, 65), (98, 95)]))  # route should go over the bridge here
+
+    def _build_and_merge_graphs(
+        self,
+        debug,
+        processed_criteria_per_height_level,
+        processed_criteria_vectors,
+        project_area,
+        raster_groups,
+        gdf_osm_edges,
+    ):
         # TODO extract to hex builder? Cache the project area node grid so it is not recomputed each time
+        # Build hexagon graphs per height level
         graphs_per_height = {}
         for height_level, criteria in processed_criteria_per_height_level.items():
-            processed_criteria_per_height_level = {}
+            criteria_for_height_level = {}
             for criterion in criteria:
                 gdf = processed_criteria_vectors[criterion][
                     processed_criteria_vectors[criterion]["relatieveHoogteligging"] == height_level
                 ]
-                processed_criteria_per_height_level[criterion] = gdf  # type: ignore
+                criteria_for_height_level[criterion] = gdf  # type: ignore
 
             hexagon_graph_builder = HexagonGraphBuilder(
                 project_area=project_area,
                 raster_groups=raster_groups,
-                preprocessed_vectors=processed_criteria_per_height_level,  # type: ignore
+                preprocessed_vectors=criteria_for_height_level,  # type: ignore
                 hexagon_size=self.hexagon_size,
             )
             graph = hexagon_graph_builder.build_graph()
@@ -288,16 +364,12 @@ class TestHexagonGraphBuilderWithHeightLevels:
             processed_criteria_per_height_level,
             graphs_per_height,
             hexagon_size=self.hexagon_size,
-            gdf_osm_edges=gpd.GeoDataFrame(gpd.GeoSeries(road_geom), columns=["geometry"], crs=Config.CRS),
+            gdf_osm_edges=gdf_osm_edges,
             debug=debug,
         )
         merged_graph = hexagon_graph_composer.compose()
 
-        route_engine = MultilayerRouteEngine(
-            merged_graph, rx.PyGraph(), hexagon_graph_composer.gdf_main_nodes, write_output=debug
-        )
-        route_engine.find_route(shapely.LineString([(6, 95), (6, 5)]))  # route should go under the bridge here (grass)
-        route_engine.find_route(shapely.LineString([(3, 65), (98, 95)]))  # route should go over the bridge here
+        return hexagon_graph_composer, merged_graph
 
     def test_build_graph_with_multiple_height_levels_with_osm(self):
         """E.g., a road tunnel, a road and a bicycle bridge crossing each other."""
@@ -309,7 +381,7 @@ class TestHexagonGraphBuilderWithHeightLevels:
 
     def debug_write_output_vectors(
         self,
-        project_area: shapely.MultiPolygon,
+        project_area: shapely.MultiPolygon | shapely.Polygon,
         criteria_vectors: dict[str, gpd.GeoDataFrame],
     ):
         write_results_to_geopackage(self.out, project_area, "pytest_project_area", overwrite=True)

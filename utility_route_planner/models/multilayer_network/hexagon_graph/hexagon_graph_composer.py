@@ -29,16 +29,16 @@ class HexagonGraphComposer:
         self.processed_criteria_per_height_level = processed_criteria_per_height_level
         self.processed_graphs_per_height_level = processed_graphs_per_height_level
         self.hexagon_size = hexagon_size
-        self.gdf_osm_edges = gdf_osm_edges
+        self.gdf_osm_edges = gdf_osm_edges  # use for sanity checks?
         self.debug = debug
 
         self.gdf_main_nodes: gpd.GeoDataFrame = get_empty_geodataframe()
 
-    def compose(self):
+    def compose(self) -> rx.PyGraph:
         n_height_levels = len(self.processed_graphs_per_height_level)
         if n_height_levels == 1:
             logger.info("Only a single height level is present, no merging is required.")
-            return
+            return self.processed_graphs_per_height_level[next(iter(self.processed_graphs_per_height_level))]
         else:
             logger.info(f"Connecting {n_height_levels - 1} height level(s) to the main graph.")
 
@@ -117,7 +117,8 @@ class HexagonGraphComposer:
                     for i in edge_indices
                 ]
 
-                # TODO filter pairs based on osm road (if available)
+                # TODO validate pairs based on osm road (if available)
+                # TODO try to find the counterpart at the other height level through shared boundary
 
         if self.debug:
             out = Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT
