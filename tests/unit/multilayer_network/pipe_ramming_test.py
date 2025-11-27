@@ -341,7 +341,7 @@ class TestPipeRammingTheoryExamples:
         expected_route_length,
         start_end,
         setup_theory_examples,
-        debug=False,
+        debug=True,
     ):
         street = (
             gpd.GeoDataFrame(
@@ -1084,8 +1084,9 @@ class TestPipeRammingTheoryExamples:
         write_results_to_geopackage(out, pipe_ramming.osm_nodes, "pytest_theory_osm_nodes", overwrite=True)
         write_results_to_geopackage(out, pipe_ramming.osm_edges, "pytest_theory_osm_edges", overwrite=True)
         # Cost-surface & crossings
-        cost_surface_nodes = convert_hexagon_graph_to_gdfs(cost_surface_graph, edges=False)
+        cost_surface_nodes, cost_surface_edges = convert_hexagon_graph_to_gdfs(cost_surface_graph, edges=True)
         write_results_to_geopackage(out, cost_surface_nodes, "pytest_theory_cost_surface_nodes", overwrite=True)
+        write_results_to_geopackage(out, cost_surface_edges, "pytest_theory_cost_surface_edges", overwrite=True)
         write_results_to_geopackage(
             out,
             shapely.MultiLineString([i[2].geometry for i in crossings]),
