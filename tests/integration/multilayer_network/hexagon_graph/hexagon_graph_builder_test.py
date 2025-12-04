@@ -9,12 +9,14 @@ import shapely
 import rustworkx as rx
 
 from settings import Config
+from utility_route_planner.models.benchmark_routes import BenchmarkRouteCollection
+from utility_route_planner.models.mcda.mcda_engine import McdaCostSurfaceEngine
 from utility_route_planner.models.multilayer_network.graph_datastructures import OSMNodeInfo
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_graph_builder import HexagonGraphBuilder
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_graph_composer import HexagonGraphComposer
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_utils import convert_hexagon_graph_to_gdfs
 from utility_route_planner.models.multilayer_network.multilayer_route_planner import MultilayerRouteEngine
-from utility_route_planner.util.geo_utilities import osm_graph_to_gdfs
+from utility_route_planner.util.geo_utilities import osm_graph_to_gdfs, get_empty_geodataframe
 from utility_route_planner.util.graph_utilities import create_osm_edge_info
 from utility_route_planner.util.write import reset_geopackage, write_results_to_geopackage
 
@@ -180,36 +182,87 @@ class TestHexagonGraphBuilder:
 
 class TestHexagonGraphBuilderWithHeightLevels:
     out = Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT
-    hexagon_size = 2.1
+    hexagon_size = 1.0
+    debug: bool = True
 
     @pytest.fixture(autouse=True)
     def clean_start(self):
         reset_geopackage(self.out, truncate=False)
 
-    def test_build_graph_with_two_tunnels_and_osm(self):
+    def test_build_graph_with_two_tunnels(self):
         """E.g., a road and a bicycle tunnel crossing each other."""
-        _ = shapely.Polygon([(0, 0), (0, 100), (100, 100), (100, 0)])
+        project_area = shapely.Polygon([(0, 0), (0, 100), (100, 100), (100, 0)])
         # Large road without sidewalks
         road_geom = shapely.LineString([(0, 50), (100, 50)])
-        bicycle_road_north_geom = shapely.LineString([(50, 80), (50, 100)])
-        bicycle_tunnel_geom = shapely.LineString([(50, 20), (50, 80)])
-        bicycle_road_south_geom = shapely.LineString([(50, 0), (50, 20)])
 
-        _ = gpd.GeoDataFrame(
+        # Tunnel 1
+        bicycle_road_north_geom_1 = shapely.LineString([(25, 80), (25, 100)])
+        bicycle_tunnel_geom_1 = shapely.LineString([(25, 20), (25, 80)])
+        bicycle_road_south_geom_1 = shapely.LineString([(25, 0), (25, 20)])
+
+        # Tunnel 2
+        bicycle_road_north_geom_2 = shapely.LineString([(75, 80), (75, 100)])
+        bicycle_tunnel_geom_2 = shapely.LineString([(75, 20), (75, 80)])
+        bicycle_road_south_geom_2 = shapely.LineString([(75, 0), (75, 20)])
+
+        road = gpd.GeoDataFrame(
             data=[
                 [10, 0, road_geom.buffer(10, cap_style="flat")],
-                [5, 1, bicycle_tunnel_geom.buffer(3, cap_style="flat")],
-                [5, 0, bicycle_road_north_geom.buffer(3, cap_style="flat")],
-                [5, 0, bicycle_road_south_geom.buffer(3, cap_style="flat")],
+                [5, 1, bicycle_tunnel_geom_1.buffer(3, cap_style="flat")],
+                [5, 0, bicycle_road_north_geom_1.buffer(3, cap_style="flat")],
+                [5, 0, bicycle_road_south_geom_1.buffer(3, cap_style="flat")],
+                [5, 1, bicycle_tunnel_geom_2.buffer(3, cap_style="flat")],
+                [5, 0, bicycle_road_north_geom_2.buffer(3, cap_style="flat")],
+                [5, 0, bicycle_road_south_geom_2.buffer(3, cap_style="flat")],
             ],
             geometry="geometry",
             crs=Config.CRS,
             columns=["suitability_value", "relatieveHoogteligging", "geometry"],
         )
+        grassland = gpd.GeoDataFrame(
+            data=[
+                [2, 0, project_area.difference(road[road['relatieveHoogteligging'] == 0].geometry.union_all())],
+            ],
+            geometry="geometry",
+            crs=Config.CRS,
+            columns=["suitability_value", "relatieveHoogteligging", "geometry"],
+        ).explode().reset_index(drop=True)
+        processed_criteria_vectors = {
+            "road": road,
+            "grassland": grassland,
+        }
+        if self.debug:
+            self.debug_write_output_vectors(project_area, processed_criteria_vectors)
 
-        # osm
+        processed_criteria_per_height_level = {
+            0: ["road", "grassland"],  # ground level
+            1: ["road"],  # bridge level
+        }
+        raster_groups = {
+            "road": "a",
+            "grassland": "a",
+        }
 
-    def test_build_graph_with_a_bridge_without_osm(self, debug: bool = True):
+        hexagon_graph_composer, merged_graph = self._build_and_merge_graphs(
+            self.debug,
+            processed_criteria_per_height_level,
+            processed_criteria_vectors,
+            project_area,
+            raster_groups,
+            get_empty_geodataframe()
+        )
+        route_engine = MultilayerRouteEngine(
+            merged_graph, rx.PyGraph(), hexagon_graph_composer.gdf_main_nodes, write_output=self.debug
+        )
+
+        # assert we can route from north to south through both tunnels
+        # assert we cannot exit halfway the tunnels
+        # assert we can cross the tunnel road overground with low costs
+        # assert two subgraphs in the height level
+        # route_engine.find_route(shapely.LineString([(6, 95), (6, 5)]))
+
+
+    def test_build_graph_with_a_bridge(self):
         """E.g., a road on a bridge crossing water. Could also be an ecoduct crossing a motorway."""
         project_area = shapely.Polygon([(0, 0), (0, 100), (100, 100), (100, 0)])
         # Road on a bridge with sidewalks
@@ -217,23 +270,23 @@ class TestHexagonGraphBuilderWithHeightLevels:
         bridge_geom = shapely.LineString([(30, 50), (70, 50)])
         road_geom_east = shapely.LineString([(70, 50), (100, 50)])
 
-        # Create OSM graph
-        road_geom = shapely.line_merge(shapely.MultiLineString([road_geom_west, bridge_geom, road_geom_east]))
-        osm_graph = rx.PyGraph()
-        node1 = OSMNodeInfo(osm_id=1, geometry=shapely.get_point(road_geom, 0))
-        node2 = OSMNodeInfo(osm_id=2, geometry=shapely.get_point(road_geom, -1))
-        node_ids = osm_graph.add_nodes_from([node1, node2])
-        node1.node_id, node2.node_id = node_ids
-        edges_to_add = [
-            (node1.node_id, node2.node_id, create_osm_edge_info(100, node1, node2)),
-        ]
-        edge_ids = osm_graph.add_edges_from(edges_to_add)
-        for edge, edge_id in zip(edges_to_add, edge_ids):
-            edge[2].edge_id = edge_id
-        gdf_osm_nodes, gdf_osm_edges = osm_graph_to_gdfs(osm_graph)
-        if debug:
-            write_results_to_geopackage(self.out, gdf_osm_nodes, "pytest_osm_nodes", overwrite=True)
-            write_results_to_geopackage(self.out, gdf_osm_edges, "pytest_osm_edges", overwrite=True)
+        # # Create OSM graph
+        # road_geom = shapely.line_merge(shapely.MultiLineString([road_geom_west, bridge_geom, road_geom_east]))
+        # osm_graph = rx.PyGraph()
+        # node1 = OSMNodeInfo(osm_id=1, geometry=shapely.get_point(road_geom, 0))
+        # node2 = OSMNodeInfo(osm_id=2, geometry=shapely.get_point(road_geom, -1))
+        # node_ids = osm_graph.add_nodes_from([node1, node2])
+        # node1.node_id, node2.node_id = node_ids
+        # edges_to_add = [
+        #     (node1.node_id, node2.node_id, create_osm_edge_info(100, node1, node2)),
+        # ]
+        # edge_ids = osm_graph.add_edges_from(edges_to_add)
+        # for edge, edge_id in zip(edges_to_add, edge_ids):
+        #     edge[2].edge_id = edge_id
+        # gdf_osm_nodes, gdf_osm_edges = osm_graph_to_gdfs(osm_graph)
+        # if debug:
+        #     write_results_to_geopackage(self.out, gdf_osm_nodes, "pytest_osm_nodes", overwrite=True)
+        #     write_results_to_geopackage(self.out, gdf_osm_edges, "pytest_osm_edges", overwrite=True)
 
         road = gpd.GeoDataFrame(
             data=[
@@ -288,7 +341,7 @@ class TestHexagonGraphBuilderWithHeightLevels:
             "water": water,
             "grassland": grassland,
         }
-        if debug:
+        if self.debug:
             self.debug_write_output_vectors(project_area, processed_criteria_vectors)
 
         # Expected output from mcda engine after changes
@@ -315,19 +368,119 @@ class TestHexagonGraphBuilderWithHeightLevels:
         # write_results_to_geopackage(self.out, edges, "pytest_bug_edges", overwrite=True)
 
         hexagon_graph_composer, merged_graph = self._build_and_merge_graphs(
-            debug,
+            self.debug,
             processed_criteria_per_height_level,
             processed_criteria_vectors,
             project_area,
             raster_groups,
-            gdf_osm_edges,
+            get_empty_geodataframe()
         )
 
         route_engine = MultilayerRouteEngine(
-            merged_graph, rx.PyGraph(), hexagon_graph_composer.gdf_main_nodes, write_output=debug
+            merged_graph, rx.PyGraph(), hexagon_graph_composer.gdf_main_nodes, write_output=self.debug
         )
         route_engine.find_route(shapely.LineString([(6, 95), (6, 5)]))  # route should go under the bridge here (grass)
         route_engine.find_route(shapely.LineString([(3, 65), (98, 95)]))  # route should go over the bridge here
+
+    def test_build_graph_with_multiple_height_levels_with_osm(self):
+        """E.g., a road tunnel, a road and a bicycle bridge crossing each other."""
+        project_area = shapely.Polygon([(0, 0), (0, 100), (100, 100), (100, 0)])
+        # Large road without sidewalks
+        road_geom = shapely.LineString([(0, 50), (100, 50)])
+
+        # Tunnel crossing the road
+        tunnel_north = shapely.LineString([(50, 80), (50, 100)])
+        tunnel_middle = shapely.LineString([(50, 20), (50, 80)])
+        tunnel_south = shapely.LineString([(50, 0), (50, 20)])
+
+        # Bridge crossing the tunnel
+        bridge_north = shapely.LineString([(75, 75), (100, 100)])
+        bridge_middle = shapely.LineString([(30, 30), (75, 75)])
+        bridge_south = shapely.LineString([(0, 0), (30, 30)])
+
+        road = gpd.GeoDataFrame(
+            data=[
+                [10, 0, road_geom.buffer(10, cap_style="flat")],
+                [5, -1, tunnel_north.buffer(3, cap_style="flat")],
+                [5, 0, tunnel_middle.buffer(3, cap_style="flat")],
+                [5, 0, tunnel_south.buffer(3, cap_style="flat")],
+                [5, 0, bridge_north.buffer(3, cap_style="flat")],
+                [5, 1, bridge_middle.buffer(3, cap_style="flat")],
+                [5, 0, bridge_south.buffer(3, cap_style="flat")],
+            ],
+            geometry="geometry",
+            crs=Config.CRS,
+            columns=["suitability_value", "relatieveHoogteligging", "geometry"],
+        ).clip(project_area)
+        grassland = gpd.GeoDataFrame(
+            data=[
+                [2, 0, project_area.difference(road[road['relatieveHoogteligging'] == 0].geometry.union_all())],
+            ],
+            geometry="geometry",
+            crs=Config.CRS,
+            columns=["suitability_value", "relatieveHoogteligging", "geometry"],
+        ).explode().reset_index(drop=True)
+        processed_criteria_vectors = {
+            "road": road,
+            "grassland": grassland,
+        }
+        if self.debug:
+            self.debug_write_output_vectors(project_area, processed_criteria_vectors)
+
+        processed_criteria_per_height_level = {
+            0: ["road", "grassland"],  # ground level
+            1: ["road"],  # bridge level
+            -1: ["road"],  # tunnel level
+        }
+        raster_groups = {
+            "road": "a",
+            "grassland": "a",
+        }
+        hexagon_graph_composer, merged_graph = self._build_and_merge_graphs(
+            self.debug,
+            processed_criteria_per_height_level,
+            processed_criteria_vectors,
+            project_area,
+            raster_groups,
+            get_empty_geodataframe()
+        )
+
+    def test_example_data_integration(self):
+        """Use for testing a specific area of the example geopackages with known bridges/tunnels."""
+        reset_geopackage(Config.PATH_GEOPACKAGE_MCDA_OUTPUT, truncate=False)
+        project_area = shapely.Point(187224.708,429010.295).buffer(200)
+        mcda_engine = McdaCostSurfaceEngine(Config.RASTER_PRESET_NAME_BENCHMARK, BenchmarkRouteCollection.route_4.path_geopackage, project_area, raster_name_prefix='pytest_')
+        mcda_engine.preprocess_vectors()
+
+        raster_groups = {criteria_key: criteria.group for criteria_key, criteria in mcda_engine.raster_preset.criteria.items()}
+        hexagon_graph_composer, merged_graph = self._build_and_merge_graphs(
+            self.debug,
+            mcda_engine.processed_criteria_per_height_level,
+            mcda_engine.processed_vectors,
+            project_area,
+            raster_groups,
+            get_empty_geodataframe()
+        )
+
+        route_engine = MultilayerRouteEngine(
+            merged_graph, rx.PyGraph(), hexagon_graph_composer.gdf_main_nodes, write_output=self.debug
+        )
+        route_engine.find_route(shapely.LineString([(187174.77,429021.37), (187259.45,429011.20)]))  # route should go under
+
+
+    def debug_write_output_vectors(
+        self,
+        project_area: shapely.MultiPolygon | shapely.Polygon,
+        criteria_vectors: dict[str, gpd.GeoDataFrame],
+    ):
+        write_results_to_geopackage(self.out, project_area, "pytest_project_area", overwrite=True)
+        for name, gdf in criteria_vectors.items():
+            write_results_to_geopackage(
+                self.out,
+                gdf,
+                f"pytest_vector_{name}",
+                overwrite=True,
+            )
 
     def _build_and_merge_graphs(
         self,
@@ -370,28 +523,6 @@ class TestHexagonGraphBuilderWithHeightLevels:
         merged_graph = hexagon_graph_composer.compose()
 
         return hexagon_graph_composer, merged_graph
-
-    def test_build_graph_with_multiple_height_levels_with_osm(self):
-        """E.g., a road tunnel, a road and a bicycle bridge crossing each other."""
-        pass
-
-    def test_build_graph_with_multiple_height_levels_without_osm(self):
-        """E.g., a road tunnel, a road and an ecoduct crossing each other."""
-        pass
-
-    def debug_write_output_vectors(
-        self,
-        project_area: shapely.MultiPolygon | shapely.Polygon,
-        criteria_vectors: dict[str, gpd.GeoDataFrame],
-    ):
-        write_results_to_geopackage(self.out, project_area, "pytest_project_area", overwrite=True)
-        for name, gdf in criteria_vectors.items():
-            write_results_to_geopackage(
-                self.out,
-                gdf,
-                f"pytest_vector_{name}",
-                overwrite=True,
-            )
 
     def debug_write_output_graphs(
         self,

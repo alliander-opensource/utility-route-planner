@@ -90,25 +90,27 @@ class HexagonGraphComposer:
                     predicate="dwithin",
                 )
 
+                gdf_main_nodes_to_outer_subgraph_nodes = self.validate_main_to_subgraph_pairs(gdf_main_nodes_to_outer_subgraph_nodes)
+
                 edges_to_add = [
                     (
-                        tuple.node_id_right,
-                        height_mapping[tuple.node_id_left],
+                        node_pair.node_id_right,
+                        height_mapping[node_pair.node_id_left],
                         HexagonEdgeInfo(
-                            weight=(tuple.suitability_value_left + tuple.suitability_value_right) / 2,
+                            weight=(node_pair.suitability_value_left + node_pair.suitability_value_right) / 2,
                             height_level=height,
                             connects_height_levels=True,
                             geometry=shapely.LineString(
                                 [
-                                    tuple.geometry,
+                                    node_pair.geometry,
                                     self.gdf_main_nodes.loc[
-                                        self.gdf_main_nodes["node_id"] == tuple.node_id_right, "geometry"
+                                        self.gdf_main_nodes["node_id"] == node_pair.node_id_right, "geometry"
                                     ].iloc[0],
                                 ]
                             ),
                         ),
                     )
-                    for tuple in gdf_main_nodes_to_outer_subgraph_nodes.itertuples(index=False)
+                    for node_pair in gdf_main_nodes_to_outer_subgraph_nodes.itertuples(index=False)
                 ]
 
                 edge_indices = self.processed_graphs_per_height_level[main_height_level].add_edges_from(edges_to_add)
@@ -119,6 +121,7 @@ class HexagonGraphComposer:
 
                 # TODO validate pairs based on osm road (if available)
                 # TODO try to find the counterpart at the other height level through shared boundary
+                #  - expand node model first with bgt id's?
 
         if self.debug:
             out = Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT
@@ -139,6 +142,21 @@ class HexagonGraphComposer:
             nodes, edges = convert_hexagon_graph_to_gdfs(self.processed_graphs_per_height_level[main_height_level])
             write_results_to_geopackage(out, nodes, "pytest_merged_graph_nodes", overwrite=True)
             write_results_to_geopackage(out, edges, "pytest_merged_graph_edges", overwrite=True)
+
+    def validate_main_to_subgraph_pairs(self, gdf_main_nodes_to_outer_subgraph_nodes):
+        # TODO this can happen on nodes that are at the edge of the main graph I think
+        if gdf_main_nodes_to_outer_subgraph_nodes["node_id_right"].isna().any():
+            logger.warning("Some outer subgraph nodes could not be connected to the main graph nodes.")
+            na_rows = gdf_main_nodes_to_outer_subgraph_nodes[
+                gdf_main_nodes_to_outer_subgraph_nodes["node_id_right"].isna()]
+            write_results_to_geopackage(Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT, na_rows, "pytest_na_rows",
+                                        overwrite=True)
+            gdf_main_nodes_to_outer_subgraph_nodes.dropna(subset=["node_id_right"], inplace=True)
+            gdf_main_nodes_to_outer_subgraph_nodes["node_id_right"] = gdf_main_nodes_to_outer_subgraph_nodes[
+                "node_id_right"].astype(int)
+            gdf_main_nodes_to_outer_subgraph_nodes["node_id_left"] = gdf_main_nodes_to_outer_subgraph_nodes[
+                "node_id_left"].astype(int)
+        return gdf_main_nodes_to_outer_subgraph_nodes
 
     def merge_height_graph_to_main_graph(self, height_graph: rx.PyGraph, main_height_level: int) -> dict[int, int]:
         """Add the complete subgraph to the main graph first."""
