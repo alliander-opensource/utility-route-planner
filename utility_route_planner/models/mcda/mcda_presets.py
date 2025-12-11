@@ -35,11 +35,10 @@ preset_collection = {
             .iloc[0]
             .geometry,
         },
-        # BGT attribute explanation: https://docs.geostandaarden.nl/imgeo/catalogus/bgt/#attributen-en-associaties
+        # BGT explanation: https://docs.geostandaarden.nl/imgeo/catalogus/bgt/#attributen-en-associaties
         "criteria": {
-            # https://geonovum.github.io/IMGeo-objectenhandboek/waterdeel
             "waterdeel": {
-                "description": "Information on water.",
+                "description": "Information on water: https://geonovum.github.io/IMGeo-objectenhandboek/waterdeel",
                 "layer_names": ["bgt_waterdeel_V"],
                 "preprocessing_function": Waterdeel(),
                 "group": "a",
@@ -61,9 +60,20 @@ preset_collection = {
                 },
                 "geometry_values": {"zee": 20},
             },
+            "ondersteunend_waterdeel": {
+                "description": "Information on complementary bits of water: "
+                "https://geonovum.github.io/IMGeo-objectenhandboek/ondersteunendwaterdeel",
+                "layer_names": ["bgt_ondersteunendwaterdeel_V"],
+                "preprocessing_function": OndersteunendWaterdeel(),
+                "group": "a",
+                "weight_values": {
+                    # bgt_type
+                    "oever, slootkant": 13,
+                    "slik": 13,
+                },
+            },
             "wegdeel": {
-                # https://geonovum.github.io/IMGeo-objectenhandboek/wegdeel
-                "description": "Information on roads.",
+                "description": "Information on roads: https://geonovum.github.io/IMGeo-objectenhandboek/wegdeel",
                 "layer_names": ["bgt_wegdeel_V"],
                 "preprocessing_function": Wegdeel(),
                 "group": "a",
@@ -94,8 +104,8 @@ preset_collection = {
                 },
             },
             "ondersteunend_wegdeel": {
-                # https://geonovum.github.io/IMGeo-objectenhandboek/ondersteunendwegdeel
-                "description": "Complementary information on roads.",
+                "description": "Information on complementary bits of roads: "
+                "https://geonovum.github.io/IMGeo-objectenhandboek/ondersteunendwegdeel",
                 "layer_names": ["bgt_ondersteunendwegdeel_V"],
                 "preprocessing_function": OndersteunendWegdeel(),
                 "group": "a",
@@ -112,8 +122,8 @@ preset_collection = {
                 },
             },
             "onbegroeid_terreindeel": {
-                # https://geonovum.github.io/IMGeo-objectenhandboek/onbegroeidterreindeel
-                "description": "placeholder",
+                "description": "Information on non-lush terrain: "
+                "https://geonovum.github.io/IMGeo-objectenhandboek/onbegroeidterreindeel",
                 "layer_names": ["bgt_onbegroeidterreindeel_V"],
                 "preprocessing_function": OnbegroeidTerreindeel(),
                 "group": "a",
@@ -128,8 +138,8 @@ preset_collection = {
                 },
             },
             "begroeid_terreindeel": {
-                # https://geonovum.github.io/IMGeo-objectenhandboek/begroeidterreindeel
-                "description": "placeholder",
+                "description": "Information on lush terrain: "
+                "https://geonovum.github.io/IMGeo-objectenhandboek/begroeidterreindeel",
                 "layer_names": ["bgt_begroeidterreindeel_V"],
                 "preprocessing_function": BegroeidTerreindeel(),
                 "group": "a",
@@ -171,29 +181,16 @@ preset_collection = {
                     "wijngaarden": 76,  # implies private property, hard to "repair" if damaged.
                 },
             },
-            "ondersteunend_waterdeel": {
-                # https://geonovum.github.io/IMGeo-objectenhandboek/ondersteunendwaterdeel
-                "description": "placeholder",
-                "layer_names": ["bgt_ondersteunendwaterdeel_V"],
-                "preprocessing_function": OndersteunendWaterdeel(),
-                "group": "a",
-                "weight_values": {
-                    # bgt_type
-                    "oever, slootkant": 13,
-                    "slik": 13,
-                },
-            },
             "pand": {
-                # https://geonovum.github.io/IMGeo-objectenhandboek/pand
-                "description": "placeholder",
+                "description": "Information on buildings: https://geonovum.github.io/IMGeo-objectenhandboek/pand",
                 "layer_names": ["bgt_pand_V"],
                 "preprocessing_function": Pand(),
                 "group": "a",
                 "weight_values": {"pand": 126},
             },
             "overig_bouwwerk": {
-                # https://geonovum.github.io/IMGeo-objectenhandboek/overigbouwwerk
-                "description": "placeholder",
+                "description": "Information on miscellaneous buildings: "
+                "https://geonovum.github.io/IMGeo-objectenhandboek/overigbouwwerk",
                 "layer_names": ["bgt_overigbouwwerk_V"],
                 "preprocessing_function": OverigBouwwerk(),
                 "group": "b",
@@ -210,19 +207,9 @@ preset_collection = {
                     "windturbine": 126,
                 },
             },
-            # TODO discuss: Could be used as a multilayer raster. It may be beneficial to place cables there? Can optionally be guessed from the "relative hoogteligging" in wegdeel.
-            # "tunneldeel": {
-            #     # https://geonovum.github.io/IMGeo-objectenhandboek/tunneldeel
-            #     "description": "placeholder",
-            #     "layer_names": ["bgt_tunneldeel_V"],
-            #     "preprocessing_function": None,
-            #     "constraint": False,
-            #     "group": "a",
-            #     "weight_values": {"tunnel": 0},
-            # },
             "kunstwerkdeel": {
-                # https://geonovum.github.io/IMGeo-objectenhandboek/kunstwerkdeel
-                "description": "placeholder",
+                "description": "Information on civil engineering structures: "
+                "https://geonovum.github.io/IMGeo-objectenhandboek/kunstwerkdeel",
                 "layer_names": ["bgt_kunstwerkdeel_V"],
                 "preprocessing_function": Kunstwerkdeel(),
                 "group": "a",
@@ -231,7 +218,7 @@ preset_collection = {
                     "gemaal": 126,
                     "hoogspanningsmast": 126,
                     "niet-bgt": 1,  # Delete these records if they exist.
-                    "perron": 126,
+                    "perron": 4,
                     "sluis": 126,
                     "steiger": 126,
                     "strekdam": 126,
@@ -239,16 +226,16 @@ preset_collection = {
                 },
             },
             "small_above_ground_obstacles": {
-                # https://geonovum.github.io/IMGeo-objectenhandboek/scheiding
-                # https://geonovum.github.io/IMGeo-objectenhandboek/bak
-                # https://geonovum.github.io/IMGeo-objectenhandboek/bord
-                # https://geonovum.github.io/IMGeo-objectenhandboek/kast
-                # https://geonovum.github.io/IMGeo-objectenhandboek/mast
-                # https://geonovum.github.io/IMGeo-objectenhandboek/paal
-                # https://geonovum.github.io/IMGeo-objectenhandboek/put
-                # https://geonovum.github.io/IMGeo-objectenhandboek/sensor
-                # https://geonovum.github.io/IMGeo-objectenhandboek/straatmeubilair
-                "description": "placeholder",
+                "description": "Information on small above ground obstacles: "
+                "https://geonovum.github.io/IMGeo-objectenhandboek/scheiding, "
+                "https://geonovum.github.io/IMGeo-objectenhandboek/bak,"
+                "https://geonovum.github.io/IMGeo-objectenhandboek/bord,"
+                "https://geonovum.github.io/IMGeo-objectenhandboek/kast,"
+                "https://geonovum.github.io/IMGeo-objectenhandboek/mast,"
+                "https://geonovum.github.io/IMGeo-objectenhandboek/paal,"
+                "https://geonovum.github.io/IMGeo-objectenhandboek/put,"
+                "https://geonovum.github.io/IMGeo-objectenhandboek/sensor,"
+                "https://geonovum.github.io/IMGeo-objectenhandboek/straatmeubilair,",
                 # The order of layers matter here, first two must be bgt_scheiding.
                 "layer_names": [
                     "bgt_scheiding_V",
@@ -367,8 +354,8 @@ preset_collection = {
                 },
             },
             "vegetation_object": {
-                # https://geonovum.github.io/IMGeo-objectenhandboek/vegetatieobject
-                "description": "placeholder",
+                "description": "Information on seperate vegetation objects such as trees or hedges: "
+                "https://geonovum.github.io/IMGeo-objectenhandboek/vegetatieobject",
                 "layer_names": ["bgt_vegetatieobject_P", "bgt_vegetatieobject_V"],
                 "preprocessing_function": VegetationObject(),
                 "group": "b",
@@ -390,7 +377,7 @@ preset_collection = {
                     # bgt_type
                     "kering": 10,  # Dykes, all other features of bgt_functioneelgebied are removed.
                     "natura2000": 10,
-                    # TODO add these datasources and expand test in mcda_vector_raster_test.py
+                    # Possible extra (paid) data which is relevant to utility routing.
                     # "Aardkundig_monument": 1,
                     # "Archeologisch_monument": 1,
                     # "niet_gesprongen_explosieven_wo2": 1,
@@ -401,7 +388,7 @@ preset_collection = {
             },
             "existing_utilities": {
                 # TenneT, Alliander, Gasunie.
-                "description": "Existing utility assets for gas, electricity.",
+                "description": "Existing utility assets for gas and electricity.",
                 "layer_names": [
                     "hoogspanningskabel_bovengronds",
                     "hoogspanningskabel_ondergronds",
@@ -423,7 +410,7 @@ preset_collection = {
                 },
             },
             "existing_substations": {
-                "description": "Existing substations.",
+                "description": "Existing electricity substations.",
                 "layer_names": ["alliander_middenspanningsstation"],
                 "preprocessing_function": ExistingSubstations(),
                 "group": "a",
