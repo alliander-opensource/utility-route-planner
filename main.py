@@ -100,7 +100,7 @@ if __name__ == "__main__":
 
     reset_geopackage(Config.PATH_GEOPACKAGE_LCPA_OUTPUT, truncate=True)
 
-    cases_to_run = [3]  # 0/1/2/3/4
+    cases_to_run = [0, 1, 2, 3, 4]  # 0/1/2/3/4
     for case in cases_to_run:
         geopackage, layer_project_area, human_designed_route_name, raster_name_prefix, stops = cases[case]
         human_designed_route = gpd.read_file(geopackage, layer=human_designed_route_name).iloc[0].geometry
@@ -115,5 +115,5 @@ if __name__ == "__main__":
             route_stops,
             human_designed_route,
             raster_name_prefix,
-            compute_rasters_in_parallel=False,
+            compute_rasters_in_parallel=True,
         )
