@@ -63,14 +63,15 @@ class RouteEvaluationMetrics:
             self.route_sota, self.path_cost_surface
         )
 
-        # if self.project_area.area > 0:
-        #     logger.info(f"Project area size is: {round(self.project_area.area / 10000)} hectare.")
-        #     self.n_nodes, self.n_edges = self.get_number_of_nodes_edges(self.path_cost_surface, self.project_area)
-        #     logger.info(f"Number of nodes for SOTA: {self.n_nodes}.")
-        #     logger.info(f"Number of edges for SOTA: {self.n_edges}.")
-        logger.info(
-            f"MCDA metrics on processed criteria:\n{self.mcda_metrics.sort_values('area_m2', ascending=False).to_string(index=False)}"
-        )
+        if self.project_area.area > 0:
+            logger.info(f"Project area size is: {round(self.project_area.area / 10000)} hectare.")
+            self.n_nodes, self.n_edges = self.get_number_of_nodes_edges(self.path_cost_surface, self.project_area)
+            logger.info(f"Number of nodes for SOTA: {self.n_nodes}.")
+            logger.info(f"Number of edges for SOTA: {self.n_edges}.")
+        if not self.mcda_metrics.empty:
+            logger.info(
+                f"MCDA metrics on processed criteria:\n{self.mcda_metrics.sort_values('area_m2', ascending=False).to_string(index=False)}"
+            )
         logger.info(f"Cost-surface used has a shape {raster_shape} and a cell size of {cell_size:.2f} meters.")
         logger.info(f"Route SOTA length: {round(self.route_sota.length)} meters.")
         logger.info(f"Route SOTA relative cost SOTA: {round(self.route_relative_cost_sota)}.")
