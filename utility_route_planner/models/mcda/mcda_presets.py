@@ -42,6 +42,7 @@ preset_collection = {
                 "layer_names": ["bgt_waterdeel_V"],
                 "preprocessing_function": Waterdeel(),
                 "group": "a",
+                "columns_to_reclassify": ["class", "plus-type"],
                 "weight_values": {
                     # Column "class"
                     "greppel, droge sloot": 13,
@@ -61,13 +62,14 @@ preset_collection = {
                 "geometry_values": {"zee": 20},
             },
             "ondersteunend_waterdeel": {
-                "description": "Information on complementary bits of water: "
+                "description": "Information on complementary bits related to water: "
                 "https://geonovum.github.io/IMGeo-objectenhandboek/ondersteunendwaterdeel",
                 "layer_names": ["bgt_ondersteunendwaterdeel_V"],
                 "preprocessing_function": OndersteunendWaterdeel(),
                 "group": "a",
+                "columns_to_reclassify": ["class"],
                 "weight_values": {
-                    # bgt_type
+                    # class
                     "oever, slootkant": 13,
                     "slik": 13,
                 },
@@ -77,8 +79,9 @@ preset_collection = {
                 "layer_names": ["bgt_wegdeel_V"],
                 "preprocessing_function": Wegdeel(),
                 "group": "a",
+                "columns_to_reclassify": ["function", "surfaceMaterial"],
                 "weight_values": {
-                    # Column "bgt_functie"
+                    # Column "function"
                     "baan voor vliegverkeer": 126,
                     "fietspad": 4,
                     "inrit": 5,
@@ -95,7 +98,7 @@ preset_collection = {
                     "voetpad": 3,
                     "voetpad op trap": 3,
                     "woonerf": 3,
-                    # Column bgt_fysiekvoorkomen
+                    # Column surfaceMaterial
                     "gesloten verharding": 33,
                     "half verhard": 4,
                     "onverhard": 3,
@@ -104,16 +107,17 @@ preset_collection = {
                 },
             },
             "ondersteunend_wegdeel": {
-                "description": "Information on complementary bits of roads: "
+                "description": "Information on complementary related to roads: "
                 "https://geonovum.github.io/IMGeo-objectenhandboek/ondersteunendwegdeel",
                 "layer_names": ["bgt_ondersteunendwegdeel_V"],
                 "preprocessing_function": OndersteunendWegdeel(),
                 "group": "a",
+                "columns_to_reclassify": ["function", "surfaceMaterial"],
                 "weight_values": {
-                    # bgt_functie
+                    # function
                     "berm": 2,
                     "verkeerseiland": 126,
-                    # bgt_fysiekvoorkomen
+                    # surfaceMaterial
                     "gesloten verharding": 33,
                     "groenvoorziening": 3,
                     "half verhard": 4,
@@ -127,6 +131,7 @@ preset_collection = {
                 "layer_names": ["bgt_onbegroeidterreindeel_V"],
                 "preprocessing_function": OnbegroeidTerreindeel(),
                 "group": "a",
+                "columns_to_reclassify": ["bgt-fysiekVoorkomen"],
                 "weight_values": {
                     # bgt_fysiekvoorkomen
                     "erf": 76,  # is now used as an approximation if ground is public or privately owned.
@@ -143,8 +148,9 @@ preset_collection = {
                 "layer_names": ["bgt_begroeidterreindeel_V"],
                 "preprocessing_function": BegroeidTerreindeel(),
                 "group": "a",
+                "columns_to_reclassify": ["class", "plus-fysiekVoorkomen"],
                 "weight_values": {
-                    # bgt_fysiekvoorkomen
+                    # class
                     "boomteelt": 76,  # implies private property
                     "bouwland": 76,  # implies private property
                     "duin": 67,
@@ -161,7 +167,7 @@ preset_collection = {
                     "naaldbos": 67,
                     "rietland": 67,
                     "struiken": 3,  # implies public property
-                    # plus_fysiekvoorkomen
+                    # plus-fysiekVoorkomenWegdeel
                     "akkerbouw": 76,  # implies private property
                     "bodembedekkers": 3,
                     "bollenteelt": 76,  # implies private property
@@ -194,8 +200,9 @@ preset_collection = {
                 "layer_names": ["bgt_overigbouwwerk_V"],
                 "preprocessing_function": OverigBouwwerk(),
                 "group": "b",
+                "columns_to_reclassify": ["bgt-type"],
                 "weight_values": {
-                    # bgt_type
+                    # bgt-type
                     "functie": 1,
                     "bassin": 1,
                     "bezinkbak": 1,
@@ -213,8 +220,9 @@ preset_collection = {
                 "layer_names": ["bgt_kunstwerkdeel_V"],
                 "preprocessing_function": Kunstwerkdeel(),
                 "group": "a",
+                "columns_to_reclassify": ["bgt-type"],
                 "weight_values": {
-                    # bgt_type
+                    # bgt-type
                     "gemaal": 126,
                     "hoogspanningsmast": 126,
                     "niet-bgt": 1,  # Delete these records if they exist.
@@ -251,6 +259,7 @@ preset_collection = {
                 ],
                 "preprocessing_function": SmallAboveGroundObstacles(),
                 "group": "b",
+                "columns_to_reclassify": ["bgt-type", "plus-type"],
                 "weight_values": {
                     # scheiding: bgt_type
                     "damwand": 126,
@@ -359,6 +368,7 @@ preset_collection = {
                 "layer_names": ["bgt_vegetatieobject_P", "bgt_vegetatieobject_V"],
                 "preprocessing_function": VegetationObject(),
                 "group": "b",
+                "columns_to_reclassify": ["plus-type"],
                 "weight_values": {
                     # plus_type
                     "haag": 3,
@@ -373,6 +383,7 @@ preset_collection = {
                 "layer_names": ["bgt_functioneelgebied_V", "natura2000"],
                 "preprocessing_function": ProtectedArea(),
                 "group": "b",
+                "columns_to_reclassify": ["type"],
                 "weight_values": {
                     # bgt_type
                     "kering": 10,  # Dykes, all other features of bgt_functioneelgebied are removed.
@@ -397,6 +408,7 @@ preset_collection = {
                 ],
                 "preprocessing_function": ExistingUtilities(),
                 "group": "b",
+                "columns_to_reclassify": ["asset_type"],
                 "weight_values": {
                     "hoogspanning_bovengronds": 4,  # TenneT & Alliander combined.
                     "hoogspanning_ondergronds": 51,  # TenneT & Alliander combined.

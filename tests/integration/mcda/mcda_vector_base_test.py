@@ -2,12 +2,13 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-from unittest.mock import Mock
+from unittest.mock import Mock, MagicMock
 
 import geopandas as gpd
 import numpy as np
 
 import pytest
+import shapely
 
 from settings import Config
 from utility_route_planner.models.mcda.exceptions import InvalidSuitabilityValue, UnassignedValueFoundDuringReclassify
@@ -111,3 +112,79 @@ def test_missing_values(input_which_should_raise):
     wrong_input = input_which_should_raise
     with pytest.raises(UnassignedValueFoundDuringReclassify):
         validate_values_to_reclassify(values_to_reclassify, wrong_input)
+
+
+class DummyPreprocessor(VectorPreprocessorBase):
+    criterion = "dummy_criterion"
+
+    def specific_preprocess(self, prepared_data, criterion):
+        pass
+
+
+class TestGetMetrics:
+    @pytest.fixture
+    def get_dummy_criterion(self):
+        return MagicMock(spec=RasterPresetCriteria)
+
+    def test_get_statistics_invalid_column(self, get_dummy_criterion):
+        dummy_criterion = get_dummy_criterion
+        dummy_criterion.columns_to_reclassify = ["missing_col"]
+        dummy_criterion.layer_names = ["layer1"]
+
+        gdf = gpd.GeoDataFrame({"geometry": [None], "col1": ["A"], "suitability_value": [1]})
+        preprocessor = DummyPreprocessor()
+        with pytest.raises(ValueError):
+            preprocessor.get_statistics(get_dummy_criterion, gdf)
+
+    def test_get_statistics_no_reclassify(self, get_dummy_criterion):
+        mock_criterion = get_dummy_criterion
+        mock_criterion.columns_to_reclassify = []
+        mock_criterion.layer_names = ["layer1"]
+        gdf = gpd.GeoDataFrame({"geometry": [], "suitability_value": []})
+
+        preprocessor = DummyPreprocessor()
+        result, present_weights = preprocessor.get_statistics(mock_criterion, gdf)
+        assert "criterion" in result.columns
+        assert "weight_key" in result.columns
+        assert "area_m2" in result.columns
+        assert present_weights == ["dummy_criterion"]
+
+    def test_get_statistics_one_reclassify_column(self, get_dummy_criterion):
+        dummy_criterion = get_dummy_criterion
+        dummy_criterion.columns_to_reclassify = ["col1"]
+        dummy_criterion.layer_names = ["layer1"]
+        gdf = gpd.GeoDataFrame(
+            {
+                "geometry": [shapely.Point(0, 0).buffer(10), shapely.Point(0, 0).buffer(10)],
+                "col1": ["A", "B"],
+                "suitability_value": [1, 2],
+            }
+        )
+        preprocessor = DummyPreprocessor()
+        result, present_weights = preprocessor.get_statistics(dummy_criterion, gdf)
+        assert set(result["weight_key"]) == {"A", "B"}
+        assert set(present_weights) == {"A", "B"}
+        assert all(pytest.approx(313, rel=1e-2) == area for area in result["area_m2"])
+
+    def test_get_statistics_two_reclassify_columns(self, get_dummy_criterion):
+        dummy_criterion = get_dummy_criterion
+        get_dummy_criterion.columns_to_reclassify = ["col1", "col2"]
+        get_dummy_criterion.layer_names = ["layer1"]
+        gdf = gpd.GeoDataFrame(
+            {"geometry": [None, None], "col1": ["A", "B"], "col2": ["X", "Y"], "suitability_value": [1, 2]}
+        )
+        preprocessor = DummyPreprocessor()
+        result, present_weights = preprocessor.get_statistics(dummy_criterion, gdf)
+        assert set(result["weight_key"]) == {"A: X", "B: Y"}
+        assert set(present_weights) == {"A", "B", "X", "Y"}
+
+    def test_get_statistics_three_reclassify_columns_raises(self, get_dummy_criterion):
+        dummy_criterion = get_dummy_criterion
+        dummy_criterion.columns_to_reclassify = ["col1", "col2", "col3"]
+        dummy_criterion.layer_names = ["layer1"]
+        gdf = gpd.GeoDataFrame(
+            {"geometry": [None], "col1": ["A"], "col2": ["B"], "col3": ["C"], "suitability_value": [1]}
+        )
+        preprocessor = DummyPreprocessor()
+        with pytest.raises(ValueError):
+            preprocessor.get_statistics(dummy_criterion, gdf)

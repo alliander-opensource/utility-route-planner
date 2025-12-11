@@ -7,6 +7,7 @@ from concurrent.futures import as_completed
 from concurrent.futures.process import ProcessPoolExecutor
 from functools import cached_property
 
+import pandas as pd
 import shapely
 
 from utility_route_planner.models.mcda.mcda_datastructures import McdaRasterSettings, RasterizedCriterion
@@ -49,6 +50,9 @@ class McdaCostSurfaceEngine:
         self.project_area_geometry = project_area_geometry
         self.project_area_grid = get_empty_geodataframe()
 
+        self.metrics: pd.DataFrame = pd.DataFrame()
+        self.processed_weight_keys: list = []
+
     @cached_property
     def number_of_criteria(self):
         return len(self.raster_preset.criteria)
@@ -62,19 +66,34 @@ class McdaCostSurfaceEngine:
         logger.info(
             f"Processing {self.number_of_criteria} criteria using geopackage: {self.raster_preset.general.path_input_geopackage}"
         )
+        present_weight_dfs = []
         for idx, criterion in enumerate(self.raster_preset.criteria):
             logger.info(f"Processing criteria number {idx + 1} of {self.number_of_criteria}.")
-            is_processed, processed_gdf = self.raster_preset.criteria[criterion].preprocessing_function.execute(
-                self.raster_preset.general, self.raster_preset.criteria[criterion]
-            )
+            is_processed, processed_gdf, df_present_weights, processed_weight_keys = self.raster_preset.criteria[
+                criterion
+            ].preprocessing_function.execute(self.raster_preset.general, self.raster_preset.criteria[criterion])
             if is_processed:
                 self.processed_vectors[criterion] = processed_gdf
+                present_weight_dfs.append(df_present_weights)
+                self.processed_weight_keys.extend(processed_weight_keys)
             else:
-                assert processed_gdf.empty
+                if not processed_gdf.empty:
+                    raise ValueError(f"Criterion {criterion} was not processed but returned a non-empty geodataframe.")
                 self.unprocessed_criteria_names.add(criterion)
 
         self.processed_criteria_names = set(self.raster_preset.criteria.keys()).difference(
             set(self.unprocessed_criteria_names)
+        )
+
+        self.metrics = pd.concat(present_weight_dfs, ignore_index=True)
+        self.metrics["area_m2"] = self.metrics["area_m2"].round(0).astype(int)
+        # We ignore 5 weights used for filtering: waardeOnbekend, niet-bgt both occurring twice and group c.
+        total_weights = -5
+        for criterion in self.raster_preset.criteria:
+            total_weights += len(self.raster_preset.criteria[criterion].weight_values.keys())
+
+        logger.info(
+            f"Finished processing vectors with a total of {len(self.processed_weight_keys)} occurring weights out of {total_weights} possible."
         )
 
     @time_function
