@@ -6,6 +6,7 @@ from unittest.mock import Mock, MagicMock
 
 import geopandas as gpd
 import numpy as np
+import pandas as pd
 
 import pytest
 import shapely
@@ -147,6 +148,7 @@ class TestGetMetrics:
         assert "criterion" in result.columns
         assert "weight_key" in result.columns
         assert "area_m2" in result.columns
+        assert "suitability_value" in result.columns
         assert present_weights == ["dummy_criterion"]
 
     def test_get_statistics_one_reclassify_column(self, get_dummy_criterion):
@@ -162,21 +164,42 @@ class TestGetMetrics:
         )
         preprocessor = DummyPreprocessor()
         result, present_weights = preprocessor.get_statistics(dummy_criterion, gdf)
-        assert set(result["weight_key"]) == {"A", "B"}
-        assert set(present_weights) == {"A", "B"}
-        assert all(pytest.approx(313, rel=1e-2) == area for area in result["area_m2"])
+        expected_df = pd.DataFrame(
+            {
+                "criterion": ["dummy_criterion", "dummy_criterion"],
+                "weight_key": ["A", "B"],
+                "suitability_value": [1, 2],
+                "area_m2": [313.6548490545941, 313.6548490545941],
+            }
+        )
+        pd.testing.assert_frame_equal(result.reset_index(drop=True), expected_df, check_dtype=False)
 
     def test_get_statistics_two_reclassify_columns(self, get_dummy_criterion):
         dummy_criterion = get_dummy_criterion
         get_dummy_criterion.columns_to_reclassify = ["col1", "col2"]
         get_dummy_criterion.layer_names = ["layer1"]
+        example_polygon1 = shapely.Polygon([(0, 0), (0, 10), (10, 10), (10, 0), (0, 0)])
+        example_polygon2 = shapely.Polygon([(5, 5), (5, 15), (15, 15), (15, 5), (5, 5)])
         gdf = gpd.GeoDataFrame(
-            {"geometry": [None, None], "col1": ["A", "B"], "col2": ["X", "Y"], "suitability_value": [1, 2]}
+            {
+                "geometry": [example_polygon1, example_polygon1, example_polygon2],
+                "col1": ["A", "B", "B"],
+                "col2": ["X", "Y", "Y"],
+                "suitability_value": [1, 2, 2],
+            }
         )
         preprocessor = DummyPreprocessor()
         result, present_weights = preprocessor.get_statistics(dummy_criterion, gdf)
-        assert set(result["weight_key"]) == {"A: X", "B: Y"}
-        assert set(present_weights) == {"A", "B", "X", "Y"}
+
+        expected_df = pd.DataFrame(
+            {
+                "criterion": ["dummy_criterion", "dummy_criterion"],
+                "weight_key": ["A: X", "B: Y"],
+                "suitability_value": [1, 2],
+                "area_m2": [100, 175.0],
+            }
+        )
+        pd.testing.assert_frame_equal(result.reset_index(drop=True), expected_df, check_dtype=False)
 
     def test_get_statistics_three_reclassify_columns_raises(self, get_dummy_criterion):
         dummy_criterion = get_dummy_criterion

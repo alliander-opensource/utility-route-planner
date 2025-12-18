@@ -108,8 +108,9 @@ class VectorPreprocessorBase(abc.ABC):
     def get_statistics(self, criterion: RasterPresetCriteria, processed_gdf: pd.DataFrame) -> tuple[pd.DataFrame, list]:
         """Get some rudimentary statistics on present weights in the processed criteria gdf."""
         columns_to_reclassify = criterion.columns_to_reclassify or []
-        if len(columns_to_reclassify) == 0:
-            weights_m2 = processed_gdf.dissolve().area
+        columns_to_reclassify.append("suitability_value")
+        if len(columns_to_reclassify) == 1:
+            weights_m2 = processed_gdf.dissolve(by=columns_to_reclassify).area
             present_weights = [self.criterion]
         else:
             for column in columns_to_reclassify:
@@ -128,14 +129,14 @@ class VectorPreprocessorBase(abc.ABC):
         df_present_weights = weights_m2.reset_index()
         df_present_weights.rename(columns={0: "area_m2"}, inplace=True)
         match len(columns_to_reclassify):
-            case 0:
-                df_present_weights["weight_key"] = self.criterion
             case 1:
-                df_present_weights["weight_key"] = df_present_weights[columns_to_reclassify[0]]
+                df_present_weights["weight_key"] = self.criterion
             case 2:
-                df_present_weights["weight_key"] = df_present_weights[columns_to_reclassify].agg(": ".join, axis=1)
+                df_present_weights["weight_key"] = df_present_weights[columns_to_reclassify[:1]]
+            case 3:
+                df_present_weights["weight_key"] = df_present_weights[columns_to_reclassify[:2]].agg(": ".join, axis=1)
             case _:
                 raise ValueError("More than 2 columns to reclassify is not supported for statistics.")
 
         df_present_weights["criterion"] = self.criterion
-        return df_present_weights[["criterion", "weight_key", "area_m2"]], present_weights
+        return df_present_weights[["criterion", "weight_key", "suitability_value", "area_m2"]], present_weights
