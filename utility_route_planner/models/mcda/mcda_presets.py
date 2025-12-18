@@ -226,7 +226,7 @@ preset_collection = {
                     "gemaal": 126,
                     "hoogspanningsmast": 126,
                     "niet-bgt": 1,  # Delete these records if they exist.
-                    "perron": 4,
+                    "perron": 126,
                     "sluis": 126,
                     "steiger": 126,
                     "strekdam": 126,
