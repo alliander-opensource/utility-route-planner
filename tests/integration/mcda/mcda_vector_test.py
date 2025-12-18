@@ -1302,3 +1302,17 @@ class TestVectorPreprocessing:
             check_index=False,
         )
         assert reclassified_gdf.geom_type.unique().tolist() == ["Polygon"]
+
+
+def test_get_vector_metrics_benchmark():
+    mcda_engine = McdaCostSurfaceEngine(
+        Config.RASTER_PRESET_NAME_BENCHMARK, Config.PYTEST_PATH_GEOPACKAGE_MCDA, shapely.Point(1, 1).buffer(100)
+    )
+    df1 = pd.DataFrame({"area_m2": [1.2, 2.5, 3.7]})
+    df2 = pd.DataFrame({"area_m2": [4.1, 5.9]})
+    present_weight_dfs = [df1, df2]
+    n_total_weights = mcda_engine.get_vector_metrics(present_weight_dfs)
+
+    assert n_total_weights == 195  # As per the benchmark preset configuration
+    df_expected = pd.DataFrame({"area_m2": [1, 2, 4, 4, 6]})
+    pd.testing.assert_frame_equal(df_expected.reset_index(drop=True), pd.DataFrame({"area_m2": [1, 2, 4, 4, 6]}))

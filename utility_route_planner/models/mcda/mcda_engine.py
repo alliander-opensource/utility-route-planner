@@ -50,7 +50,7 @@ class McdaCostSurfaceEngine:
         self.project_area_geometry = project_area_geometry
         self.project_area_grid = get_empty_geodataframe()
 
-        self.metrics: pd.DataFrame = pd.DataFrame()
+        self.processed_vector_metrics: pd.DataFrame = pd.DataFrame()
         self.processed_weight_keys: list = []
 
     @cached_property
@@ -85,15 +85,10 @@ class McdaCostSurfaceEngine:
             set(self.unprocessed_criteria_names)
         )
 
-        self.metrics = pd.concat(present_weight_dfs, ignore_index=True)
-        self.metrics["area_m2"] = self.metrics["area_m2"].round(0).astype(int)
-        # We ignore 5 weights used for filtering: waardeOnbekend, niet-bgt both occurring twice and group c.
-        total_weights = -5
-        for criterion in self.raster_preset.criteria:
-            total_weights += len(self.raster_preset.criteria[criterion].weight_values.keys())
+        n_total_weights = self.get_vector_metrics(present_weight_dfs)
 
         logger.info(
-            f"Finished processing vectors with a total of {len(self.processed_weight_keys)} occurring weights out of {total_weights} possible."
+            f"Finished processing vectors considering {len(self.processed_weight_keys)} weights of a total of {n_total_weights} possible weights."
         )
 
     @time_function
@@ -191,3 +186,27 @@ class McdaCostSurfaceEngine:
         rasterized_vector = rasterize_vector_data(criterion, gdf, raster_settings)
         raster_criteria = self.raster_preset.criteria[criterion]
         return RasterizedCriterion(criterion, rasterized_vector, raster_criteria.group)
+
+    def get_vector_metrics(self, present_weight_dfs: list[pd.DataFrame]) -> int:
+        """
+        Get the total number of possible weights considered, considering the used criteria.
+        E.g., if waterdeel is processed, most of the time weight "zee" is not present in the project area.
+        """
+        self.processed_vector_metrics = pd.concat(present_weight_dfs, ignore_index=True)
+        self.processed_vector_metrics["area_m2"] = self.processed_vector_metrics["area_m2"].round(0).astype(int)
+
+        # We ignore 4 'weights' used for filtering. These do not contribute to the MCDA cost-surface.
+        n_total_weights = 0
+        if "small_above_ground_obstacles" in self.raster_preset.criteria:
+            n_total_weights -= 1  # small_above_ground_obstacles has value 'niet-bgt' used for deleting certain records.
+        if "vegetation_object" in self.raster_preset.criteria:
+            n_total_weights -= 1  # vegetation_object has value 'waardeOnbekend' used for deleting certain records.
+        if "overig_bouwwerk" in self.raster_preset.criteria:
+            n_total_weights -= 1  # overig_bouwwerk has value 'niet-bgt' used for deleting certain records.
+        if "kunstwerkdeel" in self.raster_preset.criteria:
+            n_total_weights -= 1  # kunstwerkdeel has value 'niet-bgt' used for deleting certain records.
+
+        for criterion in self.raster_preset.criteria:
+            n_total_weights += len(self.raster_preset.criteria[criterion].weight_values.keys())
+
+        return n_total_weights
