@@ -37,22 +37,22 @@ class VectorPreprocessorBase(abc.ABC):
     @time_function
     def execute(
         self, general: RasterPresetGeneral, criterion: RasterPresetCriteria
-    ) -> tuple[bool, gpd.GeoDataFrame, pd.DataFrame, list]:
+    ) -> tuple[bool, gpd.GeoDataFrame, pd.DataFrame]:
         """Run all methods in order for a criteria returning the processed geodataframe with suitability values."""
         logger.info(f"Start preprocessing: {self.criterion}.")
 
         prepared_gdfs = self.prepare_input_data(general.project_area_geometry, criterion, general.path_input_geopackage)
         if len(prepared_gdfs) == 1 and prepared_gdfs[0].empty:
-            return False, get_empty_geodataframe(), pd.DataFrame(), []
+            return False, get_empty_geodataframe(), pd.DataFrame()
         processed_gdf = self.specific_preprocess(prepared_gdfs, criterion)
         if not self.is_valid_result(processed_gdf):
-            return False, get_empty_geodataframe(), pd.DataFrame(), []
+            return False, get_empty_geodataframe(), pd.DataFrame()
 
-        df_present_weights, present_weight_keys = self.get_statistics(criterion, processed_gdf)
+        df_present_weights = self.get_statistics(criterion, processed_gdf)
 
         self.write_to_file(general.prefix, processed_gdf)
 
-        return True, processed_gdf, df_present_weights, present_weight_keys
+        return True, processed_gdf, df_present_weights
 
     @staticmethod
     def prepare_input_data(
@@ -105,28 +105,21 @@ class VectorPreprocessorBase(abc.ABC):
         """Write to the geopackage for debugging and rasterizing."""
         write_results_to_geopackage(Config.PATH_GEOPACKAGE_MCDA_OUTPUT, validated_gdf, prefix + self.criterion)
 
-    def get_statistics(self, criterion: RasterPresetCriteria, processed_gdf: pd.DataFrame) -> tuple[pd.DataFrame, list]:
+    def get_statistics(self, criterion: RasterPresetCriteria, processed_gdf: pd.DataFrame) -> pd.DataFrame:
         """Get some rudimentary statistics on present weights in the processed criteria gdf."""
         columns_to_reclassify = criterion.columns_to_reclassify or []
         columns_to_reclassify.append("suitability_value")
-        if len(columns_to_reclassify) == 1:
-            weights_m2 = processed_gdf.dissolve(by=columns_to_reclassify).area
-            present_weights = [self.criterion]
-        else:
+        if len(columns_to_reclassify) > 1:
             for column in columns_to_reclassify:
                 if column not in processed_gdf.columns:
                     raise ValueError(
                         f"Columns to reclassify: {column} not in processed gdf columns in criterion {self.criterion}."
+                        f"Check the preprocessing function if the column is created/retained correctly."
                     )
 
-            weights_m2 = processed_gdf.dissolve(by=columns_to_reclassify).area
+        weights_per_m2 = processed_gdf.dissolve(by=columns_to_reclassify).area
 
-            if len(columns_to_reclassify) > 1:
-                present_weights = [item for tup in weights_m2.index for item in tup]
-            else:
-                present_weights = weights_m2.index.tolist()
-
-        df_present_weights = weights_m2.reset_index()
+        df_present_weights = weights_per_m2.reset_index()
         df_present_weights.rename(columns={0: "area_m2"}, inplace=True)
         match len(columns_to_reclassify):
             case 1:
@@ -139,4 +132,4 @@ class VectorPreprocessorBase(abc.ABC):
                 raise ValueError("More than 2 columns to reclassify is not supported for statistics.")
 
         df_present_weights["criterion"] = self.criterion
-        return df_present_weights[["criterion", "weight_key", "suitability_value", "area_m2"]], present_weights
+        return df_present_weights[["criterion", "weight_key", "suitability_value", "area_m2"]]

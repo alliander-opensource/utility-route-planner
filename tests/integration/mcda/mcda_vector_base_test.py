@@ -144,12 +144,11 @@ class TestGetMetrics:
         gdf = gpd.GeoDataFrame({"geometry": [], "suitability_value": []})
 
         preprocessor = DummyPreprocessor()
-        result, present_weights = preprocessor.get_statistics(mock_criterion, gdf)
+        result = preprocessor.get_statistics(mock_criterion, gdf)
         assert "criterion" in result.columns
         assert "weight_key" in result.columns
         assert "area_m2" in result.columns
         assert "suitability_value" in result.columns
-        assert present_weights == ["dummy_criterion"]
 
     def test_get_statistics_one_reclassify_column(self, get_dummy_criterion):
         dummy_criterion = get_dummy_criterion
@@ -163,7 +162,7 @@ class TestGetMetrics:
             }
         )
         preprocessor = DummyPreprocessor()
-        result, present_weights = preprocessor.get_statistics(dummy_criterion, gdf)
+        result = preprocessor.get_statistics(dummy_criterion, gdf)
         expected_df = pd.DataFrame(
             {
                 "criterion": ["dummy_criterion", "dummy_criterion"],
@@ -189,7 +188,7 @@ class TestGetMetrics:
             }
         )
         preprocessor = DummyPreprocessor()
-        result, present_weights = preprocessor.get_statistics(dummy_criterion, gdf)
+        result = preprocessor.get_statistics(dummy_criterion, gdf)
 
         expected_df = pd.DataFrame(
             {

@@ -51,7 +51,6 @@ class McdaCostSurfaceEngine:
         self.project_area_grid = get_empty_geodataframe()
 
         self.processed_vector_metrics: pd.DataFrame = pd.DataFrame()
-        self.processed_weight_keys: list = []
 
     @cached_property
     def number_of_criteria(self):
@@ -69,13 +68,12 @@ class McdaCostSurfaceEngine:
         present_weight_dfs = []
         for idx, criterion in enumerate(self.raster_preset.criteria):
             logger.info(f"Processing criteria number {idx + 1} of {self.number_of_criteria}.")
-            is_processed, processed_gdf, df_present_weights, processed_weight_keys = self.raster_preset.criteria[
+            is_processed, processed_gdf, df_present_weights = self.raster_preset.criteria[
                 criterion
             ].preprocessing_function.execute(self.raster_preset.general, self.raster_preset.criteria[criterion])
             if is_processed:
                 self.processed_vectors[criterion] = processed_gdf
                 present_weight_dfs.append(df_present_weights)
-                self.processed_weight_keys.extend(processed_weight_keys)
             else:
                 if not processed_gdf.empty:
                     raise ValueError(f"Criterion {criterion} was not processed but returned a non-empty geodataframe.")
@@ -88,7 +86,7 @@ class McdaCostSurfaceEngine:
         n_total_weights = self.get_vector_metrics(present_weight_dfs)
 
         logger.info(
-            f"Finished processing vectors considering {len(self.processed_weight_keys)} weights of a total of {n_total_weights} possible weights."
+            f"Finished processing vectors considering {len(self.processed_vector_metrics)} weights of a total of {n_total_weights} possible weights."
         )
 
     @time_function
