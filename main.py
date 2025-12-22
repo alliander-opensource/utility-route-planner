@@ -54,7 +54,7 @@ def run_mcda_lcpa(
         path_suitability_raster,
         human_designed_route,
         project_area_geometry,
-        mcda_engine.metrics,
+        mcda_engine.processed_vector_metrics,
     )
     route_evaluation_metrics.get_route_evaluation_metrics()
 
