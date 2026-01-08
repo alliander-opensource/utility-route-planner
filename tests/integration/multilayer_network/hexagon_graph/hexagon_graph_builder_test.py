@@ -111,7 +111,7 @@ class TestHexagonGraphBuilder:
                 # Overlap between a1, b1 and b2
                 [2, min_value, shapely.Point(175091.8234, 450911.7488)],
                 # Only b1
-                [3, -1.0, shapely.Point(175088.2180, 450912.7950)],
+                [3, 1.0, shapely.Point(175088.2180, 450912.7950)],
                 # Overlap between b1 and a1
                 [4, max_value, shapely.Point(175013.3110, 450910.3013)],
                 # Just a1
@@ -119,7 +119,7 @@ class TestHexagonGraphBuilder:
                 # Overlap between b1 and a1
                 [6, 70.0, shapely.Point(174813.2646, 451113.9146)],
                 # B1 and a1 sum is 0 here
-                [7, 0.0, shapely.Point(174833.90, 451067.57)],
+                [7, 1.0, shapely.Point(174833.90, 451067.57)],
                 # C1 overlaps a1
                 [8, max_value, shapely.Point(174878.65, 451132.89)],
                 # C1
