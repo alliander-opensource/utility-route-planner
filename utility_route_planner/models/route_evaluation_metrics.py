@@ -74,7 +74,7 @@ class RouteEvaluationMetrics:
             )
         logger.info(f"Cost-surface used has a shape {raster_shape} and a cell size of {cell_size:.2f} meters.")
         logger.info(f"Route SOTA length: {round(self.route_sota.length)} meters.")
-        logger.info(f"Route SOTA relative cost SOTA: {round(self.route_relative_cost_sota)}.")
+        logger.info(f"Route SOTA relative cost: {round(self.route_relative_cost_sota)}.")
         if self.route_human.length > 0:
             logger.info(f"Route human length: {round(self.route_human.length)} meters.")
             self.route_relative_cost_human, cell_size, _ = self.get_route_cost_estimation(
@@ -87,6 +87,7 @@ class RouteEvaluationMetrics:
             )
             logger.info(f"SOTA route overlaps: {self.route_similarity_sota}% with the human route.")
             logger.info(f"Human route overlaps: {self.route_similarity_human}% with the SOTA route.")
+            logger.info(f"Average similarity: {(self.route_similarity_sota + self.route_similarity_human) / 2}%.")
 
     def get_route_cost_estimation(self, route: shapely.LineString, path_cost_surface: str) -> tuple:
         with rasterio.Env():
