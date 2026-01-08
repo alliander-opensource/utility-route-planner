@@ -105,8 +105,8 @@ class TestConstructHexagonalGridForBoundingBox:
     @staticmethod
     def check_grid_spacing(hexagon_size: float, x_coordinates: np.ndarray, y_coordinates: np.ndarray):
         # Set expected spacing between hexagon points based on known equations.
-        expected_horizontal_spacing = 3 / 2 * hexagon_size
-        expected_vertical_spacing = math.sqrt(3) * hexagon_size
+        expected_horizontal_spacing = -3 / 2 * hexagon_size
+        expected_vertical_spacing = -math.sqrt(3) * hexagon_size
 
         # Verify that spacing between x-coordinates of hexagon center points equals the expected horizontal spacing
         x_spacing = np.diff(x_coordinates, axis=1)
@@ -119,10 +119,8 @@ class TestConstructHexagonalGridForBoundingBox:
         # Verify that y-coordinates of horizontally neighbouring hexagon center points are 1/2 of the expected vertical spacing
         # separated from each other. This is due to alternating offset of neighbouring hexagon points.
         y_horizontal_spacing = np.diff(y_coordinates, axis=1)
-        assert all(
-            y_space == pytest.approx(expected_vertical_spacing / 2, abs=1e-4)
-            for y_space in np.abs(y_horizontal_spacing)
-        )
+        expected_y_spacing = abs(expected_vertical_spacing) / 2
+        assert all(y_space == pytest.approx(expected_y_spacing, abs=1e-4) for y_space in np.abs(y_horizontal_spacing))
 
         # As every even column is offset by 1/2 the hexagon height, the horizontal spacing should always be negative. For
         # all odd columns, the sign should be positive
