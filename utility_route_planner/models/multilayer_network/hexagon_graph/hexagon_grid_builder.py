@@ -59,6 +59,11 @@ class HexagonGridBuilder:
         y_coordinates = np.arange(y_min, y_max, self.hexagon_height)
         x_matrix, y_matrix = np.meshgrid(x_coordinates, y_coordinates)
 
+        # Reverse order of matrices, as the coordinate system should be ordered using decreasing coordinates instead
+        # of increasing coordinates which is the numpy default
+        x_matrix = np.flip(x_matrix)
+        y_matrix = np.flip(y_matrix)
+
         # Every even column must be offset by half of the hexagon height to properly determine the vertical
         # position of the hexagon.
         y_matrix[:, ::2] += self.hexagon_height / 2

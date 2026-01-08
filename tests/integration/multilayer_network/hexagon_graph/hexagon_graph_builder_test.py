@@ -302,18 +302,6 @@ class TestHexagonGraphBuilderWithHeightLevels:
             "grassland": "a",
         }
 
-        # TODO continue here Djesse plot for debugging weird graph height bug
-        # hexagon_graph_builder = HexagonGraphBuilder(
-        #     project_area=project_area,
-        #     raster_groups=raster_groups,
-        #     preprocessed_vectors=processed_criteria_vectors,
-        #     hexagon_size=self.hexagon_size,
-        # )
-        # graph = hexagon_graph_builder.build_graph()
-        # nodes, edges = convert_hexagon_graph_to_gdfs(graph)
-        # write_results_to_geopackage(self.out, nodes, "pytest_bug_nodes", overwrite=True)
-        # write_results_to_geopackage(self.out, edges, "pytest_bug_edges", overwrite=True)
-
         hexagon_graph_composer, merged_graph = self._build_and_merge_graphs(
             debug,
             processed_criteria_per_height_level,
