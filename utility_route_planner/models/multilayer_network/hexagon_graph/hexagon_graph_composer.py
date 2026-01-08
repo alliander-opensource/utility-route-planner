@@ -90,7 +90,9 @@ class HexagonGraphComposer:
                     predicate="dwithin",
                 )
 
-                gdf_main_nodes_to_outer_subgraph_nodes = self.validate_main_to_subgraph_pairs(gdf_main_nodes_to_outer_subgraph_nodes)
+                gdf_main_nodes_to_outer_subgraph_nodes = self.validate_main_to_subgraph_pairs(
+                    gdf_main_nodes_to_outer_subgraph_nodes
+                )
 
                 edges_to_add = [
                     (
@@ -148,14 +150,18 @@ class HexagonGraphComposer:
         if gdf_main_nodes_to_outer_subgraph_nodes["node_id_right"].isna().any():
             logger.warning("Some outer subgraph nodes could not be connected to the main graph nodes.")
             na_rows = gdf_main_nodes_to_outer_subgraph_nodes[
-                gdf_main_nodes_to_outer_subgraph_nodes["node_id_right"].isna()]
-            write_results_to_geopackage(Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT, na_rows, "pytest_na_rows",
-                                        overwrite=True)
+                gdf_main_nodes_to_outer_subgraph_nodes["node_id_right"].isna()
+            ]
+            write_results_to_geopackage(
+                Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT, na_rows, "pytest_na_rows", overwrite=True
+            )
             gdf_main_nodes_to_outer_subgraph_nodes.dropna(subset=["node_id_right"], inplace=True)
             gdf_main_nodes_to_outer_subgraph_nodes["node_id_right"] = gdf_main_nodes_to_outer_subgraph_nodes[
-                "node_id_right"].astype(int)
+                "node_id_right"
+            ].astype(int)
             gdf_main_nodes_to_outer_subgraph_nodes["node_id_left"] = gdf_main_nodes_to_outer_subgraph_nodes[
-                "node_id_left"].astype(int)
+                "node_id_left"
+            ].astype(int)
         return gdf_main_nodes_to_outer_subgraph_nodes
 
     def merge_height_graph_to_main_graph(self, height_graph: rx.PyGraph, main_height_level: int) -> dict[int, int]:

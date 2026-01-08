@@ -11,13 +11,11 @@ import rustworkx as rx
 from settings import Config
 from utility_route_planner.models.benchmark_routes import BenchmarkRouteCollection
 from utility_route_planner.models.mcda.mcda_engine import McdaCostSurfaceEngine
-from utility_route_planner.models.multilayer_network.graph_datastructures import OSMNodeInfo
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_graph_builder import HexagonGraphBuilder
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_graph_composer import HexagonGraphComposer
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_utils import convert_hexagon_graph_to_gdfs
 from utility_route_planner.models.multilayer_network.multilayer_route_planner import MultilayerRouteEngine
-from utility_route_planner.util.geo_utilities import osm_graph_to_gdfs, get_empty_geodataframe
-from utility_route_planner.util.graph_utilities import create_osm_edge_info
+from utility_route_planner.util.geo_utilities import get_empty_geodataframe
 from utility_route_planner.util.write import reset_geopackage, write_results_to_geopackage
 
 
@@ -219,14 +217,18 @@ class TestHexagonGraphBuilderWithHeightLevels:
             crs=Config.CRS,
             columns=["suitability_value", "relatieveHoogteligging", "geometry"],
         )
-        grassland = gpd.GeoDataFrame(
-            data=[
-                [2, 0, project_area.difference(road[road['relatieveHoogteligging'] == 0].geometry.union_all())],
-            ],
-            geometry="geometry",
-            crs=Config.CRS,
-            columns=["suitability_value", "relatieveHoogteligging", "geometry"],
-        ).explode().reset_index(drop=True)
+        grassland = (
+            gpd.GeoDataFrame(
+                data=[
+                    [2, 0, project_area.difference(road[road["relatieveHoogteligging"] == 0].geometry.union_all())],
+                ],
+                geometry="geometry",
+                crs=Config.CRS,
+                columns=["suitability_value", "relatieveHoogteligging", "geometry"],
+            )
+            .explode()
+            .reset_index(drop=True)
+        )
         processed_criteria_vectors = {
             "road": road,
             "grassland": grassland,
@@ -249,7 +251,7 @@ class TestHexagonGraphBuilderWithHeightLevels:
             processed_criteria_vectors,
             project_area,
             raster_groups,
-            get_empty_geodataframe()
+            get_empty_geodataframe(),
         )
         route_engine = MultilayerRouteEngine(
             merged_graph, rx.PyGraph(), hexagon_graph_composer.gdf_main_nodes, write_output=self.debug
@@ -259,8 +261,7 @@ class TestHexagonGraphBuilderWithHeightLevels:
         # assert we cannot exit halfway the tunnels
         # assert we can cross the tunnel road overground with low costs
         # assert two subgraphs in the height level
-        # route_engine.find_route(shapely.LineString([(6, 95), (6, 5)]))
-
+        route_engine.find_route(shapely.LineString([(6, 95), (6, 5)]))
 
     def test_build_graph_with_a_bridge(self):
         """E.g., a road on a bridge crossing water. Could also be an ecoduct crossing a motorway."""
@@ -361,7 +362,7 @@ class TestHexagonGraphBuilderWithHeightLevels:
             processed_criteria_vectors,
             project_area,
             raster_groups,
-            get_empty_geodataframe()
+            get_empty_geodataframe(),
         )
 
         route_engine = MultilayerRouteEngine(
@@ -400,14 +401,18 @@ class TestHexagonGraphBuilderWithHeightLevels:
             crs=Config.CRS,
             columns=["suitability_value", "relatieveHoogteligging", "geometry"],
         ).clip(project_area)
-        grassland = gpd.GeoDataFrame(
-            data=[
-                [2, 0, project_area.difference(road[road['relatieveHoogteligging'] == 0].geometry.union_all())],
-            ],
-            geometry="geometry",
-            crs=Config.CRS,
-            columns=["suitability_value", "relatieveHoogteligging", "geometry"],
-        ).explode().reset_index(drop=True)
+        grassland = (
+            gpd.GeoDataFrame(
+                data=[
+                    [2, 0, project_area.difference(road[road["relatieveHoogteligging"] == 0].geometry.union_all())],
+                ],
+                geometry="geometry",
+                crs=Config.CRS,
+                columns=["suitability_value", "relatieveHoogteligging", "geometry"],
+            )
+            .explode()
+            .reset_index(drop=True)
+        )
         processed_criteria_vectors = {
             "road": road,
             "grassland": grassland,
@@ -430,31 +435,39 @@ class TestHexagonGraphBuilderWithHeightLevels:
             processed_criteria_vectors,
             project_area,
             raster_groups,
-            get_empty_geodataframe()
+            get_empty_geodataframe(),
         )
 
     def test_example_data_integration(self):
         """Use for testing a specific area of the example geopackages with known bridges/tunnels."""
         reset_geopackage(Config.PATH_GEOPACKAGE_MCDA_OUTPUT, truncate=False)
-        project_area = shapely.Point(187224.708,429010.295).buffer(200)
-        mcda_engine = McdaCostSurfaceEngine(Config.RASTER_PRESET_NAME_BENCHMARK, BenchmarkRouteCollection.route_4.path_geopackage, project_area, raster_name_prefix='pytest_')
+        project_area = shapely.Point(187224.708, 429010.295).buffer(200)
+        mcda_engine = McdaCostSurfaceEngine(
+            Config.RASTER_PRESET_NAME_BENCHMARK,
+            BenchmarkRouteCollection.route_4.path_geopackage,
+            project_area,
+            raster_name_prefix="pytest_",
+        )
         mcda_engine.preprocess_vectors()
 
-        raster_groups = {criteria_key: criteria.group for criteria_key, criteria in mcda_engine.raster_preset.criteria.items()}
+        raster_groups = {
+            criteria_key: criteria.group for criteria_key, criteria in mcda_engine.raster_preset.criteria.items()
+        }
         hexagon_graph_composer, merged_graph = self._build_and_merge_graphs(
             self.debug,
             mcda_engine.processed_criteria_per_height_level,
             mcda_engine.processed_vectors,
             project_area,
             raster_groups,
-            get_empty_geodataframe()
+            get_empty_geodataframe(),
         )
 
         route_engine = MultilayerRouteEngine(
             merged_graph, rx.PyGraph(), hexagon_graph_composer.gdf_main_nodes, write_output=self.debug
         )
-        route_engine.find_route(shapely.LineString([(187174.77,429021.37), (187259.45,429011.20)]))  # route should go under
-
+        route_engine.find_route(
+            shapely.LineString([(187174.77, 429021.37), (187259.45, 429011.20)])
+        )  # route should go under
 
     def debug_write_output_vectors(
         self,
