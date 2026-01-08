@@ -2,6 +2,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
+from itertools import product
 import geopandas as gpd
 import numpy as np
 import pandas as pd
@@ -68,10 +69,28 @@ class HexagonGridBuilder:
         # position of the hexagon.
         y_matrix[:, ::2] += self.hexagon_height / 2
 
+        self._divide_matrices_into_blocks(x_matrix, y_matrix)
+
         bounding_box_grid = gpd.GeoDataFrame(
             geometry=gpd.points_from_xy(x_matrix.ravel(), y_matrix.ravel()), crs=Config.CRS
         )
         return bounding_box_grid.reset_index(names="node_id")
+
+    @staticmethod
+    def _divide_matrices_into_blocks(x_matrix: np.ndarray, y_matrix: np.ndarray):
+        block_size = 128
+        row_splits = np.linspace(0, x_matrix.shape[0], x_matrix.shape[0] // block_size, dtype=int)
+        column_splits = np.linspace(0, y_matrix.shape[1], y_matrix.shape[1] // block_size, dtype=int)
+
+        # TODO: create generator using the boxes
+        # row_start, column_start = 0, 0
+        for row_split, column_split in product(row_splits[1:], column_splits[1:]):
+            pass
+            # x_block = x_matrix[row_start:row_split, column_start:column_split]
+            # y_block = y_matrix[row_start:row_split, column_start:column_split]
+
+            # row_start = row_split
+            # column_start = column_split
 
     def filter_grid_to_project_area(self, bounding_box_grid: gpd.GeoDataFrame):
         """
