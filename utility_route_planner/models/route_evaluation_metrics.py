@@ -87,7 +87,9 @@ class RouteEvaluationMetrics:
             )
             logger.info(f"SOTA route overlaps: {self.route_similarity_sota}% with the human route.")
             logger.info(f"Human route overlaps: {self.route_similarity_human}% with the SOTA route.")
-            logger.info(f"Average similarity: {(self.route_similarity_sota + self.route_similarity_human) / 2}%.")
+            logger.info(
+                f"Average similarity: {round((self.route_similarity_sota + self.route_similarity_human) / 2, 2)}%."
+            )
 
     def get_route_cost_estimation(self, route: shapely.LineString, path_cost_surface: str) -> tuple:
         with rasterio.Env():
