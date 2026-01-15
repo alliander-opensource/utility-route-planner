@@ -36,7 +36,7 @@ class HexagonGridBuilder:
     def construct_grid(self, project_area: shapely.Polygon) -> gpd.GeoDataFrame:
         x_matrix, y_matrix = self.construct_hexagonal_grid_for_bounding_box(project_area)
 
-        for _, _, _, _, block in self.divide_matrices_into_blocks(x_matrix, y_matrix):
+        for block in self.divide_matrices_into_blocks(x_matrix, y_matrix):
             hexagonal_grid_for_block = self.filter_block_to_project_area(block)
 
             # A block can be empty in case it does not intersect with any vector
@@ -81,7 +81,7 @@ class HexagonGridBuilder:
 
     def divide_matrices_into_blocks(
         self, x_matrix: np.ndarray, y_matrix: np.ndarray
-    ) -> Generator[tuple[int, int, int, int, gpd.GeoDataFrame], None, None]:
+    ) -> Generator[gpd.GeoDataFrame, None, None]:
         """
         Generator which yields indexed blocks from the x- and y-matrix given the desired block size
 
@@ -90,12 +90,18 @@ class HexagonGridBuilder:
         :param y_matrix: y_matrix to divide into blocks
         :type y_matrix: np.ndarray
         :return: row_start, row_end, column_start, column_end, x_block, y_block
-        :rtype: Generator[tuple[int, int, int, int, gpd.GeoDataFrame]]
+        :rtype: Generator[gpd.GeoDataFrame, None, None]
         """
         # Determine number of columns and columns given the desired block size. Round up to prevent
         # losing data
         n_rows_blocks = math.ceil(x_matrix.shape[0] // self.block_size)
         n_columns_blocks = math.ceil(y_matrix.shape[1] // self.block_size)
+
+        if n_rows_blocks == 1 and n_columns_blocks == 1:
+            grid = gpd.GeoDataFrame(geometry=gpd.points_from_xy(x_matrix.ravel(), y_matrix.ravel()), crs=Config.CRS)
+            grid = grid.reset_index(names="node_id")
+            yield grid
+            return
 
         row_splits = np.linspace(0, x_matrix.shape[0], n_rows_blocks, dtype=int)
         column_splits = np.linspace(0, y_matrix.shape[1], n_columns_blocks, dtype=int)
@@ -112,7 +118,7 @@ class HexagonGridBuilder:
                 )
                 block_grid = block_grid.reset_index(names="node_id")
 
-                yield row_start, row_end, column_start, column_end, block_grid
+                yield block_grid
 
     def filter_block_to_project_area(self, bounding_box_grid: gpd.GeoDataFrame):
         """
