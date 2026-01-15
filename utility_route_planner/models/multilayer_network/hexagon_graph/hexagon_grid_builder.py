@@ -2,7 +2,8 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-from itertools import product
+import math
+from typing import Generator
 import geopandas as gpd
 import numpy as np
 import pandas as pd
@@ -24,11 +25,13 @@ class HexagonGridBuilder:
         raster_groups: dict[str, str],
         preprocessed_vectors: dict[str, gpd.GeoDataFrame],
         hexagon_size: float,
+        block_size: int,
     ):
         self.raster_groups = raster_groups
         self.preprocessed_vectors = preprocessed_vectors
         self.hexagon_size = hexagon_size
         self.hexagon_width, self.hexagon_height = get_hexagon_width_and_height(hexagon_size)
+        self.block_size = block_size
 
     def construct_grid(self, project_area: shapely.Polygon) -> gpd.GeoDataFrame:
         hexagonal_grid_bounding_box = self.construct_hexagonal_grid_for_bounding_box(project_area)
@@ -69,28 +72,42 @@ class HexagonGridBuilder:
         # position of the hexagon.
         y_matrix[:, ::2] += self.hexagon_height / 2
 
-        self._divide_matrices_into_blocks(x_matrix, y_matrix)
+        self.divide_matrices_into_blocks(x_matrix, y_matrix)
 
         bounding_box_grid = gpd.GeoDataFrame(
             geometry=gpd.points_from_xy(x_matrix.ravel(), y_matrix.ravel()), crs=Config.CRS
         )
         return bounding_box_grid.reset_index(names="node_id")
 
-    @staticmethod
-    def _divide_matrices_into_blocks(x_matrix: np.ndarray, y_matrix: np.ndarray):
-        block_size = 128
-        row_splits = np.linspace(0, x_matrix.shape[0], x_matrix.shape[0] // block_size, dtype=int)
-        column_splits = np.linspace(0, y_matrix.shape[1], y_matrix.shape[1] // block_size, dtype=int)
+    def divide_matrices_into_blocks(
+        self, x_matrix: np.ndarray, y_matrix: np.ndarray
+    ) -> Generator[tuple[int, int, int, int, np.ndarray, np.ndarray]]:
+        """
+        Generator which yields indexed blocks from the x- and y-matrix given the desired block size
 
-        # TODO: create generator using the boxes
-        # row_start, column_start = 0, 0
-        for row_split, column_split in product(row_splits[1:], column_splits[1:]):
-            pass
-            # x_block = x_matrix[row_start:row_split, column_start:column_split]
-            # y_block = y_matrix[row_start:row_split, column_start:column_split]
+        :param x_matrix: x_matrix to divide into blocks
+        :type x_matrix: np.ndarray
+        :param y_matrix: y_matrix to divide into blocks
+        :type y_matrix: np.ndarray
+        :return: row_start, row_end, column_start, column_end, x_block, y_block
+        :rtype: Generator[tuple[int, int, int, int, np.ndarray, np.ndarray]]
+        """
+        # Determine number of columns and columns given the desired block size. Round up to prevent
+        # losing data
+        n_rows_blocks = math.ceil(x_matrix.shape[0] // self.block_size)
+        n_columns_blocks = math.ceil(y_matrix.shape[1] // self.block_size)
 
-            # row_start = row_split
-            # column_start = column_split
+        row_splits = np.linspace(0, x_matrix.shape[0], n_rows_blocks, dtype=int)
+        column_splits = np.linspace(0, y_matrix.shape[1], n_columns_blocks, dtype=int)
+
+        # Iterate over the split indexes to extract the blocks from the matrices.
+        for row_start, row_end in zip(row_splits[:-1], row_splits[1:]):
+            for column_start, column_end in zip(column_splits[:-1], column_splits[1:]):
+                print(f"Row: {row_start}:{row_end} - Column: {column_start}:{column_end}")
+                x_block = x_matrix[row_start:row_end, column_start:column_end]
+                y_block = y_matrix[row_start:row_end, column_start:column_end]
+
+                yield row_start, row_end, column_start, column_end, x_block, y_block
 
     def filter_grid_to_project_area(self, bounding_box_grid: gpd.GeoDataFrame):
         """

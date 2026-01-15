@@ -8,7 +8,7 @@ SPDX-License-Identifier: Apache-2.0
 
 This repository shares research on software for automatic placement of electricity cables using a combination of geo-information and graph theory.
 
-The utility network needs to be expanded due to the energy transition. Finding a location for new infrastructure is no easy feat considering the amount of involved design criteria. 
+The utility network needs to be expanded due to the energy transition. Finding a location for new infrastructure is no easy feat considering the amount of involved design criteria.
 This research includes the creation of a software package for automatic placement of utility network using a combination of geo-information and graph theory.
 
 This research is being carried out at Alliander, a Dutch DSO, as part of [Jelmar Versleijen](https://research.wur.nl/en/persons/jelmar-versleijen)'s PhD with [Wagening University](https://www.wur.nl/en.htm). [Read more about research at Alliander](https://www.alliander.com/nl/alliander-en-open-research/).
