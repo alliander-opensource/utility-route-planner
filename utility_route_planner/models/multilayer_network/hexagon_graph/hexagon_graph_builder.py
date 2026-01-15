@@ -3,11 +3,13 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import geopandas as gpd
+import pandas as pd
 import rustworkx as rx
 import shapely
 import structlog
 
-from utility_route_planner.models.multilayer_network.graph_datastructures import HexagonNodeInfo
+from utility_route_planner.models.multilayer_network.graph_datastructures import HexagonEdgeInfo, HexagonNodeInfo
+from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_edge_generator import HexagonEdgeGenerator
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_grid_builder import (
     HexagonGridBuilder,
 )
@@ -43,6 +45,9 @@ class HexagonGraphBuilder:
         grid_constructor = HexagonGridBuilder(
             self.raster_groups, self.preprocessed_vectors, self.hexagon_size, self.block_size
         )
+
+        hexagon_edge_generator = HexagonEdgeGenerator()
+        all_blocks = pd.DataFrame(columns=["suitability_value", "axial_q", "axial_r", "x", "y"])
         for i, block in enumerate(grid_constructor.construct_grid(self.project_area)):
             print(f"Iteration: {i}")
             node_values = block[["geometry", "suitability_value", "axial_q", "axial_r"]].values
@@ -50,16 +55,19 @@ class HexagonGraphBuilder:
             node_ids = self.graph.add_nodes_from(hexagonal_nodes)
             [node_info.set_node_id(node_id) for node_id, node_info in zip(node_ids, hexagonal_nodes)]
 
-        # hexagon_edge_generator = HexagonEdgeGenerator(hexagonal_grid)
-        # for edges in hexagon_edge_generator.generate():
-        #     hexagonal_edges = [
-        #         (edge.node_id_source, edge.node_id_target, HexagonEdgeInfo(edge.geometry, edge.weight))
-        #         for edge in edges.itertuples(index=False)
-        #     ]
-        #     edge_ids = self.graph.add_edges_from(hexagonal_edges)
-        #     [edge_info[2].set_edge_id(edge_id) for edge_id, edge_info in zip(edge_ids, hexagonal_edges)]
+            block.index = node_ids
+            block_properties = block.loc[:, ["suitability_value", "axial_q", "axial_r", "x", "y"]]
+            all_blocks = pd.concat([all_blocks, block_properties], axis=0)
 
-        # logger.info(
-        #     f"Graph has {self.graph.num_nodes()} nodes & {self.graph.num_edges()} edges for hexagon_size {self.hexagon_size}"
-        # )
+            for edges in hexagon_edge_generator.generate(block_properties, all_blocks):
+                hexagonal_edges = [
+                    (edge.node_id_source, edge.node_id_target, HexagonEdgeInfo(edge.geometry, edge.weight))
+                    for edge in edges.itertuples(index=False)
+                ]
+                edge_ids = self.graph.add_edges_from(hexagonal_edges)
+                [edge_info[2].set_edge_id(edge_id) for edge_id, edge_info in zip(edge_ids, hexagonal_edges)]
+
+        logger.info(
+            f"Graph has {self.graph.num_nodes()} nodes & {self.graph.num_edges()} edges for hexagon_size {self.hexagon_size}"
+        )
         return self.graph
