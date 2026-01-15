@@ -34,20 +34,25 @@ class HexagonGridBuilder:
         self.block_size = block_size
 
     def construct_grid(self, project_area: shapely.Polygon) -> gpd.GeoDataFrame:
-        hexagonal_grid_bounding_box = self.construct_hexagonal_grid_for_bounding_box(project_area)
-        hexagonal_grid_for_project_area = self.filter_grid_to_project_area(hexagonal_grid_bounding_box)
+        x_matrix, y_matrix = self.construct_hexagonal_grid_for_bounding_box(project_area)
 
-        weighted_hexagonal_grid = self.assign_suitability_values_to_grid(hexagonal_grid_for_project_area)
-        weighted_hexagonal_grid["axial_q"], weighted_hexagonal_grid["axial_r"] = (
-            self.convert_cartesian_coordinates_to_axial(weighted_hexagonal_grid)
-        )
-        weighted_hexagonal_grid = gpd.GeoDataFrame(
-            pd.concat([weighted_hexagonal_grid, weighted_hexagonal_grid.get_coordinates()], axis=1), geometry="geometry"
-        )
+        for _, _, _, _, block in self.divide_matrices_into_blocks(x_matrix, y_matrix):
+            hexagonal_grid_for_block = self.filter_block_to_project_area(block)
 
-        # Reset index of grid to align with node ids generated using rustworkx
-        weighted_hexagonal_grid = weighted_hexagonal_grid.reset_index(drop=True)
-        return weighted_hexagonal_grid
+            # A block can be empty in case it does not intersect with any vector
+            if not hexagonal_grid_for_block.empty:
+                weighted_hexagonal_block = self.assign_suitability_values_to_block(hexagonal_grid_for_block)
+                weighted_hexagonal_block["axial_q"], weighted_hexagonal_block["axial_r"] = (
+                    self.convert_cartesian_coordinates_to_axial(weighted_hexagonal_block)
+                )
+                weighted_hexagonal_block = gpd.GeoDataFrame(
+                    pd.concat([weighted_hexagonal_block, weighted_hexagonal_block.get_coordinates()], axis=1),
+                    geometry="geometry",
+                )
+
+                # Reset index of grid to align with node ids generated using rustworkx
+                weighted_hexagonal_block = weighted_hexagonal_block.reset_index(drop=True)
+        pass
 
     def construct_hexagonal_grid_for_bounding_box(self, project_area: shapely.Polygon) -> gpd.GeoDataFrame:
         """
@@ -72,16 +77,11 @@ class HexagonGridBuilder:
         # position of the hexagon.
         y_matrix[:, ::2] += self.hexagon_height / 2
 
-        self.divide_matrices_into_blocks(x_matrix, y_matrix)
-
-        bounding_box_grid = gpd.GeoDataFrame(
-            geometry=gpd.points_from_xy(x_matrix.ravel(), y_matrix.ravel()), crs=Config.CRS
-        )
-        return bounding_box_grid.reset_index(names="node_id")
+        return x_matrix, y_matrix
 
     def divide_matrices_into_blocks(
         self, x_matrix: np.ndarray, y_matrix: np.ndarray
-    ) -> Generator[tuple[int, int, int, int, np.ndarray, np.ndarray]]:
+    ) -> Generator[tuple[int, int, int, int, gpd.GeoDataFrame], None, None]:
         """
         Generator which yields indexed blocks from the x- and y-matrix given the desired block size
 
@@ -90,7 +90,7 @@ class HexagonGridBuilder:
         :param y_matrix: y_matrix to divide into blocks
         :type y_matrix: np.ndarray
         :return: row_start, row_end, column_start, column_end, x_block, y_block
-        :rtype: Generator[tuple[int, int, int, int, np.ndarray, np.ndarray]]
+        :rtype: Generator[tuple[int, int, int, int, gpd.GeoDataFrame]]
         """
         # Determine number of columns and columns given the desired block size. Round up to prevent
         # losing data
@@ -100,16 +100,21 @@ class HexagonGridBuilder:
         row_splits = np.linspace(0, x_matrix.shape[0], n_rows_blocks, dtype=int)
         column_splits = np.linspace(0, y_matrix.shape[1], n_columns_blocks, dtype=int)
 
-        # Iterate over the split indexes to extract the blocks from the matrices.
+        # Iterate over the split indexes to extract the blocks from the matrices. Convert each block
+        # to a GeoDataFrame.
         for row_start, row_end in zip(row_splits[:-1], row_splits[1:]):
             for column_start, column_end in zip(column_splits[:-1], column_splits[1:]):
-                print(f"Row: {row_start}:{row_end} - Column: {column_start}:{column_end}")
                 x_block = x_matrix[row_start:row_end, column_start:column_end]
                 y_block = y_matrix[row_start:row_end, column_start:column_end]
 
-                yield row_start, row_end, column_start, column_end, x_block, y_block
+                block_grid = gpd.GeoDataFrame(
+                    geometry=gpd.points_from_xy(x_block.ravel(), y_block.ravel()), crs=Config.CRS
+                )
+                block_grid = block_grid.reset_index(names="node_id")
 
-    def filter_grid_to_project_area(self, bounding_box_grid: gpd.GeoDataFrame):
+                yield row_start, row_end, column_start, column_end, block_grid
+
+    def filter_block_to_project_area(self, bounding_box_grid: gpd.GeoDataFrame):
         """
         Concatenate all preprocessed vectors into a single geodataframe. Use this concatenated dataframe
         filter all points from the bounding box that do not intersect with any of the vectors.
@@ -128,7 +133,7 @@ class HexagonGridBuilder:
 
         return points_within_project_area
 
-    def assign_suitability_values_to_grid(self, points_within_project_area: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
+    def assign_suitability_values_to_block(self, points_within_project_area: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
         """
         Given the group the vector of a suitability value belongs to, a specific aggregation functions is applied for overlapping
         points within this group:
