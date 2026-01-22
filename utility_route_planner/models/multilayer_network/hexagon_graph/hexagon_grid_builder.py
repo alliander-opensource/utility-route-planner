@@ -1,16 +1,19 @@
 # SPDX-FileCopyrightText: Contributors to the utility-route-project and Alliander N.V.
 #
 # SPDX-License-Identifier: Apache-2.0
-
 import math
 from typing import Generator
 import geopandas as gpd
 import numpy as np
 import pandas as pd
 import shapely
+import structlog
 
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_utils import get_hexagon_width_and_height
 from settings import Config
+from utility_route_planner.util.timer import time_function
+
+logger = structlog.get_logger(__name__)
 
 
 class HexagonGridBuilder:
@@ -54,6 +57,7 @@ class HexagonGridBuilder:
                 weighted_hexagonal_block = weighted_hexagonal_block.reset_index(drop=True)
                 yield weighted_hexagonal_block
 
+    @time_function
     def construct_hexagonal_grid_for_bounding_box(self, project_area: shapely.Polygon) -> gpd.GeoDataFrame:
         """
         Given the bounding box of the project area, create a hexagonal grid in flat-top orientation.
@@ -96,6 +100,7 @@ class HexagonGridBuilder:
         # losing data
         n_rows_blocks = math.ceil(x_matrix.shape[0] / self.block_size)
         n_columns_blocks = math.ceil(y_matrix.shape[1] / self.block_size)
+        logger.info(f"Total number of blocks: {n_rows_blocks * n_columns_blocks}")
 
         if n_rows_blocks == 1 and n_columns_blocks == 1:
             grid = gpd.GeoDataFrame(geometry=gpd.points_from_xy(x_matrix.ravel(), y_matrix.ravel()), crs=Config.CRS)
@@ -139,6 +144,7 @@ class HexagonGridBuilder:
 
         return points_within_project_area
 
+    @time_function
     def assign_suitability_values_to_block(self, points_within_project_area: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
         """
         Given the group the vector of a suitability value belongs to, a specific aggregation functions is applied for overlapping

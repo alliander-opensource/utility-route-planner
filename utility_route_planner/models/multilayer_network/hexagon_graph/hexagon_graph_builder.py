@@ -48,8 +48,8 @@ class HexagonGraphBuilder:
 
         hexagon_edge_generator = HexagonEdgeGenerator()
         all_blocks = pd.DataFrame(columns=["suitability_value", "axial_q", "axial_r", "x", "y"])
-        for i, block in enumerate(grid_constructor.construct_grid(self.project_area)):
-            print(f"Iteration: {i}")
+
+        for block in grid_constructor.construct_grid(self.project_area):
             node_values = block[["geometry", "suitability_value", "axial_q", "axial_r"]].values
             hexagonal_nodes = [HexagonNodeInfo(*node_value) for node_value in node_values]
             node_ids = self.graph.add_nodes_from(hexagonal_nodes)
