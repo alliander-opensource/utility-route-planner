@@ -37,6 +37,7 @@ class HexagonGridBuilder:
         self.hexagon_width, self.hexagon_height = get_hexagon_width_and_height(hexagon_size)
         self.block_size = block_size
 
+    @time_function
     def construct_grid(self, project_area: shapely.Polygon) -> Generator[gpd.GeoDataFrame, None, None]:
         x_matrix, y_matrix = self.construct_hexagonal_grid_for_bounding_box(project_area)
 
@@ -58,8 +59,7 @@ class HexagonGridBuilder:
                 weighted_hexagonal_block = weighted_hexagonal_block.reset_index(drop=True)
                 yield weighted_hexagonal_block
 
-    @time_function
-    def construct_hexagonal_grid_for_bounding_box(self, project_area: shapely.Polygon) -> gpd.GeoDataFrame:
+    def construct_hexagonal_grid_for_bounding_box(self, project_area: shapely.Polygon) -> tuple[np.ndarray, np.ndarray]:
         """
         Given the bounding box of the project area, create a hexagonal grid in flat-top orientation.
 
@@ -196,19 +196,20 @@ class HexagonGridBuilder:
                 # In all other cases there is no overlap of groups, simply pick the first value (there is always only
                 # 1) as suitability value
                 .otherwise(pl.col("first_val"))
+                # Make sure suitability value is always within allowed bounds
                 .alias("suitability_value")
+                .cast(pl.Int16)
+                .clip(Config.MIN_NODE_SUITABILITY_VALUE, Config.MAX_NODE_SUITABILITY_VALUE)
             )
             .select("node_id", "suitability_value")
         ).collect()
 
-        # Make sure all suitability values are within boundaries
-        aggregated_suit_values_per_node["suitability_value"] = aggregated_suit_values_per_node[
-            "suitability_value"
-        ].clip(Config.MIN_NODE_SUITABILITY_VALUE, Config.MAX_NODE_SUITABILITY_VALUE)
-
-        # Join location afterwards, as this is faster than picking the first one within the aggregation step
+        # Convert polars dataframe back to pandas and rejoin the geometries
+        aggregated_suit_values_per_node_pandas: pd.DataFrame = aggregated_suit_values_per_node.to_pandas().set_index(
+            "node_id"
+        )
         hexagon_points = gpd.GeoDataFrame(
-            aggregated_suit_values_per_node.join(
+            aggregated_suit_values_per_node_pandas.join(
                 points_within_project_area["geometry"], how="left", lsuffix="l", rsuffix="r"
             ),
             geometry="geometry",
