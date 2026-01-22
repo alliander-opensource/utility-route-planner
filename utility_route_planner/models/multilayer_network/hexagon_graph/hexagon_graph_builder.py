@@ -57,7 +57,11 @@ class HexagonGraphBuilder:
 
             block.index = node_ids
             block_properties = block.loc[:, ["suitability_value", "axial_q", "axial_r", "x", "y"]]
-            all_blocks = pd.concat([all_blocks, block_properties], axis=0)
+
+            if all_blocks.empty:
+                all_blocks = block_properties
+            else:
+                all_blocks = pd.concat([all_blocks, block_properties], axis=0)
 
             for edges in hexagon_edge_generator.generate(block_properties, all_blocks):
                 hexagonal_edges = [
