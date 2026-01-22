@@ -6,6 +6,7 @@ from typing import Generator
 import geopandas as gpd
 import numpy as np
 import pandas as pd
+import polars as pl
 import shapely
 import structlog
 
@@ -159,6 +160,23 @@ class HexagonGridBuilder:
         :return: GeoDataFrame containing all points within the project area in combination with aggregated suitability
         values for every point.
         """
+
+        polars_df = pl.from_pandas(points_within_project_area.loc[:, ["group", "suitability_value"]].reset_index())
+
+        # Aggregate dataframe with overlapping values for the same node id. Max for group a, sum for
+        # group b and c.
+        query = (
+            polars_df.lazy()
+            .group_by(["group", "node_id"])
+            .agg(
+                pl.when(pl.col("group") == "a")
+                .then(pl.col("suitability_value").max())
+                .otherwise(pl.col("suitability_value").sum())
+                .alias("agg_value")
+            )
+        )
+        result = query.collect()
+        logger.info(result)
 
         group_keys = points_within_project_area["group"].unique()
         aggregated_group_a = pd.DataFrame()
