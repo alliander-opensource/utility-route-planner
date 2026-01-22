@@ -165,71 +165,50 @@ class HexagonGridBuilder:
 
         # Aggregate dataframe with overlapping values for the same node id. Max for group a, sum for
         # group b and c.
-        query = (
+        aggregated_suit_values_per_group_and_node = (
             polars_df.lazy()
-            .group_by(["group", "node_id"])
+            .group_by("group", "node_id")
             .agg(
-                pl.when(pl.col("group") == "a")
+                pl.when(pl.first("group") == "a")
                 .then(pl.col("suitability_value").max())
                 .otherwise(pl.col("suitability_value").sum())
-                .alias("agg_value")
+                .alias("agg_suit_val"),
             )
-        )
-        result = query.collect()
-        logger.info(result)
+        ).collect()
 
-        group_keys = points_within_project_area["group"].unique()
-        aggregated_group_a = pd.DataFrame()
-        aggregated_group_b = pd.DataFrame()
-        aggregated_group_c = pd.DataFrame()
-        points_grouped_by_group = points_within_project_area.groupby("group")
-        for group_key in group_keys:
-            group = points_grouped_by_group.get_group(group_key)
-
-            match group_key:
-                case "a":
-                    aggregated_group_a = group.groupby("node_id").agg(
-                        a=pd.NamedAgg(column="suitability_value", aggfunc="max")
-                    )
-                case "b":
-                    aggregated_group_b = group.groupby("node_id").agg(
-                        b=pd.NamedAgg(column="suitability_value", aggfunc="sum")
-                    )
-                case "c":
-                    aggregated_group_c = group.groupby("node_id").agg(
-                        c=pd.NamedAgg(column="suitability_value", aggfunc="sum")
-                    )
-                case _:
-                    print("Invalid group value")
-
-        aggregated_suitability_values = pd.DataFrame()
-        if len(aggregated_group_a) > 0 and len(aggregated_group_b) > 0:
-            aggregated_suitability_values = pd.concat([aggregated_group_a, aggregated_group_b], axis=1)
-            aggregated_suitability_values = aggregated_suitability_values.fillna(0)
-            aggregated_suitability_values["suitability_value"] = (
-                aggregated_suitability_values.a + aggregated_suitability_values.b
+        aggregated_suit_values_per_node = (
+            aggregated_suit_values_per_group_and_node.lazy()
+            .group_by("node_id")
+            .agg(
+                has_a=(pl.col("group") == "a").any(),
+                has_b=(pl.col("group") == "b").any(),
+                has_c=(pl.col("group") == "c").any(),
+                summed=pl.col("agg_suit_val").sum(),
+                first_val=pl.col("agg_suit_val").first(),
             )
-            aggregated_suitability_values = aggregated_suitability_values.drop(columns=["a", "b"])
-        elif len(aggregated_group_a) > 0 and len(aggregated_group_b) == 0:
-            aggregated_suitability_values["suitability_value"] = aggregated_group_a.a
-        elif len(aggregated_group_b) > 0 and len(aggregated_group_a) == 0:
-            aggregated_suitability_values["suitability_value"] = aggregated_group_b.b
-
-        if len(aggregated_group_c) > 0:
-            aggregated_suitability_values = pd.concat([aggregated_suitability_values, aggregated_group_c], axis=1)
-            aggregated_suitability_values.loc[aggregated_suitability_values.c.notna(), "suitability_value"] = (
-                Config.MAX_NODE_SUITABILITY_VALUE
+            .with_columns(
+                # In case a node is in both group a and b but not c, use the summed total as suitability value
+                pl.when(pl.col("has_a") & pl.col("has_b") & ~pl.col("has_c"))
+                .then(pl.col("summed"))
+                # When a group is in node c, use the max node suitability value
+                .when(pl.col("has_c"))
+                .then(Config.MAX_NODE_SUITABILITY_VALUE)
+                # In all other cases there is no overlap of groups, simply pick the first value (there is always only
+                # 1) as suitability value
+                .otherwise(pl.col("first_val"))
+                .alias("suitability_value")
             )
-            aggregated_suitability_values = aggregated_suitability_values.drop(columns=["c"])
+            .select("node_id", "suitability_value")
+        ).collect()
 
         # Make sure all suitability values are within boundaries
-        aggregated_suitability_values["suitability_value"] = aggregated_suitability_values["suitability_value"].clip(
-            Config.MIN_NODE_SUITABILITY_VALUE, Config.MAX_NODE_SUITABILITY_VALUE
-        )
+        aggregated_suit_values_per_node["suitability_value"] = aggregated_suit_values_per_node[
+            "suitability_value"
+        ].clip(Config.MIN_NODE_SUITABILITY_VALUE, Config.MAX_NODE_SUITABILITY_VALUE)
 
         # Join location afterwards, as this is faster than picking the first one within the aggregation step
         hexagon_points = gpd.GeoDataFrame(
-            aggregated_suitability_values.join(
+            aggregated_suit_values_per_node.join(
                 points_within_project_area["geometry"], how="left", lsuffix="l", rsuffix="r"
             ),
             geometry="geometry",
