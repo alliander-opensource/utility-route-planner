@@ -10,7 +10,7 @@ import pytest
 import shapely
 
 from settings import Config
-from utility_route_planner.models.mcda.load_mcda_preset import RasterPreset, load_preset
+from utility_route_planner.models.mcda.load_mcda_preset import load_preset
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_grid_builder import (
     HexagonGridBuilder,
 )
@@ -22,20 +22,22 @@ def preprocessed_vectors() -> dict[str, gpd.GeoDataFrame]:
 
 
 @pytest.fixture()
-def raster_preset() -> RasterPreset:
-    return load_preset(
+def raster_groups() -> dict[str, str]:
+    preset = load_preset(
         Config.RASTER_PRESET_NAME_BENCHMARK,
         Config.PYTEST_PATH_GEOPACKAGE_MCDA,
         gpd.read_file(Config.PYTEST_PATH_GEOPACKAGE_MCDA, layer=Config.PYTEST_LAYER_NAME_PROJECT_AREA).iloc[0].geometry,
     )
+    return {criteria_key: criteria.group for criteria_key, criteria in preset.criteria.items()}
 
 
 @pytest.fixture()
 def grid_constructor(
-    raster_preset: RasterPreset, preprocessed_vectors: dict[str, gpd.GeoDataFrame]
+    raster_groups: dict[str, str], preprocessed_vectors: dict[str, gpd.GeoDataFrame]
 ) -> HexagonGridBuilder:
     hexagon_size = 0.5
-    return HexagonGridBuilder(raster_preset, preprocessed_vectors, hexagon_size)
+    block_size = 512
+    return HexagonGridBuilder(raster_groups, preprocessed_vectors, hexagon_size, block_size)
 
 
 class TestConstructHexagonalGridForBoundingBox:
@@ -149,29 +151,33 @@ class TestAssignSuitabilityValuesToGrid:
             crs=Config.CRS,
         ).set_index("node_id")
 
-        result = grid_constructor.assign_suitability_values_to_grid(points_on_grid)
-        expected_suitability_values = gpd.GeoDataFrame(
-            data=[
-                [1, 20.0],
-                [4, 50.0],
-                [2, 30.0],
-                [5, 60.0],
-                [3, Config.MAX_NODE_SUITABILITY_VALUE],
-                [6, Config.MAX_NODE_SUITABILITY_VALUE],
-            ],
-            columns=["node_id", "suitability_value"],
-            geometry=[
-                shapely.Point(0, 0),
-                shapely.Point(3, 3),
-                shapely.Point(1, 1),
-                shapely.Point(4, 4),
-                shapely.Point(2, 2),
-                shapely.Point(5, 5),
-            ],
-            crs=Config.CRS,
-        ).set_index("node_id")
+        result = grid_constructor.assign_suitability_values_to_block(points_on_grid)
+        expected_suitability_values = (
+            gpd.GeoDataFrame(
+                data=[
+                    [1, 20],
+                    [2, 30],
+                    [3, Config.MAX_NODE_SUITABILITY_VALUE],
+                    [4, 50],
+                    [5, 60],
+                    [6, Config.MAX_NODE_SUITABILITY_VALUE],
+                ],
+                columns=["node_id", "suitability_value"],
+                geometry=[
+                    shapely.Point(0, 0),
+                    shapely.Point(1, 1),
+                    shapely.Point(2, 2),
+                    shapely.Point(3, 3),
+                    shapely.Point(4, 4),
+                    shapely.Point(5, 5),
+                ],
+                crs=Config.CRS,
+            )
+            .set_index("node_id")
+            .astype({"suitability_value": np.int16})
+        )
 
-        gpd.testing.assert_geodataframe_equal(expected_suitability_values, result)
+        gpd.testing.assert_geodataframe_equal(expected_suitability_values, result.sort_index())
 
     def test_overlapping_points_group_a(self, grid_constructor: HexagonGridBuilder):
         """
@@ -185,11 +191,18 @@ class TestAssignSuitabilityValuesToGrid:
             crs=Config.CRS,
         ).set_index("node_id")
 
-        result = grid_constructor.assign_suitability_values_to_grid(points_on_grid)
+        result = grid_constructor.assign_suitability_values_to_block(points_on_grid)
 
-        expected_suitability_values = gpd.GeoDataFrame(
-            data=[[1, 30.0]], columns=["node_id", "suitability_value"], geometry=[shapely.Point(0, 0)], crs=Config.CRS
-        ).set_index("node_id")
+        expected_suitability_values = (
+            gpd.GeoDataFrame(
+                data=[[1, 30.0]],
+                columns=["node_id", "suitability_value"],
+                geometry=[shapely.Point(0, 0)],
+                crs=Config.CRS,
+            )
+            .set_index("node_id")
+            .astype({"suitability_value": np.int16})
+        )
 
         gpd.testing.assert_geodataframe_equal(expected_suitability_values, result)
 
@@ -205,11 +218,15 @@ class TestAssignSuitabilityValuesToGrid:
             crs=Config.CRS,
         ).set_index("node_id")
 
-        result = grid_constructor.assign_suitability_values_to_grid(points_on_grid)
+        result = grid_constructor.assign_suitability_values_to_block(points_on_grid)
 
-        expected_suitability_values = gpd.GeoDataFrame(
-            data=[[1, 90.0]], columns=["node_id", "suitability_value"], geometry=[shapely.Point(0, 0)], crs=Config.CRS
-        ).set_index("node_id")
+        expected_suitability_values = (
+            gpd.GeoDataFrame(
+                data=[[1, 90]], columns=["node_id", "suitability_value"], geometry=[shapely.Point(0, 0)], crs=Config.CRS
+            )
+            .set_index("node_id")
+            .astype({"suitability_value": np.int16})
+        )
 
         gpd.testing.assert_geodataframe_equal(expected_suitability_values, result)
 
@@ -225,14 +242,18 @@ class TestAssignSuitabilityValuesToGrid:
             crs=Config.CRS,
         ).set_index("node_id")
 
-        result = grid_constructor.assign_suitability_values_to_grid(points_on_grid)
+        result = grid_constructor.assign_suitability_values_to_block(points_on_grid)
 
-        expected_suitability_values = gpd.GeoDataFrame(
-            data=[[1, Config.MAX_NODE_SUITABILITY_VALUE]],
-            columns=["node_id", "suitability_value"],
-            geometry=[shapely.Point(0, 0)],
-            crs=Config.CRS,
-        ).set_index("node_id")
+        expected_suitability_values = (
+            gpd.GeoDataFrame(
+                data=[[1, Config.MAX_NODE_SUITABILITY_VALUE]],
+                columns=["node_id", "suitability_value"],
+                geometry=[shapely.Point(0, 0)],
+                crs=Config.CRS,
+            )
+            .set_index("node_id")
+            .astype({"suitability_value": np.int16})
+        )
 
         gpd.testing.assert_geodataframe_equal(expected_suitability_values, result)
 
@@ -255,16 +276,20 @@ class TestAssignSuitabilityValuesToGrid:
             crs=Config.CRS,
         ).set_index("node_id")
 
-        result = grid_constructor.assign_suitability_values_to_grid(points_on_grid)
+        result = grid_constructor.assign_suitability_values_to_block(points_on_grid)
 
-        expected_suitability_values = gpd.GeoDataFrame(
-            data=[[1, 50.0], [2, 40.0], [3, 50.0]],
-            columns=["node_id", "suitability_value"],
-            geometry=[shapely.Point(0, 0), shapely.Point(1, 1), shapely.Point(2, 2)],
-            crs=Config.CRS,
-        ).set_index("node_id")
+        expected_suitability_values = (
+            gpd.GeoDataFrame(
+                data=[[1, 50], [2, 40], [3, 50]],
+                columns=["node_id", "suitability_value"],
+                geometry=[shapely.Point(0, 0), shapely.Point(1, 1), shapely.Point(2, 2)],
+                crs=Config.CRS,
+            )
+            .set_index("node_id")
+            .astype({"suitability_value": np.int16})
+        )
 
-        gpd.testing.assert_geodataframe_equal(expected_suitability_values, result)
+        gpd.testing.assert_geodataframe_equal(expected_suitability_values, result.sort_index())
 
     @pytest.mark.parametrize("group", ["a", "b"])
     def test_group_a_or_b_filled_while_other_empty(self, group: str, grid_constructor: HexagonGridBuilder):
@@ -279,16 +304,20 @@ class TestAssignSuitabilityValuesToGrid:
             crs=Config.CRS,
         ).set_index("node_id")
 
-        result = grid_constructor.assign_suitability_values_to_grid(points_on_grid)
+        result = grid_constructor.assign_suitability_values_to_block(points_on_grid)
 
-        expected_suitability_values = gpd.GeoDataFrame(
-            data=[[1, 20.0], [2, 40.0]],
-            columns=["node_id", "suitability_value"],
-            geometry=[shapely.Point(0, 0), shapely.Point(1, 1)],
-            crs=Config.CRS,
-        ).set_index("node_id")
+        expected_suitability_values = (
+            gpd.GeoDataFrame(
+                data=[[1, 20], [2, 40]],
+                columns=["node_id", "suitability_value"],
+                geometry=[shapely.Point(0, 0), shapely.Point(1, 1)],
+                crs=Config.CRS,
+            )
+            .set_index("node_id")
+            .astype({"suitability_value": np.int16})
+        )
 
-        gpd.testing.assert_geodataframe_equal(expected_suitability_values, result)
+        gpd.testing.assert_geodataframe_equal(expected_suitability_values, result.sort_index())
 
 
 @pytest.mark.skip(reason="TODO: Add new coordinates after bug fix")
