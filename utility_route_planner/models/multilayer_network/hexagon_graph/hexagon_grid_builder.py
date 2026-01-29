@@ -38,7 +38,7 @@ class HexagonGridBuilder:
         self.block_size = block_size
 
     @time_function
-    def construct_grid(self, project_area: shapely.Polygon) -> Generator[gpd.GeoDataFrame, None, None]:
+    def construct_grid(self, project_area: shapely.Polygon) -> Generator[pd.DataFrame, None, None]:
         x_matrix, y_matrix = self.construct_hexagonal_grid_for_bounding_box(project_area)
 
         for block in self.divide_matrices_into_blocks(x_matrix, y_matrix):
@@ -50,9 +50,12 @@ class HexagonGridBuilder:
                 weighted_hexagonal_block["axial_q"], weighted_hexagonal_block["axial_r"] = (
                     self.convert_cartesian_coordinates_to_axial(weighted_hexagonal_block)
                 )
-                weighted_hexagonal_block = gpd.GeoDataFrame(
-                    pd.concat([weighted_hexagonal_block, weighted_hexagonal_block.get_coordinates()], axis=1),
-                    geometry="geometry",
+                weighted_hexagonal_block = pd.concat(
+                    [
+                        weighted_hexagonal_block.loc[:, ["suitability_value", "axial_q", "axial_r"]],
+                        weighted_hexagonal_block.get_coordinates(),
+                    ],
+                    axis=1,
                 )
 
                 # Reset index of grid to align with node ids generated using rustworkx
@@ -101,6 +104,7 @@ class HexagonGridBuilder:
         # losing data
         n_rows_blocks = math.ceil(x_matrix.shape[0] / self.block_size)
         n_columns_blocks = math.ceil(y_matrix.shape[1] / self.block_size)
+        total_nr_of_blocks = n_rows_blocks * n_columns_blocks
         logger.info(f"Total number of blocks: {n_rows_blocks * n_columns_blocks}")
 
         if n_rows_blocks == 1 and n_columns_blocks == 1:
@@ -114,8 +118,11 @@ class HexagonGridBuilder:
 
         # Iterate over the split indexes to extract the blocks from the matrices. Convert each block
         # to a GeoDataFrame.
+        counter = 0
         for row_start, row_end in zip(row_splits[:-1], row_splits[1:]):
             for column_start, column_end in zip(column_splits[:-1], column_splits[1:]):
+                counter += 1
+                logger.info(f"Processing block: {counter}/{total_nr_of_blocks}")
                 x_block = x_matrix[row_start:row_end, column_start:column_end]
                 y_block = y_matrix[row_start:row_end, column_start:column_end]
 

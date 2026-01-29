@@ -11,7 +11,6 @@ import shapely
 @dataclass
 class NodeInfo:
     node_id: int = field(init=False)
-    geometry: shapely.Point
 
     def set_node_id(self, node_id: int):
         self.node_id = node_id
@@ -20,13 +19,14 @@ class NodeInfo:
 @dataclass
 class OSMNodeInfo(NodeInfo):
     osm_id: int
+    geometry: shapely.Point
 
 
 @dataclass
 class HexagonNodeInfo(NodeInfo):
     suitability_value: float
-    axial_q: float
-    axial_r: float
+    x: float
+    y: float
 
 
 @dataclass

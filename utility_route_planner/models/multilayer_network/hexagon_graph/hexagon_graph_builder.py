@@ -1,16 +1,13 @@
 # SPDX-FileCopyrightText: Contributors to the utility-route-project and Alliander N.V.
 #
 # SPDX-License-Identifier: Apache-2.0
-import datetime
 
 import geopandas as gpd
-import polars as pl
 import rustworkx as rx
 import shapely
 import structlog
 
-from utility_route_planner.models.multilayer_network.graph_datastructures import HexagonEdgeInfo, HexagonNodeInfo
-from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_edge_generator import HexagonEdgeGenerator
+from utility_route_planner.models.multilayer_network.graph_datastructures import HexagonNodeInfo
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_grid_builder import (
     HexagonGridBuilder,
 )
@@ -47,44 +44,41 @@ class HexagonGraphBuilder:
             self.raster_groups, self.preprocessed_vectors, self.hexagon_size, self.block_size
         )
 
-        hexagon_edge_generator = HexagonEdgeGenerator()
-        all_blocks = pl.DataFrame(
-            schema={
-                "node_id": pl.Int32,
-                "suitability_value": pl.Float32,
-                "axial_q": pl.Int32,
-                "axial_r": pl.Int32,
-                "x": pl.Float32,
-                "y": pl.Float32,
-            }
-        )
+        # hexagon_edge_generator = HexagonEdgeGenerator()
+        # all_blocks = pl.DataFrame(
+        #     schema={
+        #         "node_id": pl.Int32,
+        #         "suitability_value": pl.Float32,
+        #         "axial_q": pl.Int32,
+        #         "axial_r": pl.Int32,
+        #         "x": pl.Float32,
+        #         "y": pl.Float32,
+        #     }
+        # )
 
         for block in grid_constructor.construct_grid(self.project_area):
-            node_values = block[["geometry", "suitability_value", "axial_q", "axial_r"]].values
+            node_values = block.loc[:, ["suitability_value", "x", "y"]].values
             hexagonal_nodes = [HexagonNodeInfo(*node_value) for node_value in node_values]
             node_ids = self.graph.add_nodes_from(hexagonal_nodes)
             [node_info.set_node_id(node_id) for node_id, node_info in zip(node_ids, hexagonal_nodes)]
 
             block["node_id"] = node_ids
-            block_properties = pl.from_pandas(
-                block.loc[:, ["node_id", "suitability_value", "axial_q", "axial_r", "x", "y"]]
-            )
+            # block_properties = pl.from_pandas(
+            #     block.loc[:, ["node_id", "suitability_value", "axial_q", "axial_r", "x", "y"]]
+            # )
 
-            if all_blocks.is_empty():
-                all_blocks = block_properties
-            else:
-                all_blocks = pl.concat([all_blocks, block_properties])
+            # if all_blocks.is_empty():
+            #     all_blocks = block_properties
+            # else:
+            #     all_blocks = pl.concat([all_blocks, block_properties])
 
-            start = datetime.datetime.now()
-            for edges in hexagon_edge_generator.generate(block_properties, all_blocks):
-                hexagonal_edges = [
-                    (edge.node_id_source, edge.node_id_target, HexagonEdgeInfo(edge.geometry, edge.weight))
-                    for edge in edges.itertuples(index=False)
-                ]
-                edge_ids = self.graph.add_edges_from(hexagonal_edges)
-                [edge_info[2].set_edge_id(edge_id) for edge_id, edge_info in zip(edge_ids, hexagonal_edges)]
-            end = datetime.datetime.now()
-            logger.info(f"Adding edges took: {(end - start)}")
+            # for edges in hexagon_edge_generator.generate(block_properties, all_blocks):
+            #     hexagonal_edges = [
+            #         (edge.node_id_source, edge.node_id_target, HexagonEdgeInfo(edge.geometry, edge.weight))
+            #         for edge in edges.itertuples(index=False)
+            #     ]
+            #     edge_ids = self.graph.add_edges_from(hexagonal_edges)
+            #     [edge_info[2].set_edge_id(edge_id) for edge_id, edge_info in zip(edge_ids, hexagonal_edges)]
 
         logger.info(
             f"Graph has {self.graph.num_nodes()} nodes & {self.graph.num_edges()} edges for hexagon_size {self.hexagon_size}"
