@@ -51,13 +51,21 @@ class HexagonEdgeGenerator:
 
         line_string_coords = np.stack(
             [
-                all_blocks_clone.loc[neighbours["node_id_source"], ["x", "y"]].values,
-                all_blocks_clone.loc[neighbours["node_id_target"], ["x", "y"]].values,
+                all_blocks_clone.filter(pl.col("node_id_target").is_in(neighbours["node_id_source"]))
+                .select("x", "y")
+                .to_numpy(),
+                all_blocks_clone.filter(pl.col("node_id_target").is_in(neighbours["node_id_target"]))
+                .select("x", "y")
+                .to_numpy(),
             ],
             axis=1,
         )
         edge_line_strings = shapely.linestrings(line_string_coords)
-        neighbours = gpd.GeoDataFrame(neighbours, geometry=edge_line_strings, crs=Config.CRS)
+        neighbours = gpd.GeoDataFrame(
+            neighbours.select("node_id_source", "node_id_target", "weight").to_pandas(),
+            geometry=edge_line_strings,
+            crs=Config.CRS,
+        )
         neighbours["length"] = neighbours.geometry.length
 
-        return neighbours[["node_id_source", "node_id_target", "length", "weight", "geometry"]]
+        return neighbours
