@@ -6,18 +6,25 @@ from typing import Iterator
 import geopandas as gpd
 import numpy as np
 import pandas as pd
+import polars as pl
 import shapely
 
 from settings import Config
 
 
 class HexagonEdgeGenerator:
-    def generate(self, hexagonal_grid: gpd.GeoDataFrame, all_blocks: pd.DataFrame) -> Iterator[gpd.GeoDataFrame]:
-        q, r = hexagonal_grid["axial_q"], hexagonal_grid["axial_r"]
+    def generate(self, grid_block: pl.DataFrame, all_blocks: pl.DataFrame) -> Iterator[gpd.GeoDataFrame]:
+        q, r = grid_block.select("node_id", "axial_q"), grid_block.select("node_id", "axial_r")
 
-        vertical_q, vertical_r = q, r + 1
-        left_q, left_r = q - 1, r
-        right_q, right_r = q + 1, r - 1
+        vertical_q, vertical_r = q.clone(), r.clone()
+        vertical_r = vertical_r.with_columns(pl.col("axial_r") + 1)
+
+        left_q, left_r = q.clone(), r.clone()
+        left_q = left_q.with_columns(pl.col("axial_q") - 1)
+
+        right_q, right_r = q.clone(), r.clone()
+        right_q = right_q.with_columns(pl.col("axial_q") + 1)
+        right_r = right_r.with_columns(pl.col("axial_r") - 1)
 
         for neighbour_q, neighbour_r in [
             (vertical_q, vertical_r),
@@ -28,7 +35,7 @@ class HexagonEdgeGenerator:
 
     @staticmethod
     def _get_neighbouring_edges(
-        all_blocks: pd.DataFrame, neighbour_q: pd.Series, neighbour_r: pd.Series
+        all_blocks: pl.DataFrame, neighbour_q: pl.DataFrame, neighbour_r: pl.DataFrame
     ) -> gpd.GeoDataFrame:
         neighbour_candidates = pd.concat([neighbour_q, neighbour_r], axis=1)
         neighbour_candidates["node_id_source"] = neighbour_candidates.index

@@ -1,9 +1,10 @@
 # SPDX-FileCopyrightText: Contributors to the utility-route-project and Alliander N.V.
 #
 # SPDX-License-Identifier: Apache-2.0
+import datetime
 
 import geopandas as gpd
-import pandas as pd
+import polars as pl
 import rustworkx as rx
 import shapely
 import structlog
@@ -47,7 +48,16 @@ class HexagonGraphBuilder:
         )
 
         hexagon_edge_generator = HexagonEdgeGenerator()
-        all_blocks = pd.DataFrame(columns=["suitability_value", "axial_q", "axial_r", "x", "y"])
+        all_blocks = pl.DataFrame(
+            schema={
+                "node_id": pl.Int32,
+                "suitability_value": pl.Float32,
+                "axial_q": pl.Int32,
+                "axial_r": pl.Int32,
+                "x": pl.Float32,
+                "y": pl.Float32,
+            }
+        )
 
         for block in grid_constructor.construct_grid(self.project_area):
             node_values = block[["geometry", "suitability_value", "axial_q", "axial_r"]].values
@@ -55,14 +65,17 @@ class HexagonGraphBuilder:
             node_ids = self.graph.add_nodes_from(hexagonal_nodes)
             [node_info.set_node_id(node_id) for node_id, node_info in zip(node_ids, hexagonal_nodes)]
 
-            block.index = node_ids
-            block_properties = block.loc[:, ["suitability_value", "axial_q", "axial_r", "x", "y"]]
+            block["node_id"] = node_ids
+            block_properties = pl.from_pandas(
+                block.loc[:, ["node_id", "suitability_value", "axial_q", "axial_r", "x", "y"]]
+            )
 
-            if all_blocks.empty:
+            if all_blocks.is_empty():
                 all_blocks = block_properties
             else:
-                all_blocks = pd.concat([all_blocks, block_properties], axis=0)
+                all_blocks = pl.concat([all_blocks, block_properties])
 
+            start = datetime.datetime.now()
             for edges in hexagon_edge_generator.generate(block_properties, all_blocks):
                 hexagonal_edges = [
                     (edge.node_id_source, edge.node_id_target, HexagonEdgeInfo(edge.geometry, edge.weight))
@@ -70,6 +83,8 @@ class HexagonGraphBuilder:
                 ]
                 edge_ids = self.graph.add_edges_from(hexagonal_edges)
                 [edge_info[2].set_edge_id(edge_id) for edge_id, edge_info in zip(edge_ids, hexagonal_edges)]
+            end = datetime.datetime.now()
+            logger.info(f"Adding edges took: {(end - start)}")
 
         logger.info(
             f"Graph has {self.graph.num_nodes()} nodes & {self.graph.num_edges()} edges for hexagon_size {self.hexagon_size}"
