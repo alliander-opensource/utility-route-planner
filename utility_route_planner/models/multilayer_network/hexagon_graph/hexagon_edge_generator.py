@@ -5,7 +5,6 @@ from typing import Iterator
 
 import geopandas as gpd
 import numpy as np
-import pandas as pd
 import polars as pl
 import shapely
 
@@ -37,26 +36,23 @@ class HexagonEdgeGenerator:
     def _get_neighbouring_edges(
         all_blocks: pl.DataFrame, neighbour_q: pl.DataFrame, neighbour_r: pl.DataFrame
     ) -> gpd.GeoDataFrame:
-        neighbour_candidates = pd.concat([neighbour_q, neighbour_r], axis=1)
-        neighbour_candidates["node_id_source"] = neighbour_candidates.index
-        all_blocks["node_id_target"] = all_blocks.index
+        neighbour_candidates = neighbour_q.join(neighbour_r, on="node_id").rename({"node_id": "node_id_source"})
+        all_blocks_clone = all_blocks.clone().rename({"node_id": "node_id_target"})
 
-        neighbours = pd.merge(
-            neighbour_candidates,
-            all_blocks[["axial_q", "axial_r", "node_id_target"]],
-            how="inner",
-            on=["axial_q", "axial_r"],
+        neighbours = neighbour_candidates.join(
+            all_blocks_clone.select("axial_q", "axial_r", "node_id_target"), how="inner", on=["axial_q", "axial_r"]
         )
 
-        neighbours["weight"] = (
-            all_blocks.loc[neighbours["node_id_source"], "suitability_value"].values
-            + all_blocks.loc[neighbours["node_id_target"], "suitability_value"].values
+        edge_weight = (
+            all_blocks_clone.filter(pl.col("node_id_target").is_in(neighbours["node_id_source"]))["suitability_value"]
+            + all_blocks_clone.filter(pl.col("node_id_target").is_in(neighbours["node_id_target"]))["suitability_value"]
         ) / 2
+        neighbours = neighbours.with_columns(edge_weight.alias("weight"))
 
         line_string_coords = np.stack(
             [
-                all_blocks.loc[neighbours["node_id_source"], ["x", "y"]].values,
-                all_blocks.loc[neighbours["node_id_target"], ["x", "y"]].values,
+                all_blocks_clone.loc[neighbours["node_id_source"], ["x", "y"]].values,
+                all_blocks_clone.loc[neighbours["node_id_target"], ["x", "y"]].values,
             ],
             axis=1,
         )
