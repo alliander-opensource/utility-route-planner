@@ -6,10 +6,12 @@ from typing import Iterator
 import geopandas as gpd
 import pandas as pd
 
+from utility_route_planner.models.multilayer_network.graph_datastructures import TempNode
+
 
 class HexagonEdgeGenerator:
     def generate(
-        self, hexagonal_grid: gpd.GeoDataFrame, all_nodes: dict[tuple[int, int], int]
+        self, hexagonal_grid: gpd.GeoDataFrame, all_nodes: dict[tuple[int, int], TempNode]
     ) -> Iterator[gpd.GeoDataFrame]:
         q, r = hexagonal_grid["axial_q"], hexagonal_grid["axial_r"]
 
@@ -26,41 +28,23 @@ class HexagonEdgeGenerator:
 
     @staticmethod
     def _get_neighbouring_edges(
-        all_nodes: dict[tuple[int, int], int],
+        all_nodes: dict[tuple[int, int], TempNode],
         hexagonal_grid: pd.DataFrame,
         neighbour_q: pd.Series,
         neighbour_r: pd.Series,
     ):
+        # TODO: convert to pandas approach for speed
         neighbour_candidates = pd.concat([neighbour_q, neighbour_r], axis=1)
         candidate_coordinates = list(neighbour_candidates.loc[:, ["axial_q", "axial_r"]].itertuples(index=False))
 
         neighbour_nodes = [all_nodes.get(candidate, None) for candidate in candidate_coordinates]
 
-        edge_attr = list(range(len(hexagonal_grid.index)))
-        edges = list(zip(hexagonal_grid.index, neighbour_nodes, edge_attr))
-        edges_filtered = [edge for edge in edges if edge[1] is not None]
+        edges = [
+            (source_node_id, neighbour.node_id, (neighbour.suitability_value + source_suitability_value) / 2)
+            for (source_node_id, source_suitability_value), neighbour in zip(
+                hexagonal_grid.loc[:, "suitability_value"].items(), neighbour_nodes
+            )
+            if neighbour is not None
+        ]
 
-        # neighbours = pd.merge(
-        #     hexagonal_grid,
-        #     neighbour_candidates,
-        #     how="inner",
-        #     on=["axial_q", "axial_r"],
-        # )
-        #
-        # neighbours["weight"] = (
-        #     all_blocks.loc[neighbours["node_id_source"], "suitability_value"].values
-        #     + all_blocks.loc[neighbours["node_id_target"], "suitability_value"].values
-        # ) / 2
-        #
-        # line_string_coords = np.stack(
-        #     [
-        #         all_blocks.loc[neighbours["node_id_source"], ["x", "y"]].values,
-        #         all_blocks.loc[neighbours["node_id_target"], ["x", "y"]].values,
-        #     ],
-        #     axis=1,
-        # )
-        # edge_line_strings = shapely.linestrings(line_string_coords)
-        # neighbours = gpd.GeoDataFrame(neighbours, geometry=edge_line_strings, crs=Config.CRS)
-        # neighbours["length"] = neighbours.geometry.length
-
-        return edges_filtered
+        return edges

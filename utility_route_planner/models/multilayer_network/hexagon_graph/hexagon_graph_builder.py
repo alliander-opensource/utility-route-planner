@@ -1,12 +1,12 @@
 # SPDX-FileCopyrightText: Contributors to the utility-route-project and Alliander N.V.
 #
 # SPDX-License-Identifier: Apache-2.0
-
 import geopandas as gpd
 import rustworkx as rx
 import shapely
 import structlog
 
+from utility_route_planner.models.multilayer_network.graph_datastructures import TempNode
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_edge_generator import HexagonEdgeGenerator
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_grid_builder import (
     HexagonGridBuilder,
@@ -45,30 +45,28 @@ class HexagonGraphBuilder:
         )
 
         hexagon_edge_generator = HexagonEdgeGenerator()
-        previous_row: dict[tuple[int, int], int] = {}
-        current_row: dict[tuple[int, int], int] = {}
+        previous_row: dict[tuple[int, int], TempNode] = {}
+        current_row: dict[tuple[int, int], TempNode] = {}
         for block, final_column in grid_constructor.construct_grid(self.project_area):
             # node_values = block.loc[:, ["suitability_value", "x", "y"]].values
             # hexagonal_nodes = [HexagonNodeInfo(*node_value) for node_value in node_values]
-            node_ids = self.graph.add_nodes_from([1 for _ in range(len(block))])
-            # [node_info.set_node_id(node_id) for node_id, node_info in zip(node_ids, hexagonal_nodes)]
+            suitability_values = block.loc[:, "suitability_value"].values
+            node_ids = self.graph.add_nodes_from(suitability_values)
             block.index = node_ids
 
-            block_coordinates = dict(zip(zip(block["axial_q"], block["axial_r"]), block.index))
+            block_coordinates: dict[tuple[int, int], TempNode] = {
+                (node.axial_q, node.axial_r): TempNode(node.Index, node.suitability_value)
+                for node in block.itertuples()
+            }
+
             if not final_column:
                 current_row.update(block_coordinates)
             else:
                 previous_row = current_row
                 current_row = block_coordinates
 
-            # if len(previous_block) == 0:
-            #     previous_block = block_coordinates
-
-            # block_properties = block.loc[:, ["node_id", "suitability_value", "axial_q", "axial_r", "x", "y"]]
             blocks_to_check = previous_row | current_row
             for edges in hexagon_edge_generator.generate(block, blocks_to_check):
-                logger.info(final_column)
-                logger.info(f"Generated: {len(edges)}")
                 # hexagonal_edges = [
                 #     (edge.node_id_source, edge.node_id_target, HexagonEdgeInfo(shapely.LineString(), 2.0))
                 #     for edge in edges.itertuples(index=False)
