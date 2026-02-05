@@ -38,10 +38,10 @@ class HexagonGridBuilder:
         self.block_size = block_size
 
     @time_function
-    def construct_grid(self, project_area: shapely.Polygon) -> Generator[pd.DataFrame, None, None]:
+    def construct_grid(self, project_area: shapely.Polygon) -> Generator[tuple[pd.DataFrame, bool], None, None]:
         x_matrix, y_matrix = self.construct_hexagonal_grid_for_bounding_box(project_area)
 
-        for block in self.divide_matrices_into_blocks(x_matrix, y_matrix):
+        for block, final_column in self.divide_matrices_into_blocks(x_matrix, y_matrix):
             hexagonal_grid_for_block = self.filter_block_to_project_area(block)
 
             # A block can be empty in case it does not intersect with any vector
@@ -60,7 +60,7 @@ class HexagonGridBuilder:
 
                 # Reset index of grid to align with node ids generated using rustworkx
                 weighted_hexagonal_block = weighted_hexagonal_block.reset_index(drop=True)
-                yield weighted_hexagonal_block
+                yield weighted_hexagonal_block, final_column
 
     def construct_hexagonal_grid_for_bounding_box(self, project_area: shapely.Polygon) -> tuple[np.ndarray, np.ndarray]:
         """
@@ -89,7 +89,7 @@ class HexagonGridBuilder:
 
     def divide_matrices_into_blocks(
         self, x_matrix: np.ndarray, y_matrix: np.ndarray
-    ) -> Generator[gpd.GeoDataFrame, None, None]:
+    ) -> Generator[tuple[gpd.GeoDataFrame, bool], None, None]:
         """
         Generator which yields indexed blocks from the x- and y-matrix given the desired block size
 
@@ -97,8 +97,8 @@ class HexagonGridBuilder:
         :type x_matrix: np.ndarray
         :param y_matrix: y_matrix to divide into blocks
         :type y_matrix: np.ndarray
-        :return: row_start, row_end, column_start, column_end, x_block, y_block
-        :rtype: Generator[gpd.GeoDataFrame, None, None]
+        :return: block and indication whether the final column of the current row is reached
+        :rtype: Generator[tuple[gpd.GeoDataFrame, bool], None, None]
         """
         # Determine number of columns and columns given the desired block size. Round up to prevent
         # losing data
@@ -117,7 +117,8 @@ class HexagonGridBuilder:
         column_splits = np.linspace(0, y_matrix.shape[1], n_columns_blocks + 1, dtype=int)
 
         # Iterate over the split indexes to extract the blocks from the matrices. Convert each block
-        # to a GeoDataFrame.
+        # to a GeoDataFrame. Return whether this is the last column of the current row, this is used
+        # for edge determination later on.
         counter = 0
         for row_start, row_end in zip(row_splits[:-1], row_splits[1:]):
             for column_start, column_end in zip(column_splits[:-1], column_splits[1:]):
@@ -131,7 +132,8 @@ class HexagonGridBuilder:
                 )
                 block_grid = block_grid.reset_index(names="node_id")
 
-                yield block_grid
+                final_column = column_end == column_splits[-1]
+                yield block_grid, final_column
 
     def filter_block_to_project_area(self, bounding_box_grid: gpd.GeoDataFrame):
         """

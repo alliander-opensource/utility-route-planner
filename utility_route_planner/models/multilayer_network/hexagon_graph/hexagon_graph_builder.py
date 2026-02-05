@@ -45,19 +45,30 @@ class HexagonGraphBuilder:
         )
 
         hexagon_edge_generator = HexagonEdgeGenerator()
-        all_nodes: dict[tuple[int, int], int] = {}
-        for block in grid_constructor.construct_grid(self.project_area):
+        previous_row: dict[tuple[int, int], int] = {}
+        current_row: dict[tuple[int, int], int] = {}
+        for block, final_column in grid_constructor.construct_grid(self.project_area):
             # node_values = block.loc[:, ["suitability_value", "x", "y"]].values
             # hexagonal_nodes = [HexagonNodeInfo(*node_value) for node_value in node_values]
             node_ids = self.graph.add_nodes_from([1 for _ in range(len(block))])
             # [node_info.set_node_id(node_id) for node_id, node_info in zip(node_ids, hexagonal_nodes)]
             block.index = node_ids
-            block_lookup_dict = dict(zip(zip(block["axial_q"], block["axial_r"]), block.index))
-            all_nodes.update(block_lookup_dict)
+
+            block_coordinates = dict(zip(zip(block["axial_q"], block["axial_r"]), block.index))
+            if not final_column:
+                current_row.update(block_coordinates)
+            else:
+                previous_row = current_row
+                current_row = block_coordinates
+
+            # if len(previous_block) == 0:
+            #     previous_block = block_coordinates
 
             # block_properties = block.loc[:, ["node_id", "suitability_value", "axial_q", "axial_r", "x", "y"]]
-
-            for edges in hexagon_edge_generator.generate(block, all_nodes):
+            blocks_to_check = previous_row | current_row
+            for edges in hexagon_edge_generator.generate(block, blocks_to_check):
+                logger.info(final_column)
+                logger.info(f"Generated: {len(edges)}")
                 # hexagonal_edges = [
                 #     (edge.node_id_source, edge.node_id_target, HexagonEdgeInfo(shapely.LineString(), 2.0))
                 #     for edge in edges.itertuples(index=False)
@@ -65,7 +76,12 @@ class HexagonGraphBuilder:
                 self.graph.add_edges_from(edges)
                 # [edge_info[2].set_edge_id(edge_id) for edge_id, edge_info in zip(edge_ids, hexagonal_edges)]
 
+        degrees = [self.graph.degree(node) for node in self.graph.nodes()]
+        logger.info(
+            f"Max degree: {max(degrees)}, Min degree: {min(degrees)}, avg: {sum(degrees) / self.graph.num_nodes()}"
+        )
         logger.info(
             f"Graph has {self.graph.num_nodes()} nodes & {self.graph.num_edges()} edges for hexagon_size {self.hexagon_size}"
         )
+
         return self.graph
