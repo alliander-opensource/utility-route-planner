@@ -60,7 +60,7 @@ class RouteEvaluationMetrics:
 
         """
         self.route_relative_cost_sota, cell_size, raster_shape = self.get_route_cost_estimation(
-            self.route_sota, self.path_cost_surface
+            self.route_sota, self.path_cost_surface, True
         )
 
         if self.project_area.area > 0:
@@ -78,7 +78,7 @@ class RouteEvaluationMetrics:
         if self.route_human.length > 0:
             logger.info(f"Route human length: {round(self.route_human.length)} meters.")
             self.route_relative_cost_human, cell_size, _ = self.get_route_cost_estimation(
-                self.route_human, self.path_cost_surface
+                self.route_human, self.path_cost_surface, False
             )
             logger.info(f"Route human relative cost: {round(self.route_relative_cost_human)}.")
 
@@ -91,7 +91,9 @@ class RouteEvaluationMetrics:
                 f"Average similarity: {round((self.route_similarity_sota + self.route_similarity_human) / 2, 2)}%."
             )
 
-    def get_route_cost_estimation(self, route: shapely.LineString, path_cost_surface: str) -> tuple:
+    def get_route_cost_estimation(
+        self, route: shapely.LineString, path_cost_surface: str, get_most_used_cells: bool
+    ) -> tuple:
         with rasterio.Env():
             with rasterio.open(path_cost_surface) as src:
                 raster_shape = src.shape
@@ -115,6 +117,12 @@ class RouteEvaluationMetrics:
                 )
 
                 gdf_cells = gdf_cells[gdf_cells["suitability_value"] != no_data]
+
+        if get_most_used_cells:
+            most_traversed_cost = gdf_cells.dissolve(by="suitability_value").area
+            logger.info(
+                f"Most traversed costs by LCPA based on cell area:\n{most_traversed_cost.sort_values(ascending=False).head(5).to_string()}"
+            )
 
         gdf_route_segments = gpd.GeoDataFrame(geometry=gpd.GeoSeries(route), crs=28992).overlay(
             gdf_cells, how="intersection", keep_geom_type=False
