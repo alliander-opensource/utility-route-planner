@@ -110,7 +110,7 @@ class HexagonGridBuilder:
         if n_rows_blocks == 1 and n_columns_blocks == 1:
             grid = gpd.GeoDataFrame(geometry=gpd.points_from_xy(x_matrix.ravel(), y_matrix.ravel()), crs=Config.CRS)
             grid = grid.reset_index(names="node_id")
-            yield grid
+            yield grid, True
             return
 
         row_splits = np.linspace(0, x_matrix.shape[0], n_rows_blocks + 1, dtype=int)

@@ -48,8 +48,6 @@ class HexagonGraphBuilder:
         previous_row: dict[tuple[int, int], TempNode] = {}
         current_row: dict[tuple[int, int], TempNode] = {}
         for block, final_column in grid_constructor.construct_grid(self.project_area):
-            # node_values = block.loc[:, ["suitability_value", "x", "y"]].values
-            # hexagonal_nodes = [HexagonNodeInfo(*node_value) for node_value in node_values]
             suitability_values = block.loc[:, "suitability_value"].values
             node_ids = self.graph.add_nodes_from(suitability_values)
             block.index = node_ids
@@ -67,12 +65,7 @@ class HexagonGraphBuilder:
 
             blocks_to_check = previous_row | current_row
             for edges in hexagon_edge_generator.generate(block, blocks_to_check):
-                # hexagonal_edges = [
-                #     (edge.node_id_source, edge.node_id_target, HexagonEdgeInfo(shapely.LineString(), 2.0))
-                #     for edge in edges.itertuples(index=False)
-                # ]
                 self.graph.add_edges_from(edges)
-                # [edge_info[2].set_edge_id(edge_id) for edge_id, edge_info in zip(edge_ids, hexagonal_edges)]
 
         degrees = [self.graph.degree(node) for node in self.graph.nodes()]
         logger.info(
