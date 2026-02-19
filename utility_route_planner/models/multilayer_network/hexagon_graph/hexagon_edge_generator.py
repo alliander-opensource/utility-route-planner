@@ -2,17 +2,13 @@
 #  #
 #  SPDX-License-Identifier: Apache-2.0
 from typing import Iterator
-
-import geopandas as gpd
 import pandas as pd
 
-from utility_route_planner.models.multilayer_network.graph_datastructures import TempNode
+from utility_route_planner.util.timer import time_function
 
 
 class HexagonEdgeGenerator:
-    def generate(
-        self, hexagonal_grid: gpd.GeoDataFrame, all_nodes: dict[tuple[int, int], TempNode]
-    ) -> Iterator[gpd.GeoDataFrame]:
+    def generate(self, hexagonal_grid: pd.DataFrame, all_nodes: pd.DataFrame) -> Iterator[list[tuple[int, int, float]]]:
         q, r = hexagonal_grid["axial_q"], hexagonal_grid["axial_r"]
 
         vertical_q, vertical_r = q, r + 1
@@ -24,27 +20,29 @@ class HexagonEdgeGenerator:
             (left_q, left_r),
             (right_q, right_r),
         ]:
-            yield self._get_neighbouring_edges(all_nodes, hexagonal_grid, neighbour_q, neighbour_r)
+            yield self._get_neighbouring_edges(all_nodes, neighbour_q, neighbour_r)
 
     @staticmethod
+    @time_function
     def _get_neighbouring_edges(
-        all_nodes: dict[tuple[int, int], TempNode],
-        hexagonal_grid: pd.DataFrame,
+        all_nodes: pd.DataFrame,
         neighbour_q: pd.Series,
         neighbour_r: pd.Series,
-    ):
-        # TODO: convert to pandas approach for speed
+    ) -> list[tuple[int, int, float]]:
+        all_nodes_copy = all_nodes.copy()
+
+        # Which neighbours do exist?
+        all_nodes_copy = all_nodes_copy.reset_index(names="target_node")
         neighbour_candidates = pd.concat([neighbour_q, neighbour_r], axis=1)
-        candidate_coordinates = list(neighbour_candidates.loc[:, ["axial_q", "axial_r"]].itertuples(index=False))
+        neighbour_candidates = neighbour_candidates.reset_index(names=["source_node"])
 
-        neighbour_nodes = [all_nodes.get(candidate, None) for candidate in candidate_coordinates]
+        neighbours = neighbour_candidates.loc[:, ["axial_q", "axial_r", "source_node"]].merge(
+            all_nodes_copy.loc[:, ["axial_q", "axial_r", "target_node"]], on=["axial_q", "axial_r"], how="inner"
+        )
+        neighbours["weight"] = (
+            all_nodes.loc[neighbours["source_node"], "suitability_value"].values
+            + all_nodes.loc[neighbours["target_node"], "suitability_value"].values
+        ) / 2
 
-        edges = [
-            (source_node_id, neighbour.node_id, (neighbour.suitability_value + source_suitability_value) / 2)
-            for (source_node_id, source_suitability_value), neighbour in zip(
-                hexagonal_grid.loc[:, "suitability_value"].items(), neighbour_nodes
-            )
-            if neighbour is not None
-        ]
-
+        edges = list(neighbours.loc[:, ["source_node", "target_node", "weight"]].itertuples(index=False))
         return edges
