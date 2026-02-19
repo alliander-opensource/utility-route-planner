@@ -32,12 +32,14 @@ class HexagonGraphBuilder:
         project_area: shapely.Polygon,
         raster_groups: dict[str, str],
         preprocessed_vectors: dict[str, gpd.GeoDataFrame],
+        osm_edges: gpd.GeoDataFrame,
         hexagon_size: float,
         block_size: int,
     ):
         self.project_area = project_area
         self.raster_groups = raster_groups
         self.preprocessed_vectors = preprocessed_vectors
+        self.osm_edges = osm_edges
         self.hexagon_size = hexagon_size
         self.block_size = block_size
         self.graph = rx.PyGraph()
@@ -45,7 +47,7 @@ class HexagonGraphBuilder:
     @time_function
     def build_graph(self) -> rx.PyGraph:
         grid_constructor = HexagonGridBuilder(
-            self.raster_groups, self.preprocessed_vectors, self.hexagon_size, self.block_size
+            self.raster_groups, self.preprocessed_vectors, self.osm_edges, self.hexagon_size, self.block_size
         )
 
         hexagon_edge_generator = HexagonEdgeGenerator()
@@ -56,7 +58,7 @@ class HexagonGraphBuilder:
         node_suitability_values: list[int] = []
         node_x_coordinates: list[float] = []
         node_y_coordinates: list[float] = []
-        node_is_osm: list[bool] = []
+        node_near_osm_edge: list[bool] = []
 
         for block, final_column in grid_constructor.construct_grid(self.project_area):
             suitability_values = block.loc[:, "suitability_value"].values
@@ -69,7 +71,7 @@ class HexagonGraphBuilder:
                 node_suitability_values.append(node.suitability_value)
                 node_x_coordinates.append(node.x)
                 node_y_coordinates.append(node.y)
-                node_is_osm.append(True)
+                node_near_osm_edge.append(node.near_osm_edge)
                 block_coordinates[(node.axial_q, node.axial_r)] = TempNode(node.Index, node.suitability_value)
 
             blocks_to_check = previous_row | current_row | block_coordinates
@@ -104,14 +106,14 @@ class HexagonGraphBuilder:
                 "suitability_value": node_suitability_values,
                 "x": node_x_coordinates,
                 "y": node_y_coordinates,
-                "is_osm": node_is_osm,
+                "near_osm_edge": node_near_osm_edge,
             },
             schema={
                 "node_id": pl.Int32,
                 "suitability_value": pl.Float32,
                 "x": pl.Float64,
                 "y": pl.Float64,
-                "is_osm": pl.Boolean,
+                "near_osm_edge": pl.Boolean,
             },
         )
         logger.info(f"Nodes df estimated size: {nodes_df.estimated_size(unit='gb')}gb")

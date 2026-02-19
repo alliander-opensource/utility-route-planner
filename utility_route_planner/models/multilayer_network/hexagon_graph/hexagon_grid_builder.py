@@ -28,11 +28,13 @@ class HexagonGridBuilder:
         self,
         raster_groups: dict[str, str],
         preprocessed_vectors: dict[str, gpd.GeoDataFrame],
+        osm_edges: gpd.GeoDataFrame,
         hexagon_size: float,
         block_size: int,
     ):
         self.raster_groups = raster_groups
         self.preprocessed_vectors = preprocessed_vectors
+        self.osm_edges = osm_edges
         self.hexagon_size = hexagon_size
         self.hexagon_width, self.hexagon_height = get_hexagon_width_and_height(hexagon_size)
         self.block_size = block_size
@@ -46,13 +48,14 @@ class HexagonGridBuilder:
 
             # A block can be empty in case it does not intersect with any vector
             if not hexagonal_grid_for_block.empty:
-                weighted_hexagonal_block = self.assign_suitability_values_to_block(hexagonal_grid_for_block)
+                osm_marked_block = self.check_intersection_with_osm_graph(hexagonal_grid_for_block)
+                weighted_hexagonal_block = self.assign_suitability_values_to_block(osm_marked_block)
                 weighted_hexagonal_block["axial_q"], weighted_hexagonal_block["axial_r"] = (
                     self.convert_cartesian_coordinates_to_axial(weighted_hexagonal_block)
                 )
                 weighted_hexagonal_block = pd.concat(
                     [
-                        weighted_hexagonal_block.loc[:, ["suitability_value", "axial_q", "axial_r"]],
+                        weighted_hexagonal_block.loc[:, ["suitability_value", "axial_q", "axial_r", "near_osm_edge"]],
                         weighted_hexagonal_block.get_coordinates(),
                     ],
                     axis=1,
@@ -154,6 +157,17 @@ class HexagonGridBuilder:
 
         return points_within_project_area
 
+    def check_intersection_with_osm_graph(self, points_within_project_area: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
+        """
+        For each point on the grid, check if within 2 x hexagon size of an edge on the OSM grid
+        """
+        near_osm_check = points_within_project_area.sjoin(
+            self.osm_edges, distance=self.hexagon_size * 2, predicate="dwithin"
+        )
+
+        points_within_project_area["near_osm_edge"] = points_within_project_area.index.isin(near_osm_check.index)
+        return points_within_project_area
+
     @time_function
     def assign_suitability_values_to_block(self, points_within_project_area: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
         """
@@ -219,7 +233,7 @@ class HexagonGridBuilder:
         )
         hexagon_points = gpd.GeoDataFrame(
             aggregated_suit_values_per_node_pandas.join(
-                points_within_project_area["geometry"], how="left", lsuffix="l", rsuffix="r"
+                points_within_project_area[["near_osm_edge", "geometry"]], how="left", lsuffix="l", rsuffix="r"
             ),
             geometry="geometry",
         )
