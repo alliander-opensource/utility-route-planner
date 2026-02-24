@@ -8,7 +8,7 @@ SPDX-License-Identifier: Apache-2.0
 
 This repository shares research on software for automatic placement of electricity cables using a combination of geo-information and graph theory.
 
-The utility network needs to be expanded due to the energy transition. Finding a location for new infrastructure is no easy feat considering the amount of involved design criteria. 
+The utility network needs to be expanded due to the energy transition. Finding a location for new infrastructure is no easy feat considering the amount of involved design criteria.
 This research includes the creation of a software package for automatic placement of utility network using a combination of geo-information and graph theory.
 
 This research is being carried out at Alliander, a Dutch DSO, as part of [Jelmar Versleijen](https://research.wur.nl/en/persons/jelmar-versleijen)'s PhD with [Wagening University](https://www.wur.nl/en.htm). [Read more about research at Alliander](https://www.alliander.com/nl/alliander-en-open-research/).
@@ -57,12 +57,14 @@ Run tests using pytest:
 ```bash
 poetry run python -m pytest tests/
 ```
+For quick experimentation, weights of existing criteria can be changed. This can be done by editing the `mcda_presets.py` file.
 
-Expanding criteria included in the `mcda_presets.py` can be done by:
+Adding new criteria can be done by:
 
-1. Adding a new class to the `criteria` folder.
-2. Implementing the `get_suitability` method.
-3. Adding the new class to the `mcda_presets.py` file. Set the group and weight of the new class.
+1. Add vector data to the case study geopackage in the `data/examples` folder.
+2. Adding a new entry to `mcda_presets.py` according to the pydantic model `RasterPresetCriteria`.
+3. Adding a new class to the `utility_route_planner/mcda/vector_preprocessing` folder.
+4. Implementing the `specific_preprocess` method. This commonly consists out reclassifying a dominant attribute.
 
 # Support
 

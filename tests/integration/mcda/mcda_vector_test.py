@@ -935,6 +935,118 @@ class TestVectorPreprocessing:
         assert "niet-bgt" not in reclassified_gdf["bgt-type"]
         assert "waardeOnbekend" not in reclassified_gdf["plus-type"]
 
+        reclassified_gdfscheiding_only = SmallAboveGroundObstacles._set_suitability_values(
+            [bgt_bak_bord_kast_paal_put_straatmeubilair], weight_values
+        )
+        pd.testing.assert_series_equal(
+            reclassified_gdfscheiding_only["suitability_value"],
+            pd.Series(
+                [
+                    8,
+                    9,
+                    10,
+                    11,
+                    12,
+                    13,
+                    14,
+                    15,
+                    16,
+                    17,
+                    18,
+                    19,
+                    20,
+                    21,
+                    22,
+                    23,
+                    24,
+                    25,
+                    26,
+                    27,
+                    28,
+                    29,
+                    30,
+                    31,
+                    32,
+                    33,
+                    34,
+                    35,
+                    36,
+                    37,
+                    38,
+                    39,
+                    40,
+                    41,
+                    42,
+                    43,
+                    44,
+                    44,
+                    45,
+                    46,
+                    47,
+                    48,
+                    49,
+                    50,
+                    51,
+                    52,
+                    53,
+                    54,
+                    55,
+                    56,
+                    57,
+                    58,
+                    59,
+                    59,
+                    60,
+                    61,
+                    62,
+                    63,
+                    64,
+                    65,
+                    66,
+                    67,
+                    68,
+                    69,
+                    70,
+                    71,
+                    72,
+                    72,
+                    73,
+                    74,
+                    75,
+                    76,
+                    77,
+                    78,
+                    79,
+                    80,
+                    81,
+                    82,
+                    83,
+                    84,
+                    85,
+                ]
+            ),
+            check_names=False,
+            check_exact=True,
+            check_dtype=False,
+            check_index=False,
+        )
+
+        assert "waardeOnbekend" not in reclassified_gdfscheiding_only["plus-type"]
+
+        reclassified_gdf_others_only = SmallAboveGroundObstacles._set_suitability_values(
+            [bgt_scheiding_1, bgt_scheiding_2], weight_values
+        )
+        pd.testing.assert_series_equal(
+            reclassified_gdf_others_only["suitability_value"],
+            pd.Series([1, 2, 3, 4, 5, 7]),
+            check_names=False,
+            check_exact=True,
+            check_dtype=False,
+            check_index=False,
+        )
+
+        assert "niet-bgt" not in reclassified_gdf_others_only["bgt-type"]
+
     def test_vegetation_object(self):
         weight_values = {
             # plus_type
@@ -1190,3 +1302,17 @@ class TestVectorPreprocessing:
             check_index=False,
         )
         assert reclassified_gdf.geom_type.unique().tolist() == ["Polygon"]
+
+
+def test_get_vector_metrics_benchmark():
+    mcda_engine = McdaCostSurfaceEngine(
+        Config.RASTER_PRESET_NAME_BENCHMARK, Config.PYTEST_PATH_GEOPACKAGE_MCDA, shapely.Point(1, 1).buffer(100)
+    )
+    df1 = pd.DataFrame({"area_m2": [1.2, 2.5, 3.7]})
+    df2 = pd.DataFrame({"area_m2": [4.1, 5.9]})
+    present_weight_dfs = [df1, df2]
+    n_total_weights = mcda_engine.get_vector_metrics(present_weight_dfs)
+
+    assert n_total_weights == 195  # As per the benchmark preset configuration
+    df_expected = pd.DataFrame({"area_m2": [1, 2, 4, 4, 6]})
+    pd.testing.assert_frame_equal(df_expected.reset_index(drop=True), pd.DataFrame({"area_m2": [1, 2, 4, 4, 6]}))

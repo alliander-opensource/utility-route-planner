@@ -50,6 +50,7 @@ class ExistingUtilities(VectorPreprocessorBase):
                     gdf_high_voltage_overhead["geometry"] = gdf_high_voltage_overhead["geometry"].buffer(
                         buffer_values["hoogspanning_bovengronds_buffer"]
                     )
+                    gdf_high_voltage_overhead["asset_type"] = "high_voltage_cable_overhead"
                     # Possibly we may need to dissolve based on highest suitability value.
                 elif gdf.iloc[0].type == "high_voltage_cable_underground":
                     gdf_high_voltage_underground = gdf.copy()
@@ -57,6 +58,7 @@ class ExistingUtilities(VectorPreprocessorBase):
                     gdf_high_voltage_underground["geometry"] = gdf_high_voltage_underground["geometry"].buffer(
                         buffer_values["hoogspanning_ondergronds_buffer"]
                     )
+                    gdf_high_voltage_underground["asset_type"] = "high_voltage_cable_underground"
                     # Possibly we may need to dissolve based on highest suitability value.
             elif "Leiding" in gdf.columns:
                 gdf_gasunie_leiding = gdf.copy()
@@ -66,11 +68,13 @@ class ExistingUtilities(VectorPreprocessorBase):
                     buffer_values["gasunie_leidingen_buffer"]
                 )
                 gdf_gasunie_leiding = gdf_gasunie_leiding.dissolve()
+                gdf_gasunie_leiding["asset_type"] = "gasunie_leiding"
             elif "STATIONCOMPLEX" in gdf.columns:
                 gdf_substations = gdf.copy()
                 # Only include highvoltage substation areas.
                 gdf_substations["suitability_value"] = weight_values["alliander_stationsterrein"]
                 gdf_substations = gdf_substations[gdf_substations.area > 30]
+                gdf_substations["asset_type"] = "alliander_station"
             else:
                 logger.warning(f"Unknown layer found in existing utilities: {gdf.columns}.")
 

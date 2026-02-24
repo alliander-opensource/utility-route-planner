@@ -48,6 +48,7 @@ class TestMcdaLcpaChain:
         write_results_to_geopackage(Config.PATH_GEOPACKAGE_LCPA_OUTPUT, lcpa_engine.lcpa_result, "utility_route_result")
 
 
+@pytest.mark.skip(reason="Benchmark cases are skipped in normal test runs to save time.")
 @pytest.mark.parametrize(
     "path_geopackage, layer_name_project_area, layer_name_utility_route_human_designed",
     [

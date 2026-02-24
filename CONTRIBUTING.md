@@ -13,10 +13,11 @@ We'd love to accept your patches and contributions to this project. There are ju
 Contribution does not necessarily mean committing code to the repository.
 We recognize different levels of contributions as shown below in increasing order of dedication.
 
-1. Use and test the project. Give feedback on the user experience or suggest new features.
-2. Report bugs or security vulnerabilities.
-3. Fix bugs.
-4. Improve the project by developing new features.
+1. Use and test the project. Give feedback on the user experience.
+2. Suggest or prioritize new features to be developed, based on substantiated input from a DSO.
+3. Report bugs or security vulnerabilities.
+4. Fix bugs.
+5. Improve the project by developing new features.
 
 ## Filing bugs, security vulnerabilities or feature requests
 
@@ -79,12 +80,12 @@ Contributions should be submitted as GitHub pull requests. See [Creating a pull 
 Follow this process for a code change and pull request:
 
 1. Fork the repository.
-1. Make your change in a feature/description_of_your_change branch.
-1. Run the tests.
-1. Run the [pre-commit hooks](https://pre-commit.com/) to check for code style and other issues.
-1. Submit a pull request.
-1. Pull requests will be reviewed by one of the maintainers who may discuss, offer constructive feedback, request changes, or approve the work.
-1. Upon receiving the sign-off from one of the maintainers will merge it for you.
+2. Make your change in a feature/description_of_your_change branch.
+3. Run the tests.
+4. Run the [pre-commit hooks](https://pre-commit.com/) to check for code style and other issues.
+5. Submit a pull request.
+6. Pull requests will be reviewed by one of the maintainers who may discuss, offer constructive feedback, request changes, or approve the work.
+7. Upon receiving the sign-off from one of the maintainers will merge it for you.
 
 ## Attribution
 
