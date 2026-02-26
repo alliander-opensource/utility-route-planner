@@ -62,6 +62,8 @@ class HexagonGraphBuilder:
             block_node_ids = self.graph.add_nodes_from(suitability_values)
             block.index = block_node_ids
 
+            # Store all block information. Create a temporary dict to store all information of the block for edge
+            # processing.
             block_coordinates: dict[tuple[int, int], TempNode] = {}
             for node in block.itertuples():
                 node_ids.append(node.Index)
@@ -70,8 +72,9 @@ class HexagonGraphBuilder:
                 node_y_coordinates.append(node.y)
                 block_coordinates[(node.axial_q, node.axial_r)] = TempNode(node.Index, node.suitability_value)
 
+            # Determine which previous block must be included into the edge generation to reduce the number of neighbour
+            # candidate calls in the edge generation.
             previous_blocks_to_check = self.filter_previous_blocks(block_coordinates, previous_row, current_row)
-
             blocks_to_check = previous_blocks_to_check | block_coordinates
             blocks_to_check_df = pd.DataFrame(
                 [{"axial_q": q, "axial_r": r, **asdict(v)} for (q, r), v in blocks_to_check.items()]
@@ -81,6 +84,8 @@ class HexagonGraphBuilder:
             for edges in hexagon_edge_generator.generate(block, blocks_to_check_df):
                 self.graph.add_edges_from(edges)
 
+            # Store the edges of the current block for edge generation in the next block. In case this was the final
+            # block of this row, the previous row is set to this row and current_row is reset to the last block.
             edge_coordinates = self.get_block_edge_coordinates(block_coordinates)
             if not final_column:
                 current_row.update(edge_coordinates)
