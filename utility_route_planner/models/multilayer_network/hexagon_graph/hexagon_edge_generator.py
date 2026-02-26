@@ -7,27 +7,18 @@ import pandas as pd
 
 class HexagonEdgeGenerator:
     def generate(self, hexagonal_grid: pd.DataFrame, all_nodes: pd.DataFrame) -> Iterator[list[tuple[int, int, float]]]:
-        q, r = hexagonal_grid["axial_q"], hexagonal_grid["axial_r"]
+        vertical_neighbour_candidates = hexagonal_grid.loc[:, ["axial_q", "axial_r"]] + (0, 1)
+        left_neighbour_candidates = hexagonal_grid.loc[:, ["axial_q", "axial_r"]] - (1, 0)
+        right_neighbour_candidates = hexagonal_grid.loc[:, ["axial_q", "axial_r"]] + (1, -1)
 
-        vertical_q, vertical_r = q, r + 1
-        left_q, left_r = q - 1, r
-        right_q, right_r = q + 1, r - 1
-
-        for neighbour_q, neighbour_r in [
-            (vertical_q, vertical_r),
-            (left_q, left_r),
-            (right_q, right_r),
-        ]:
-            yield self._get_neighbouring_edges(all_nodes, neighbour_q, neighbour_r)
+        for candidate in [vertical_neighbour_candidates, left_neighbour_candidates, right_neighbour_candidates]:
+            yield self._get_neighbouring_edges(all_nodes, candidate)
 
     @staticmethod
     def _get_neighbouring_edges(
-        all_nodes: pd.DataFrame,
-        neighbour_q: pd.Series,
-        neighbour_r: pd.Series,
+        all_nodes: pd.DataFrame, neighbour_candidates: pd.DataFrame
     ) -> list[tuple[int, int, float]]:
         # Which neighbours do exist?
-        neighbour_candidates = pd.concat([neighbour_q, neighbour_r], axis=1)
         neighbour_candidates = neighbour_candidates.reset_index(names=["source_node"])
 
         neighbours = neighbour_candidates.loc[:, ["axial_q", "axial_r", "source_node"]].merge(
