@@ -4,8 +4,6 @@
 from typing import Iterator
 import pandas as pd
 
-from utility_route_planner.util.timer import time_function
-
 
 class HexagonEdgeGenerator:
     def generate(self, hexagonal_grid: pd.DataFrame, all_nodes: pd.DataFrame) -> Iterator[list[tuple[int, int, float]]]:
@@ -23,7 +21,6 @@ class HexagonEdgeGenerator:
             yield self._get_neighbouring_edges(all_nodes, neighbour_q, neighbour_r)
 
     @staticmethod
-    @time_function
     def _get_neighbouring_edges(
         all_nodes: pd.DataFrame,
         neighbour_q: pd.Series,

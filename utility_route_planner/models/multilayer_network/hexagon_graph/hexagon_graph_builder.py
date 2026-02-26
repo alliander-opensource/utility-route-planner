@@ -32,22 +32,20 @@ class HexagonGraphBuilder:
         project_area: shapely.Polygon,
         raster_groups: dict[str, str],
         preprocessed_vectors: dict[str, gpd.GeoDataFrame],
-        osm_edges: gpd.GeoDataFrame,
         hexagon_size: float,
         block_size: int,
     ):
         self.project_area = project_area
         self.raster_groups = raster_groups
         self.preprocessed_vectors = preprocessed_vectors
-        self.osm_edges = osm_edges
         self.hexagon_size = hexagon_size
         self.block_size = block_size
         self.graph = rx.PyGraph()
 
     @time_function
-    def build_graph(self) -> rx.PyGraph:
+    def build_graph(self) -> tuple[rx.PyGraph, pl.DataFrame]:
         grid_constructor = HexagonGridBuilder(
-            self.raster_groups, self.preprocessed_vectors, self.osm_edges, self.hexagon_size, self.block_size
+            self.raster_groups, self.preprocessed_vectors, self.hexagon_size, self.block_size
         )
 
         hexagon_edge_generator = HexagonEdgeGenerator()
@@ -118,4 +116,4 @@ class HexagonGraphBuilder:
         )
         logger.info(f"Nodes df estimated size: {nodes_df.estimated_size(unit='gb')}gb")
 
-        return self.graph
+        return self.graph, nodes_df
