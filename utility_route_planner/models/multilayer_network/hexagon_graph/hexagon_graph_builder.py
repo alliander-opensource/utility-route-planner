@@ -70,16 +70,7 @@ class HexagonGraphBuilder:
                 node_y_coordinates.append(node.y)
                 block_coordinates[(node.axial_q, node.axial_r)] = TempNode(node.Index, node.suitability_value)
 
-            min_q = min(q for q, _ in block_coordinates)
-            min_r = min(r for _, r in block_coordinates)
-
-            # Only check blocks that could be adjacent to the current block. This is the case if it is exactly 1 q or
-            # 1 r away from the top or left side of the block
-            previous_blocks_to_check = {
-                (q, r): value
-                for (q, r), value in (previous_row | current_row).items()
-                if q >= min_q - 1 or r >= min_r - 1
-            }
+            previous_blocks_to_check = self.filter_previous_blocks(block_coordinates, previous_row, current_row)
 
             blocks_to_check = previous_blocks_to_check | block_coordinates
             blocks_to_check_df = pd.DataFrame(
@@ -90,17 +81,7 @@ class HexagonGraphBuilder:
             for edges in hexagon_edge_generator.generate(block, blocks_to_check_df):
                 self.graph.add_edges_from(edges)
 
-            # Max q represents the right side of the block
-            max_q = max(q for q, _ in block_coordinates)
-
-            # Max r represents the bottom of the block
-            max_r = max(r for _, r in block_coordinates)
-
-            # Get all coordinates on the edges of the blocks
-            edge_coordinates = {
-                (q, r): value for (q, r), value in block_coordinates.items() if q == max_q or r == max_r
-            }
-
+            edge_coordinates = self.get_block_edge_coordinates(block_coordinates)
             if not final_column:
                 current_row.update(edge_coordinates)
             else:
@@ -118,3 +99,49 @@ class HexagonGraphBuilder:
         logger.info(f"Nodes df estimated size: {nodes_gdf.memory_usage(deep=True)}")
 
         return self.graph, nodes_gdf
+
+    @staticmethod
+    def filter_previous_blocks(
+        block_coordinates: dict[tuple[int, int], TempNode],
+        previous_row: dict[tuple[int, int], TempNode],
+        current_row: dict[tuple[int, int], TempNode],
+    ):
+        """
+        Only check blocks that could be adjacent to the current block. This is the case if it is exactly 1-q or 1-r away
+        from the top or left side of the block
+
+        :param block_coordinates: coordinates of current block
+        :param previous_row: all coordinates of the previous row
+        :param current_row: all coordinates of the current row so far
+
+        :return: previous blocks which are adjacent to the current block
+        """
+        min_q = min(q for q, _ in block_coordinates)
+        min_r = min(r for _, r in block_coordinates)
+
+        previous_blocks_to_check = {
+            (q, r): value for (q, r), value in (previous_row | current_row).items() if q >= min_q - 1 or r >= min_r - 1
+        }
+        return previous_blocks_to_check
+
+    @staticmethod
+    def get_block_edge_coordinates(
+        block_coordinates: dict[tuple[int, int], TempNode],
+    ) -> dict[tuple[int, int], TempNode]:
+        """
+        Given the coordinates of a block, get right side and bottom coordinates. These coordinates are equal to the max
+        q or max r coordinates of the block respectively. These coordinates are relevant for determining cross-block
+        edges.
+
+        :param block_coordinates: axial coordinates, node ids and suitability values for all nodes within a block
+        :return: edge coordinates of the block including corresponding node ids and suitability values.
+        """
+        # Max q represents the right side of the block
+        max_q = max(q for q, _ in block_coordinates)
+
+        # Max r represents the bottom of the block
+        max_r = max(r for _, r in block_coordinates)
+
+        # Get all coordinates on the edges of the blocks
+        edge_coordinates = {(q, r): value for (q, r), value in block_coordinates.items() if q == max_q or r == max_r}
+        return edge_coordinates
