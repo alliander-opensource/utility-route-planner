@@ -17,7 +17,7 @@ from utility_route_planner.models.multilayer_network.multilayer_route_planner im
 from utility_route_planner.util.graph_utilities import create_osm_edge_info
 from utility_route_planner.models.mcda.mcda_engine import McdaCostSurfaceEngine
 from utility_route_planner.models.multilayer_network.pipe_ramming import GetPotentialPipeRammingCrossings
-from utility_route_planner.util.geo_utilities import osm_graph_to_gdfs
+from utility_route_planner.util.geo_utilities import osm_graph_to_gdfs, get_empty_geodataframe
 from utility_route_planner.models.multilayer_network.osm_graph_preprocessing import OSMGraphPreprocessor
 from utility_route_planner.models.multilayer_network.graph_datastructures import OSMNodeInfo
 from utility_route_planner.util.write import reset_geopackage, write_results_to_geopackage
@@ -57,19 +57,19 @@ class TestPipeRamming:
                 raster_groups,
                 mcda_engine.processed_vectors,
                 hexagon_size=0.5,
+                block_size=256,
             )
-            cost_surface_graph = hexagon_graph_builder.build_graph()
+            cost_surface_graph, cost_surface_nodes = hexagon_graph_builder.build_graph()
 
             if debug:
                 osm_nodes, osm_edges = osm_graph_to_gdfs(osm_graph_preprocessed)
-                cost_surface_nodes = convert_hexagon_graph_to_gdfs(cost_surface_graph, edges=False)
                 out = Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT
                 reset_geopackage(out, truncate=False)
                 write_results_to_geopackage(out, osm_nodes, "osm_nodes")
                 write_results_to_geopackage(out, osm_edges, "osm_edges")
                 write_results_to_geopackage(out, cost_surface_nodes, "cost_surface_nodes")
 
-            return osm_graph_preprocessed, mcda_engine, cost_surface_graph
+            return osm_graph_preprocessed, mcda_engine, cost_surface_graph, cost_surface_nodes
 
         return _setup
 
@@ -131,7 +131,7 @@ class TestPipeRamming:
             edge[2].edge_id = edge_id
 
         # Enable debug for visual debugging in QGIS.
-        crossings = GetPotentialPipeRammingCrossings(osm_graph, rx.PyGraph(), debug=debug)
+        crossings = GetPotentialPipeRammingCrossings(osm_graph, rx.PyGraph(), get_empty_geodataframe(), debug=debug)
         crossings.create_street_segment_groups()
 
         edges, nodes = crossings.osm_edges, crossings.osm_nodes
@@ -182,9 +182,11 @@ class TestPipeRamming:
         node_id_to_test = 3
         project_area = shapely.Point(174967.12, 450898.60).buffer(150)
 
-        osm_graph, mcda_engine, cost_surface_graph = setup_pipe_ramming_example_polygon(project_area)
+        osm_graph, mcda_engine, cost_surface_graph, cost_surface_nodes = setup_pipe_ramming_example_polygon(
+            project_area
+        )
 
-        pipe_ramming = GetPotentialPipeRammingCrossings(osm_graph, cost_surface_graph, debug=debug)
+        pipe_ramming = GetPotentialPipeRammingCrossings(osm_graph, cost_surface_graph, cost_surface_nodes, debug=debug)
         pipe_ramming.create_street_segment_groups()
         pipe_ramming.prepare_junction_crossings()
         crossings = pipe_ramming.get_crossing_for_junction(
@@ -220,9 +222,11 @@ class TestPipeRamming:
         segment_group_to_cross = 48
 
         project_area = shapely.Point(174974, 451093).buffer(150)
-        osm_graph, mcda_engine, cost_surface_graph = setup_pipe_ramming_example_polygon(project_area)
+        osm_graph, mcda_engine, cost_surface_graph, cost_surface_nodes = setup_pipe_ramming_example_polygon(
+            project_area
+        )
 
-        pipe_ramming = GetPotentialPipeRammingCrossings(osm_graph, cost_surface_graph, debug=debug)
+        pipe_ramming = GetPotentialPipeRammingCrossings(osm_graph, cost_surface_graph, cost_surface_nodes, debug=debug)
         pipe_ramming.suitability_value_obstacles_threshold = 77
         pipe_ramming.create_street_segment_groups()
         pipe_ramming.prepare_junction_crossings()
@@ -252,9 +256,9 @@ class TestPipeRamming:
         if debug:
             reset_geopackage(Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT, truncate=False)
 
-        osm_graph, mcda_engine, cost_surface_graph = setup_pipe_ramming_example_polygon()
+        osm_graph, mcda_engine, cost_surface_graph, cost_surface_nodes = setup_pipe_ramming_example_polygon()
 
-        pipe_ramming = GetPotentialPipeRammingCrossings(osm_graph, cost_surface_graph, debug=debug)
+        pipe_ramming = GetPotentialPipeRammingCrossings(osm_graph, cost_surface_graph, cost_surface_nodes, debug=debug)
         # Enable for visual checking without full debug mode which slows the test down.
         pipe_ramming.plot_crossings = False
         crossings = pipe_ramming.get_crossings()
@@ -294,15 +298,16 @@ class TestPipeRammingTheoryExamples:
                 raster_criteria_groups,
                 preprocessed_vectors,
                 hexagon_size=0.5,
+                block_size=256,
             )
-            cost_surface_graph = hexagon_graph_builder.build_graph()
+            cost_surface_graph, cost_surface_nodes = hexagon_graph_builder.build_graph()
 
             if debug:
                 out = Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT
                 reset_geopackage(out, truncate=False)
             else:
                 out = None
-            return hexagon_graph_builder, cost_surface_graph, out
+            return hexagon_graph_builder, cost_surface_graph, cost_surface_nodes, out
 
         return _setup
 
@@ -378,7 +383,7 @@ class TestPipeRammingTheoryExamples:
             columns=["suitability_value", "geometry"],
             crs=Config.CRS,
         )
-        hexagon_graph_builder, cost_surface_graph, out = setup_theory_examples(
+        hexagon_graph_builder, cost_surface_graph, cost_surface_nodes, out = setup_theory_examples(
             street, buildings, private_property, trees, debug=debug
         )
 
@@ -398,6 +403,7 @@ class TestPipeRammingTheoryExamples:
 
         self._run_crossing(
             cost_surface_graph,
+            cost_surface_nodes,
             debug,
             edges_to_add,
             expected_route_length,
@@ -478,7 +484,7 @@ class TestPipeRammingTheoryExamples:
             columns=["suitability_value", "geometry"],
             crs=Config.CRS,
         )
-        hexagon_graph_builder, cost_surface_graph, out = setup_theory_examples(
+        hexagon_graph_builder, cost_surface_graph, cost_surface_nodes, out = setup_theory_examples(
             street, buildings, private_property, trees, debug=debug
         )
 
@@ -498,6 +504,7 @@ class TestPipeRammingTheoryExamples:
 
         self._run_crossing(
             cost_surface_graph,
+            cost_surface_nodes,
             debug,
             edges_to_add,
             expected_route_length,
@@ -595,7 +602,7 @@ class TestPipeRammingTheoryExamples:
             columns=["suitability_value", "geometry"],
             crs=Config.CRS,
         )
-        hexagon_graph_builder, cost_surface_graph, out = setup_theory_examples(
+        hexagon_graph_builder, cost_surface_graph, cost_surface_nodes, out = setup_theory_examples(
             street, buildings, private_property, trees, debug=debug
         )
 
@@ -617,6 +624,7 @@ class TestPipeRammingTheoryExamples:
 
         self._run_crossing(
             cost_surface_graph,
+            cost_surface_nodes,
             debug,
             edges_to_add,
             expected_route_length,
@@ -699,7 +707,7 @@ class TestPipeRammingTheoryExamples:
             columns=["suitability_value", "geometry"],
             crs=Config.CRS,
         )
-        hexagon_graph_builder, cost_surface_graph, out = setup_theory_examples(
+        hexagon_graph_builder, cost_surface_graph, cost_surface_nodes, out = setup_theory_examples(
             street, buildings, private_property, trees, debug=debug
         )
 
@@ -721,6 +729,7 @@ class TestPipeRammingTheoryExamples:
 
         self._run_crossing(
             cost_surface_graph,
+            cost_surface_nodes,
             debug,
             edges_to_add,
             expected_route_length,
@@ -798,7 +807,7 @@ class TestPipeRammingTheoryExamples:
             crs=Config.CRS,
         )
         # MCDA vectors
-        hexagon_graph_builder, cost_surface_graph, out = setup_theory_examples(
+        hexagon_graph_builder, cost_surface_graph, cost_surface_nodes, out = setup_theory_examples(
             street, buildings, private_property, trees, debug=debug
         )
 
@@ -812,6 +821,7 @@ class TestPipeRammingTheoryExamples:
 
         self._run_crossing(
             cost_surface_graph,
+            cost_surface_nodes,
             debug,
             edges_to_add,
             expected_route_length,
@@ -920,7 +930,7 @@ class TestPipeRammingTheoryExamples:
             crs=Config.CRS,
         )
         # MCDA vectors
-        hexagon_graph_builder, cost_surface_graph, out = setup_theory_examples(
+        hexagon_graph_builder, cost_surface_graph, cost_surface_nodes, out = setup_theory_examples(
             street, buildings, private_property, trees, debug=debug
         )
 
@@ -948,6 +958,7 @@ class TestPipeRammingTheoryExamples:
 
         self._run_crossing(
             cost_surface_graph,
+            cost_surface_nodes,
             debug,
             edges_to_add,
             expected_route_length,
@@ -965,6 +976,7 @@ class TestPipeRammingTheoryExamples:
     def _run_crossing(
         self,
         cost_surface_graph: rx.PyGraph,
+        cost_surface_nodes: gpd.GeoDataFrame,
         debug: bool,
         edges_to_add: list,
         expected_route_length: float,
@@ -989,6 +1001,7 @@ class TestPipeRammingTheoryExamples:
         pipe_ramming = GetPotentialPipeRammingCrossings(
             osm_graph=osm_graph,
             cost_surface_graph=cost_surface_graph,
+            cost_surface_nodes=cost_surface_nodes,
             threshold_edge_length_crossing_m=threshold_edge_length_crossing_m,
             max_pipe_ramming_length_m=20,
             min_pipe_ramming_length_m=3,
