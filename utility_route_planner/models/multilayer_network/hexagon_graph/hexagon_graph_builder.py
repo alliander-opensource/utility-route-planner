@@ -70,7 +70,18 @@ class HexagonGraphBuilder:
                 node_y_coordinates.append(node.y)
                 block_coordinates[(node.axial_q, node.axial_r)] = TempNode(node.Index, node.suitability_value)
 
-            blocks_to_check = previous_row | current_row | block_coordinates
+            min_q = min(q for q, _ in block_coordinates)
+            min_r = min(r for _, r in block_coordinates)
+
+            # Only check blocks that could be adjacent to the current block. This is the case if it is exactly 1 q or
+            # 1 r away from the top or left side of the block
+            previous_blocks_to_check = {
+                (q, r): value
+                for (q, r), value in (previous_row | current_row).items()
+                if q >= min_q - 1 or r >= min_r - 1
+            }
+
+            blocks_to_check = previous_blocks_to_check | block_coordinates
             blocks_to_check_df = pd.DataFrame(
                 [{"axial_q": q, "axial_r": r, **asdict(v)} for (q, r), v in blocks_to_check.items()]
             )
@@ -79,11 +90,11 @@ class HexagonGraphBuilder:
             for edges in hexagon_edge_generator.generate(block, blocks_to_check_df):
                 self.graph.add_edges_from(edges)
 
+            # Max q represents the right side of the block
+            max_q = max(q for q, _ in block_coordinates)
+
             # Max r represents the bottom of the block
             max_r = max(r for _, r in block_coordinates)
-
-            # Max q represents the bottom of the block
-            max_q = max(q for q, _ in block_coordinates)
 
             # Get all coordinates on the edges of the blocks
             edge_coordinates = {
