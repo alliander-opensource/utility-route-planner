@@ -5,11 +5,11 @@ from dataclasses import asdict
 
 import geopandas as gpd
 import pandas as pd
-import polars as pl
 import rustworkx as rx
 import shapely
 import structlog
 
+from settings import Config
 from utility_route_planner.models.multilayer_network.graph_datastructures import TempNode
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_edge_generator import HexagonEdgeGenerator
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_grid_builder import (
@@ -43,7 +43,7 @@ class HexagonGraphBuilder:
         self.graph = rx.PyGraph()
 
     @time_function
-    def build_graph(self) -> tuple[rx.PyGraph, pl.DataFrame]:
+    def build_graph(self) -> tuple[rx.PyGraph, gpd.GeoDataFrame]:
         grid_constructor = HexagonGridBuilder(
             self.raster_groups, self.preprocessed_vectors, self.hexagon_size, self.block_size
         )
@@ -56,7 +56,6 @@ class HexagonGraphBuilder:
         node_suitability_values: list[int] = []
         node_x_coordinates: list[float] = []
         node_y_coordinates: list[float] = []
-        node_near_osm_edge: list[bool] = []
 
         for block, final_column in grid_constructor.construct_grid(self.project_area):
             suitability_values = block.loc[:, "suitability_value"].values
@@ -69,7 +68,6 @@ class HexagonGraphBuilder:
                 node_suitability_values.append(node.suitability_value)
                 node_x_coordinates.append(node.x)
                 node_y_coordinates.append(node.y)
-                node_near_osm_edge.append(node.near_osm_edge)
                 block_coordinates[(node.axial_q, node.axial_r)] = TempNode(node.Index, node.suitability_value)
 
             blocks_to_check = previous_row | current_row | block_coordinates
@@ -98,22 +96,14 @@ class HexagonGraphBuilder:
                 previous_row = current_row
                 current_row = edge_coordinates
 
-        nodes_df = pl.DataFrame(
-            {
+        nodes_gdf = gpd.GeoDataFrame(
+            data={
                 "node_id": node_ids,
                 "suitability_value": node_suitability_values,
-                "x": node_x_coordinates,
-                "y": node_y_coordinates,
-                "near_osm_edge": node_near_osm_edge,
             },
-            schema={
-                "node_id": pl.Int32,
-                "suitability_value": pl.Float32,
-                "x": pl.Float64,
-                "y": pl.Float64,
-                "near_osm_edge": pl.Boolean,
-            },
+            geometry=gpd.points_from_xy(x=node_x_coordinates, y=node_y_coordinates, crs=Config.CRS),
         )
-        logger.info(f"Nodes df estimated size: {nodes_df.estimated_size(unit='gb')}gb")
 
-        return self.graph, nodes_df
+        logger.info(f"Nodes df estimated size: {nodes_gdf.memory_usage(deep=True)}")
+
+        return self.graph, nodes_gdf

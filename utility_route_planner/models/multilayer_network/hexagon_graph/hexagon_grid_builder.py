@@ -52,7 +52,7 @@ class HexagonGridBuilder:
                 )
                 weighted_hexagonal_block = pd.concat(
                     [
-                        weighted_hexagonal_block.loc[:, ["suitability_value", "axial_q", "axial_r", "near_osm_edge"]],
+                        weighted_hexagonal_block.loc[:, ["suitability_value", "axial_q", "axial_r"]],
                         weighted_hexagonal_block.get_coordinates(),
                     ],
                     axis=1,
@@ -218,7 +218,7 @@ class HexagonGridBuilder:
         )
         hexagon_points = gpd.GeoDataFrame(
             aggregated_suit_values_per_node_pandas.join(
-                points_within_project_area[["near_osm_edge", "geometry"]], how="left", lsuffix="l", rsuffix="r"
+                points_within_project_area["geometry"], how="left", lsuffix="l", rsuffix="r"
             ),
             geometry="geometry",
         )
