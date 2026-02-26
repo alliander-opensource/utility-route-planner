@@ -32,5 +32,8 @@ class HexagonEdgeGenerator:
             + all_nodes.loc[neighbours["target_node"], "suitability_value"].values
         ) / 2
 
-        edges = list(neighbours.loc[:, ["source_node", "target_node", "weight"]].itertuples(index=False))
+        edges = [
+            (int(edge[0]), int(edge[1]), edge[2])
+            for edge in neighbours.loc[:, ["source_node", "target_node", "weight"]].values
+        ]
         return edges
