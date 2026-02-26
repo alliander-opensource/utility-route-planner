@@ -623,7 +623,7 @@ class GetPotentialPipeRammingCrossings:
             weight = rx.dijkstra_shortest_path_lengths(
                 self.cost_surface_graph,
                 closest_node_pairs[index].iloc[0],
-                lambda x: x.weight,
+                lambda x: x,
                 closest_node_pairs[index].iloc[1],
             )
             # TODO-discuss: what is the cost of going through the cost surface this way?
@@ -654,8 +654,12 @@ class GetPotentialPipeRammingCrossings:
                     [
                         shapely.LineString(
                             [
-                                self.cost_surface_graph.get_node_data(i[0]).geometry,
-                                self.cost_surface_graph.get_node_data(i[1]).geometry,
+                                self.cost_surface_nodes.loc[self.cost_surface_nodes["node_id"] == i[0]].geometry.iloc[
+                                    0
+                                ],
+                                self.cost_surface_nodes.loc[self.cost_surface_nodes["node_id"] == i[1]].geometry.iloc[
+                                    0
+                                ],
                             ]
                         )
                         for i in crossings
