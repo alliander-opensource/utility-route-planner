@@ -5,7 +5,6 @@ import enum
 from dataclasses import dataclass, field
 from typing import Optional
 
-import numpy as np
 import shapely
 
 
@@ -27,13 +26,6 @@ class OSMNodeInfo(NodeInfo):
 class TempNode:
     node_id: int
     suitability_value: float
-
-
-@dataclass
-class HexagonNodeInfo(NodeInfo):
-    suitability_value: np.float16
-    x: np.float16
-    y: np.float16
 
 
 @dataclass
