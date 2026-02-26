@@ -26,16 +26,16 @@ class HexagonEdgeGenerator:
         neighbour_q: pd.Series,
         neighbour_r: pd.Series,
     ) -> list[tuple[int, int, float]]:
-        all_nodes_copy = all_nodes.copy()
-
         # Which neighbours do exist?
-        all_nodes_copy = all_nodes_copy.reset_index(names="target_node")
         neighbour_candidates = pd.concat([neighbour_q, neighbour_r], axis=1)
         neighbour_candidates = neighbour_candidates.reset_index(names=["source_node"])
 
         neighbours = neighbour_candidates.loc[:, ["axial_q", "axial_r", "source_node"]].merge(
-            all_nodes_copy.loc[:, ["axial_q", "axial_r", "target_node"]], on=["axial_q", "axial_r"], how="inner"
+            all_nodes.loc[:, ["axial_q", "axial_r"]].reset_index(names=["target_node"]),
+            on=["axial_q", "axial_r"],
+            how="inner",
         )
+
         neighbours["weight"] = (
             all_nodes.loc[neighbours["source_node"], "suitability_value"].values
             + all_nodes.loc[neighbours["target_node"], "suitability_value"].values
