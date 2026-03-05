@@ -47,7 +47,7 @@ class OSMEdgeInfo(EdgeInfo):
 
 
 @dataclass
-class HexagonEdgeInfo(EdgeInfo):
+class HexagonEdgeInfo:
     weight: float
     connects_height_levels: bool = False
     height_level: Optional[int] = None  # Only the non-main height level gets assigned explicitly.

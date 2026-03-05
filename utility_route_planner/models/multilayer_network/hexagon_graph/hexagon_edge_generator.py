@@ -4,9 +4,13 @@
 from typing import Iterator
 import pandas as pd
 
+from utility_route_planner.models.multilayer_network.graph_datastructures import HexagonEdgeInfo
+
 
 class HexagonEdgeGenerator:
-    def generate(self, hexagonal_grid: pd.DataFrame, all_nodes: pd.DataFrame) -> Iterator[list[tuple[int, int, float]]]:
+    def generate(
+        self, hexagonal_grid: pd.DataFrame, all_nodes: pd.DataFrame
+    ) -> Iterator[list[tuple[int, int, HexagonEdgeInfo]]]:
         vertical_neighbour_candidates = hexagonal_grid.loc[:, ["axial_q", "axial_r"]] + (0, 1)
         left_neighbour_candidates = hexagonal_grid.loc[:, ["axial_q", "axial_r"]] - (1, 0)
         right_neighbour_candidates = hexagonal_grid.loc[:, ["axial_q", "axial_r"]] + (1, -1)
@@ -17,7 +21,7 @@ class HexagonEdgeGenerator:
     @staticmethod
     def _get_neighbouring_edges(
         all_nodes: pd.DataFrame, neighbour_candidates: pd.DataFrame
-    ) -> list[tuple[int, int, float]]:
+    ) -> list[tuple[int, int, HexagonEdgeInfo]]:
         # Which neighbours do exist?
         neighbour_candidates = neighbour_candidates.reset_index(names=["source_node"])
 
@@ -33,7 +37,7 @@ class HexagonEdgeGenerator:
         ) / 2
 
         edges = [
-            (int(edge[0]), int(edge[1]), edge[2])
+            (int(edge[0]), int(edge[1]), HexagonEdgeInfo(weight=edge[2]))
             for edge in neighbours.loc[:, ["source_node", "target_node", "weight"]].values
         ]
         return edges
