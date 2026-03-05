@@ -343,7 +343,7 @@ class TestPipeRammingTheoryExamples:
         expected_route_length,
         start_end,
         setup_theory_examples,
-        debug=True,
+        debug=False,
     ):
         street = (
             gpd.GeoDataFrame(
@@ -659,7 +659,7 @@ class TestPipeRammingTheoryExamples:
         expected_route_length,
         start_end,
         setup_theory_examples,
-        debug=True,
+        debug=False,
     ):
         street = (
             gpd.GeoDataFrame(
