@@ -208,7 +208,7 @@ class TestPipeRamming:
         )
         multilayer_route_engine.find_route(start_end)
 
-        assert multilayer_route_engine.result_route.length == pytest.approx(24, abs=1)
+        assert multilayer_route_engine.get_result_route_length() == pytest.approx(24, abs=1)
         assert len([i for i in crossings if i[0] and i[1] in multilayer_route_engine.result_route_node_indices]) == 1, (
             "One of the new edges should be in the path."
         )
@@ -243,7 +243,7 @@ class TestPipeRamming:
         )
         multilayer_route_engine.find_route(start_end)
 
-        assert multilayer_route_engine.result_route.length == pytest.approx(12, abs=1)
+        assert multilayer_route_engine.get_result_route_length() == pytest.approx(12, abs=1)
         assert len([i for i in crossings if i[0] and i[1] in multilayer_route_engine.result_route_node_indices]) == 1, (
             "One of the new edges should be in the path."
         )
@@ -280,8 +280,8 @@ class TestPipeRammingTheoryExamples:
                 "private_property": private_property,
                 "trees": trees,
             }
-            # Calculate project area
-            project_area = pd.concat([street, buildings, private_property, trees]).union_all()
+            # Calculate project area, take a tiny buffer to avoid intersecting problems with geopandas.
+            project_area = pd.concat([street, buildings, private_property, trees]).union_all().buffer(0.01)
 
             if buildings.empty:
                 preprocessed_vectors.pop("buildings")
@@ -309,7 +309,15 @@ class TestPipeRammingTheoryExamples:
         return _setup
 
     @pytest.mark.parametrize(
-        ["buildings", "trees", "n_expected_crossings", "expected_route_length", "start_end"],
+        [
+            "buildings",
+            "trees",
+            "n_expected_crossings",
+            "expected_route_length",
+            "expected_route_cost",
+            "expected_crossings_used_in_route",
+            "start_end",
+        ],
         [
             # Without obstacles
             (
@@ -317,6 +325,8 @@ class TestPipeRammingTheoryExamples:
                 (),
                 3,
                 130,
+                805,
+                1,
                 [(0.3, -6.7), (99, 39.8)],
             ),
             # With obstacles
@@ -330,7 +340,9 @@ class TestPipeRammingTheoryExamples:
                     [20, shapely.Point(65.5, -7).buffer(4)],
                 ],
                 2,
-                131,
+                128,
+                839,
+                2,
                 [(0.3, -6.7), (99, 39.8)],
             ),
         ],
@@ -341,6 +353,8 @@ class TestPipeRammingTheoryExamples:
         trees,
         n_expected_crossings,
         expected_route_length,
+        expected_route_cost,
+        expected_crossings_used_in_route,
         start_end,
         setup_theory_examples,
         debug=False,
@@ -409,10 +423,20 @@ class TestPipeRammingTheoryExamples:
             out,
             start_end,
             CrossingType.JUNCTION,
+            expected_route_cost,
+            expected_crossings_used_in_route,
         )
 
     @pytest.mark.parametrize(
-        ["buildings", "trees", "n_expected_crossings", "expected_route_length", "start_end"],
+        [
+            "buildings",
+            "trees",
+            "n_expected_crossings",
+            "expected_route_length",
+            "expected_route_cost",
+            "expected_crossings_used_in_route",
+            "start_end",
+        ],
         [
             # Without obstacles
             (
@@ -420,6 +444,8 @@ class TestPipeRammingTheoryExamples:
                 (),
                 3,
                 106,
+                681,
+                1,
                 [(0.6, 6.5), (56, 49.5)],
             ),
             # With obstacles
@@ -430,7 +456,9 @@ class TestPipeRammingTheoryExamples:
                 ],
                 [[20, shapely.Point(43.6, -8.2).buffer(6)], [20, shapely.Point(58, 19).buffer(4)]],
                 2,
-                107,
+                106,
+                821,
+                1,
                 [(0.6, 6.5), (56, 49.5)],
             ),
         ],
@@ -441,6 +469,8 @@ class TestPipeRammingTheoryExamples:
         trees,
         n_expected_crossings,
         expected_route_length,
+        expected_route_cost,
+        expected_crossings_used_in_route,
         start_end,
         setup_theory_examples,
         debug=False,
@@ -509,10 +539,20 @@ class TestPipeRammingTheoryExamples:
             out,
             start_end,
             CrossingType.JUNCTION,
+            expected_route_cost,
+            expected_crossings_used_in_route,
         )
 
     @pytest.mark.parametrize(
-        ["buildings", "trees", "n_expected_crossings", "expected_route_length", "start_end"],
+        [
+            "buildings",
+            "trees",
+            "n_expected_crossings",
+            "expected_route_length",
+            "expected_route_cost",
+            "expected_crossings_used_in_route",
+            "start_end",
+        ],
         [
             # Without obstacles
             (
@@ -520,6 +560,8 @@ class TestPipeRammingTheoryExamples:
                 (),
                 4,
                 118,
+                802,
+                2,
                 [(0.3, -6.7), (56.23, 49.68)],
             ),
             # With obstacles
@@ -543,6 +585,8 @@ class TestPipeRammingTheoryExamples:
                 ],
                 4,
                 118,
+                806,
+                2,
                 [(0.3, -6.7), (56.23, 49.68)],
             ),
         ],
@@ -553,6 +597,8 @@ class TestPipeRammingTheoryExamples:
         trees,
         n_expected_crossings,
         expected_route_length,
+        expected_route_cost,
+        expected_crossings_used_in_route,
         start_end,
         setup_theory_examples,
         debug=False,
@@ -628,10 +674,20 @@ class TestPipeRammingTheoryExamples:
             out,
             start_end,
             CrossingType.JUNCTION,
+            expected_route_cost,
+            expected_crossings_used_in_route,
         )
 
     @pytest.mark.parametrize(
-        ["buildings", "trees", "n_expected_crossings", "expected_route_length", "start_end"],
+        [
+            "buildings",
+            "trees",
+            "n_expected_crossings",
+            "expected_route_length",
+            "expected_route_cost",
+            "expected_crossings_used_in_route",
+            "start_end",
+        ],
         [
             # Without obstacles
             (
@@ -639,14 +695,18 @@ class TestPipeRammingTheoryExamples:
                 (),
                 10,
                 124,
+                783,
+                1,
                 ((1, -3), (93, 45)),
             ),
             # With obstacles
             (
                 [[120, shapely.LineString([(2, -26), (44, -18), (63, -36)]).buffer(8, cap_style="flat")]],
                 [[20, shapely.Point(43, 6).buffer(4)]],
-                8,
+                9,
                 138,
+                913,
+                2,
                 [(1, -3), (93, 45)],
             ),
         ],
@@ -657,6 +717,8 @@ class TestPipeRammingTheoryExamples:
         trees,
         n_expected_crossings,
         expected_route_length,
+        expected_route_cost,
+        expected_crossings_used_in_route,
         start_end,
         setup_theory_examples,
         debug=False,
@@ -732,10 +794,20 @@ class TestPipeRammingTheoryExamples:
             out,
             start_end,
             CrossingType.JUNCTION,
+            expected_route_cost,
+            expected_crossings_used_in_route,
         )
 
     @pytest.mark.parametrize(
-        ["buildings", "trees", "n_expected_crossings", "expected_route_length", "start_end"],
+        [
+            "buildings",
+            "trees",
+            "n_expected_crossings",
+            "expected_route_length",
+            "expected_route_cost",
+            "expected_crossings_used_in_route",
+            "start_end",
+        ],
         [
             # Without obstacles
             (
@@ -743,6 +815,8 @@ class TestPipeRammingTheoryExamples:
                 (),
                 3,
                 123,
+                761,
+                1,
                 [(1, 8), (98, -6)],
             ),
             # With obstacles
@@ -755,6 +829,8 @@ class TestPipeRammingTheoryExamples:
                 [[20, shapely.Point(30, -8).buffer(4)], [20, shapely.Point(65, 9).buffer(4)]],
                 3,
                 123,
+                761,
+                1,
                 [(1, 8), (98, -6)],
             ),
         ],
@@ -765,6 +841,8 @@ class TestPipeRammingTheoryExamples:
         trees,
         n_expected_crossings,
         expected_route_length,
+        expected_route_cost,
+        expected_crossings_used_in_route,
         start_end,
         setup_theory_examples,
         debug=False,
@@ -823,17 +901,29 @@ class TestPipeRammingTheoryExamples:
             out,
             start_end,
             CrossingType.SEGMENT,
+            expected_route_cost,
+            expected_crossings_used_in_route,
         )
 
     @pytest.mark.parametrize(
-        ["buildings", "trees", "n_expected_crossings", "expected_route_length", "start_end"],
+        [
+            "buildings",
+            "trees",
+            "n_expected_crossings",
+            "expected_route_length",
+            "expected_route_cost",
+            "expected_crossings_used_in_route",
+            "start_end",
+        ],
         [
             # Without obstacles
             (
                 (),
                 (),
                 6,
-                233,
+                231,
+                1387.5,
+                1,
                 [(1, 6), (158, -25)],
             ),
             # With obstacles
@@ -860,13 +950,15 @@ class TestPipeRammingTheoryExamples:
                 ],
                 [
                     [20, shapely.Point(30, -8).buffer(4)],
-                    [20, shapely.Point(39.804, 6.896).buffer(4)],
+                    [20, shapely.Point(39.804, 6.896).buffer(5)],
                     [20, shapely.Point(47.260, 10.421).buffer(6)],
                     [20, shapely.Point(87, -30.9).buffer(4)],
                     [20, shapely.Point(75.1, -47.6).buffer(6.5)],
                 ],
                 4,
-                245,
+                246,
+                1483.5,
+                1,
                 [(1, 6), (158, -25)],
             ),
         ],
@@ -877,6 +969,8 @@ class TestPipeRammingTheoryExamples:
         trees,
         n_expected_crossings,
         expected_route_length,
+        expected_route_cost,
+        expected_crossings_used_in_route,
         start_end,
         setup_theory_examples,
         debug=False,
@@ -959,6 +1053,8 @@ class TestPipeRammingTheoryExamples:
             out,
             start_end,
             CrossingType.SEGMENT,
+            expected_route_cost,
+            expected_crossings_used_in_route,
         )
 
     def test_theory_scenario_with_bridge(self):
@@ -976,6 +1072,8 @@ class TestPipeRammingTheoryExamples:
         out: pathlib.Path,
         start_end: list[tuple],
         crossing_type: CrossingType,
+        expected_route_cost: float = 0,
+        expected_crossings_used_in_route: int = 0,
     ):
         match crossing_type:
             case crossing_type.JUNCTION:
@@ -1001,7 +1099,6 @@ class TestPipeRammingTheoryExamples:
             debug=debug,
         )
         crossings = pipe_ramming.get_crossings()
-        self._assert_crossings(crossings, hexagon_graph_builder, pipe_ramming, n_expected_crossings)
         multilayer_route_engine = MultilayerRouteEngine(
             pipe_ramming.cost_surface_graph,
             pipe_ramming.osm_graph,
@@ -1010,8 +1107,6 @@ class TestPipeRammingTheoryExamples:
             write_output=False,
         )
         multilayer_route_engine.find_route(shapely.LineString(start_end))
-        assert multilayer_route_engine.result_route.length == pytest.approx(expected_route_length, abs=1)
-        self._assert_result_route(crossings, multilayer_route_engine, pipe_ramming)
         if debug:
             self._plot_pytest_theory(
                 out,
@@ -1020,6 +1115,20 @@ class TestPipeRammingTheoryExamples:
                 multilayer_route_engine,
                 pipe_ramming,
                 hexagon_graph_builder.preprocessed_vectors,
+            )
+
+        self._assert_crossings(crossings, hexagon_graph_builder, pipe_ramming, n_expected_crossings)
+        assert multilayer_route_engine.get_result_route_length() == pytest.approx(expected_route_length, abs=1)
+        if expected_route_cost:
+            assert multilayer_route_engine.get_result_route_cost() == expected_route_cost
+        if expected_crossings_used_in_route:
+            assert (
+                len(
+                    multilayer_route_engine.result_route_edges[
+                        ~multilayer_route_engine.result_route_edges["origin"].isnull()
+                    ]
+                )
+                == expected_crossings_used_in_route
             )
 
     @staticmethod
@@ -1046,21 +1155,6 @@ class TestPipeRammingTheoryExamples:
             )
             == 0
         )
-
-    @staticmethod
-    def _assert_result_route(
-        crossings: list, multilayer_route_engine: MultilayerRouteEngine, pipe_ramming: GetPotentialPipeRammingCrossings
-    ):
-        crossing_edge_id_pairs = [
-            (i[0], i[1])
-            for i in crossings
-            if i[0] and i[1] in multilayer_route_engine.result_route_node_indices  # type: ignore
-        ]
-        pipe_ramming_edges = [
-            pipe_ramming.cost_surface_graph.get_edge_data(i[0], i[1]).geometry for i in crossing_edge_id_pairs
-        ]
-        assert multilayer_route_engine.result_route.intersects(shapely.MultiLineString(pipe_ramming_edges))
-        assert isinstance(multilayer_route_engine.result_route, shapely.LineString)
 
     @staticmethod
     def _plot_pytest_theory(
@@ -1097,7 +1191,7 @@ class TestPipeRammingTheoryExamples:
         )
         # Resulting route
         write_results_to_geopackage(
-            out, multilayer_route_engine.result_route, "pytest_theory_result_route", overwrite=True
+            out, multilayer_route_engine.result_route_edges, "pytest_theory_result_route", overwrite=True
         )
 
 
