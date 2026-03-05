@@ -40,8 +40,8 @@ class SmallAboveGroundObstacles(VectorPreprocessorBase):
             else:
                 bgt_others.append(gdf)
 
-        gdf_bgt_scheiding = pd.DataFrame()
-        gdf_remaining_obstacles = pd.DataFrame()
+        # gdf_bgt_scheiding = pd.DataFrame()
+        # gdf_remaining_obstacles = pd.DataFrame()
 
         if bgt_scheiding:
             logger.info("Processing bgt scheiding.")
@@ -55,6 +55,8 @@ class SmallAboveGroundObstacles(VectorPreprocessorBase):
             )
             gdf_bgt_scheiding = gdf_bgt_scheiding[gdf_bgt_scheiding["bgt-type"] != "niet-bgt"]
             gdf_bgt_scheiding["suitability_value"] = gdf_bgt_scheiding["sv_1"]
+        else:
+            gdf_bgt_scheiding = gpd.GeoDataFrame(columns=["bgt-type", "geometry"])
 
         if bgt_others:
             logger.info("Processing remaining obstacles.")
@@ -72,6 +74,8 @@ class SmallAboveGroundObstacles(VectorPreprocessorBase):
             )
             gdf_remaining_obstacles = gdf_remaining_obstacles[gdf_remaining_obstacles["plus-type"] != "waardeOnbekend"]
             gdf_remaining_obstacles["suitability_value"] = gdf_remaining_obstacles["sv_1"]
+        else:
+            gdf_remaining_obstacles = gpd.GeoDataFrame(columns=["plus-type", "function", "geometry"])
 
         # Merge dfs
         gdf_merged = pd.concat([gdf_bgt_scheiding, gdf_remaining_obstacles])

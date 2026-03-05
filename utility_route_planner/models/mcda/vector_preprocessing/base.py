@@ -138,6 +138,9 @@ class VectorPreprocessorBase(abc.ABC):
                         f"Columns to reclassify: {column} not in processed gdf columns in criterion {self.criterion}."
                         f"Check the preprocessing function if the column is created/retained correctly."
                     )
+                # Some columns might be empty (e.g., SmallAboveGroundObstacles), ignore these.
+                if gdf_processed[column].isna().all():
+                    columns_to_reclassify.pop(columns_to_reclassify.index(column))
 
         weights_per_m2 = gdf_processed.dissolve(by=columns_to_reclassify).area
 
