@@ -52,7 +52,8 @@ class TestHexagonGraphBuilder:
             ede_project_area,
             raster_criteria_groups,
             preprocessed_vectors,
-            hexagon_size=0.5,
+            hexagon_size=Config.HEXAGON_SIZE,
+            block_size=Config.HEXAGON_BLOCK_SIZE,
         )
         graph = hexagon_graph_builder.build_graph()
         nodes_gdf, edges_gdf = convert_hexagon_graph_to_gdfs(graph)
@@ -98,7 +99,8 @@ class TestHexagonGraphBuilder:
             ede_project_area,
             raster_criteria_groups,
             preprocessed_vectors,
-            hexagon_size=0.5,
+            hexagon_size=Config.HEXAGON_SIZE,
+            block_size=Config.HEXAGON_BLOCK_SIZE,
         )
 
         graph = hexagon_graph_builder.build_graph()
@@ -508,6 +510,7 @@ class TestHexagonGraphBuilderWithHeightLevels:
                 raster_groups=raster_groups,
                 preprocessed_vectors=criteria_for_height_level,  # type: ignore
                 hexagon_size=self.hexagon_size,
+                block_size=Config.HEXAGON_BLOCK_SIZE,
             )
             graph = hexagon_graph_builder.build_graph()
             graphs_per_height[height_level] = graph
