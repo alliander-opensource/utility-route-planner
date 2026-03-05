@@ -56,7 +56,8 @@ class TestPipeRamming:
                 mcda_engine.project_area_geometry,
                 raster_groups,
                 mcda_engine.processed_vectors,
-                hexagon_size=0.5,
+                hexagon_size=Config.HEXAGON_SIZE,
+                block_size=Config.HEXAGON_BLOCK_SIZE,
             )
             cost_surface_graph = hexagon_graph_builder.build_graph()
 
@@ -293,8 +294,8 @@ class TestPipeRammingTheoryExamples:
                 project_area,
                 raster_criteria_groups,
                 preprocessed_vectors,
-                hexagon_size=0.5,
-                block_size=Config.MAX_BLOCK_SIZE,
+                hexagon_size=Config.HEXAGON_SIZE,
+                block_size=Config.HEXAGON_BLOCK_SIZE,
             )
             cost_surface_graph = hexagon_graph_builder.build_graph()
 

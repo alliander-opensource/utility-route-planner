@@ -56,7 +56,7 @@ class TestVectorToGraph:
         mcda_engine.preprocess_vectors()
         return mcda_engine
 
-    def test_vector_to_graph(self, vectors_for_project_areas: McdaCostSurfaceEngine, debug: bool = True):
+    def test_vector_to_graph(self, vectors_for_project_areas: McdaCostSurfaceEngine, debug: bool = False):
         mcda_engine = vectors_for_project_areas
 
         raster_groups = {
