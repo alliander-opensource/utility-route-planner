@@ -9,23 +9,10 @@ import geopandas as gpd
 from utility_route_planner.models.mcda.mcda_engine import McdaCostSurfaceEngine
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_graph_builder import HexagonGraphBuilder
 from settings import Config
-from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_utils import convert_hexagon_graph_to_gdfs
 from utility_route_planner.util.write import write_results_to_geopackage
 
 
 class TestVectorToGraph:
-    @pytest.fixture()
-    def simple_project_area(self) -> shapely.Polygon:
-        return shapely.Polygon(
-            [
-                shapely.Point(174992.960, 451097.964),
-                shapely.Point(174993.753, 451088.943),
-                shapely.Point(175004.559, 451089.438),
-                shapely.Point(175005.154, 451097.468),
-                shapely.Point(174992.960, 451097.964),
-            ]
-        )
-
     @pytest.fixture()
     def larger_project_area(self) -> shapely.Polygon:
         return shapely.Polygon(
@@ -39,7 +26,7 @@ class TestVectorToGraph:
         )
 
     @pytest.fixture()
-    def ede_project_area(self):
+    def ede_project_area(self) -> shapely.Polygon:
         return (
             gpd.read_file(Config.PYTEST_PATH_GEOPACKAGE_MCDA, layer=Config.PYTEST_LAYER_NAME_PROJECT_AREA)
             .iloc[0]
@@ -47,16 +34,22 @@ class TestVectorToGraph:
         )
 
     @pytest.fixture()
-    def vectors_for_project_areas(self, ede_project_area: shapely.Polygon) -> McdaCostSurfaceEngine:
+    def project_area(self, ede_project_area: shapely.Polygon) -> shapely.Polygon:
+        return ede_project_area
+
+    @pytest.fixture()
+    def vectors_for_project_areas(self, project_area: shapely.Polygon) -> McdaCostSurfaceEngine:
         mcda_engine = McdaCostSurfaceEngine(
             Config.RASTER_PRESET_NAME_BENCHMARK,
             Config.PYTEST_PATH_GEOPACKAGE_MCDA,
-            ede_project_area,
+            project_area,
         )
         mcda_engine.preprocess_vectors()
         return mcda_engine
 
-    def test_vector_to_graph(self, vectors_for_project_areas: McdaCostSurfaceEngine, debug: bool = True):
+    def test_vector_to_graph(
+        self, vectors_for_project_areas: McdaCostSurfaceEngine, project_area: shapely.Polygon, debug: bool = False
+    ):
         mcda_engine = vectors_for_project_areas
 
         raster_groups = {
@@ -67,15 +60,14 @@ class TestVectorToGraph:
             raster_groups,
             mcda_engine.processed_vectors,
             hexagon_size=0.5,
-            block_size=128,
+            block_size=256,
         )
-        graph = hexagon_graph_builder.build_graph()
+        graph, nodes_gdf = hexagon_graph_builder.build_graph()
 
         if debug:
-            nodes_gdf, edges_gdf = convert_hexagon_graph_to_gdfs(graph)
             write_results_to_geopackage(
                 Config.PATH_GEOPACKAGE_VECTOR_GRAPH_OUTPUT, nodes_gdf, "graph_nodes", overwrite=True
             )
             write_results_to_geopackage(
-                Config.PATH_GEOPACKAGE_VECTOR_GRAPH_OUTPUT, edges_gdf, "graph_edges", overwrite=True
+                Config.PATH_GEOPACKAGE_VECTOR_GRAPH_OUTPUT, project_area, "project_area", overwrite=True
             )
