@@ -7,6 +7,7 @@ from concurrent.futures import as_completed
 from concurrent.futures.process import ProcessPoolExecutor
 from functools import cached_property
 
+import pandas as pd
 import shapely
 
 from utility_route_planner.models.mcda.mcda_datastructures import McdaRasterSettings, RasterizedCriterion
@@ -50,6 +51,8 @@ class McdaCostSurfaceEngine:
         self.project_area_geometry = project_area_geometry
         self.project_area_grid = get_empty_geodataframe()
 
+        self.processed_vector_metrics: pd.DataFrame = pd.DataFrame()
+
     @cached_property
     def number_of_criteria(self):
         return len(self.raster_preset.criteria)
@@ -63,24 +66,33 @@ class McdaCostSurfaceEngine:
         logger.info(
             f"Processing {self.number_of_criteria} criteria using geopackage: {self.raster_preset.general.path_input_geopackage}"
         )
+        dfs_present_weight = []
         for idx, criterion in enumerate(self.raster_preset.criteria):
             logger.info(f"Processing criteria number {idx + 1} of {self.number_of_criteria}.")
-            is_processed, processed_gdf, height_levels = self.raster_preset.criteria[
+            is_processed, gdf_processed, df_present_weights, height_levels = self.raster_preset.criteria[
                 criterion
             ].preprocessing_function.execute(self.raster_preset.general, self.raster_preset.criteria[criterion])
             if is_processed:
-                self.processed_vectors[criterion] = processed_gdf
+                self.processed_vectors[criterion] = gdf_processed
+                dfs_present_weight.append(df_present_weights)
                 for height_level in height_levels:
                     if height_level not in self.processed_criteria_per_height_level:
                         self.processed_criteria_per_height_level[height_level] = [criterion]
                     else:
                         self.processed_criteria_per_height_level[height_level].append(criterion)
             else:
-                assert processed_gdf.empty
+                if not gdf_processed.empty:
+                    raise ValueError(f"Criterion {criterion} was not processed but returned a non-empty geodataframe.")
                 self.unprocessed_criteria_names.add(criterion)
 
         self.processed_criteria_names = set(self.raster_preset.criteria.keys()).difference(
             set(self.unprocessed_criteria_names)
+        )
+
+        n_total_weights = self.get_vector_metrics(dfs_present_weight)
+
+        logger.info(
+            f"Finished processing vectors considering {len(self.processed_vector_metrics)} weights of a total of {n_total_weights} possible weights."
         )
 
     @time_function
@@ -178,3 +190,24 @@ class McdaCostSurfaceEngine:
         rasterized_vector = rasterize_vector_data(criterion, gdf, raster_settings)
         raster_criteria = self.raster_preset.criteria[criterion]
         return RasterizedCriterion(criterion, rasterized_vector, raster_criteria.group)
+
+    def get_vector_metrics(self, present_weight_dfs: list[pd.DataFrame]) -> int:
+        """Get the total number of possible weights based on the preset."""
+        self.processed_vector_metrics = pd.concat(present_weight_dfs, ignore_index=True)
+        self.processed_vector_metrics["area_m2"] = self.processed_vector_metrics["area_m2"].round(0).astype(int)
+
+        # We ignore 4 'weights' used for filtering. These do not contribute to the MCDA cost-surface.
+        n_total_weights = 0
+        if "small_above_ground_obstacles" in self.raster_preset.criteria:
+            n_total_weights -= 1  # small_above_ground_obstacles has value 'niet-bgt' used for deleting certain records.
+        if "vegetation_object" in self.raster_preset.criteria:
+            n_total_weights -= 1  # vegetation_object has value 'waardeOnbekend' used for deleting certain records.
+        if "overig_bouwwerk" in self.raster_preset.criteria:
+            n_total_weights -= 1  # overig_bouwwerk has value 'niet-bgt' used for deleting certain records.
+        if "kunstwerkdeel" in self.raster_preset.criteria:
+            n_total_weights -= 1  # kunstwerkdeel has value 'niet-bgt' used for deleting certain records.
+
+        for criterion in self.raster_preset.criteria:
+            n_total_weights += len(self.raster_preset.criteria[criterion].weight_values.keys())
+
+        return n_total_weights

@@ -294,6 +294,7 @@ class TestPipeRammingTheoryExamples:
                 raster_criteria_groups,
                 preprocessed_vectors,
                 hexagon_size=0.5,
+                block_size=Config.MAX_BLOCK_SIZE,
             )
             cost_surface_graph = hexagon_graph_builder.build_graph()
 
@@ -657,7 +658,7 @@ class TestPipeRammingTheoryExamples:
         expected_route_length,
         start_end,
         setup_theory_examples,
-        debug=False,
+        debug=True,
     ):
         street = (
             gpd.GeoDataFrame(

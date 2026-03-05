@@ -30,9 +30,12 @@ class RasterPresetCriteria(pydantic.BaseModel):
     layer_names: list = pydantic.Field(description="Layer names in the geopackage which will be handled.")
     preprocessing_function: VectorPreprocessorBase
     group: str = pydantic.Field(description="Determines how the criteria is handled.")
+    columns_to_reclassify: typing.Optional[list] = pydantic.Field(
+        default=[], description="List of dominant attributes to reclassify."
+    )
     weight_values: dict = pydantic.Field(..., description="Contains values for defining how important the layer is.")
     geometry_values: typing.Optional[dict] = pydantic.Field(
-        default=None,
+        default={},
         description="Contains values for optional computational geometry steps, e.g., buffer.",
     )
 
