@@ -46,18 +46,23 @@ class VectorPreprocessorBase(abc.ABC):
             return (
                 False,
                 get_empty_geodataframe(),
-                [],
                 pd.DataFrame(),
+                [],
             )  # Nothing to process when there is no data available, return.
         gdf_processed = self.specific_preprocess(gdf_prepared, criterion)
         if not self.is_valid_result(gdf_processed):
-            return False, get_empty_geodataframe(), [], pd.DataFrame()
+            return (
+                False,
+                get_empty_geodataframe(),
+                pd.DataFrame(),
+                [],
+            )
 
         df_present_weights = self.get_statistics(criterion, gdf_processed)
         height_levels = self.get_height_levels(gdf_processed)
         self.write_to_file(general.prefix, gdf_processed)
 
-        return True, gdf_processed, height_levels, df_present_weights
+        return True, gdf_processed, df_present_weights, height_levels
 
     @staticmethod
     def prepare_input_data(
