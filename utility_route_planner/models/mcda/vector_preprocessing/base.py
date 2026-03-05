@@ -7,7 +7,6 @@ from __future__ import annotations
 import abc
 import typing
 
-import fiona
 import pandas
 import pandas as pd
 import shapely
@@ -70,7 +69,7 @@ class VectorPreprocessorBase(abc.ABC):
     ) -> list[gpd.GeoDataFrame]:
         """Check existing layers in geopackage / clip data / check if gdf is empty / filter historic BGT data"""
         prepared_input = []
-        available_layers = fiona.listlayers(path_geopackage_mcda_input)
+        available_layers = gpd.list_layers(path_geopackage_mcda_input)["name"].to_list()
         for layer_name in criterion.layer_names:
             if layer_name not in available_layers:
                 logger.warning(f"Layer name: {layer_name} is not available in geopackage, skipping.")
