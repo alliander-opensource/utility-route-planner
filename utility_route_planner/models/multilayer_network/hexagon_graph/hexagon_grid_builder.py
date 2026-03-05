@@ -40,9 +40,10 @@ class HexagonGridBuilder:
     @time_function
     def construct_grid(self, project_area: shapely.Polygon) -> Generator[tuple[pd.DataFrame, bool], None, None]:
         x_matrix, y_matrix = self.construct_hexagonal_grid_for_bounding_box(project_area)
+        concat = self.concatenate_preprocessed_vectors()
 
         for block, final_column in self.divide_matrices_into_blocks(x_matrix, y_matrix):
-            hexagonal_grid_for_block = self.filter_block_to_project_area(block)
+            hexagonal_grid_for_block = self.filter_block_to_project_area(block, concat)
 
             # A block can be empty in case it does not intersect with any vector
             if not hexagonal_grid_for_block.empty:
@@ -135,16 +136,20 @@ class HexagonGridBuilder:
                 final_column = column_end == column_splits[-1]
                 yield block_grid, final_column
 
-    def filter_block_to_project_area(self, bounding_box_grid: gpd.GeoDataFrame):
+    def concatenate_preprocessed_vectors(self):
         """
-        Concatenate all preprocessed vectors into a single geodataframe. Use this concatenated dataframe
-        filter all points from the bounding box that do not intersect with any of the vectors.
+        Concatenate all preprocessed vectors into a single geodataframe.
         """
         for criterion, vector_gdf in self.preprocessed_vectors.items():
             vector_gdf["criterion"] = criterion
             vector_gdf["group"] = self.raster_groups[criterion]
         concatenated_vectors = gpd.GeoDataFrame(pd.concat(self.preprocessed_vectors.values()), crs=Config.CRS)
 
+        return concatenated_vectors
+
+    def filter_block_to_project_area(
+        self, bounding_box_grid: gpd.GeoDataFrame, concatenated_vectors
+    ) -> gpd.GeoDataFrame:
         points_within_project_area = gpd.sjoin(
             bounding_box_grid,
             concatenated_vectors[["group", "suitability_value", "geometry"]],
