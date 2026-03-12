@@ -46,19 +46,8 @@ class HexagonGridBuilder:
             # A block can be empty in case it does not intersect with any vector
             if not hexagonal_grid_for_block.empty:
                 weighted_hexagonal_block = self.assign_suitability_values_to_block(hexagonal_grid_for_block)
-                weighted_hexagonal_block["axial_q"], weighted_hexagonal_block["axial_r"] = (
-                    self.convert_cartesian_coordinates_to_axial(weighted_hexagonal_block)
-                )
-                weighted_hexagonal_block = pd.concat(
-                    [
-                        weighted_hexagonal_block.loc[:, ["suitability_value", "axial_q", "axial_r"]],
-                        weighted_hexagonal_block.get_coordinates(),
-                    ],
-                    axis=1,
-                )
+                weighted_hexagonal_block = self.convert_cartesian_coordinates_to_axial(weighted_hexagonal_block)
 
-                # Reset index of grid to align with node ids generated using rustworkx
-                weighted_hexagonal_block = weighted_hexagonal_block.reset_index(drop=True)
                 yield weighted_hexagonal_block, final_column
 
     def construct_hexagonal_grid_for_bounding_box(self, project_area: shapely.Polygon) -> tuple[np.ndarray, np.ndarray]:
@@ -156,7 +145,7 @@ class HexagonGridBuilder:
 
         return points_within_project_area
 
-    def assign_suitability_values_to_block(self, points_within_project_area: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
+    def assign_suitability_values_to_block(self, points_within_project_area: gpd.GeoDataFrame) -> pl.DataFrame:
         """
         Given the group the vector of a suitability value belongs to, a specific aggregation functions is applied for overlapping
         points within this group:
@@ -214,25 +203,17 @@ class HexagonGridBuilder:
             .select("node_id", "suitability_value")
         ).collect()
 
-        # Convert polars dataframe back to pandas and rejoin the geometries
-        aggregated_suit_values_per_node_pandas: pd.DataFrame = aggregated_suit_values_per_node.to_pandas().set_index(
-            "node_id"
-        )
-        hexagon_points = gpd.GeoDataFrame(
-            aggregated_suit_values_per_node_pandas.join(
-                points_within_project_area["geometry"], how="left", lsuffix="l", rsuffix="r"
-            ),
-            geometry="geometry",
-        )
+        # Rejoin coordinates to the dataframe based on node_id
+        coordinates = pl.from_pandas(points_within_project_area["geometry"].get_coordinates(), include_index=True)
+        hexagon_points = aggregated_suit_values_per_node.join(coordinates, on="node_id", how="left")
+
         # Remove duplicate points, as a point could have joined multiple vector which results in duplicate rows within
         # the right dataframe.
-        hexagon_points = hexagon_points[~hexagon_points.index.duplicated()]
+        hexagon_points = hexagon_points.unique(subset=["node_id"])
 
         return hexagon_points
 
-    def convert_cartesian_coordinates_to_axial(
-        self, hexagon_center_points: gpd.GeoDataFrame
-    ) -> tuple[np.ndarray, np.ndarray]:
+    def convert_cartesian_coordinates_to_axial(self, hexagon_center_points: pl.DataFrame) -> pl.DataFrame:
         """
         To efficiently determine neighbours to construct a hexagonal graph later on, convert all cartesian coordinates
         to axial coordinates.
@@ -243,21 +224,26 @@ class HexagonGridBuilder:
 
         :return: tuple containing q- and r-values as integers in numpy ndarray format
         """
-        x, y = np.split(hexagon_center_points.get_coordinates().values, 2, axis=1)
+        x, y = hexagon_center_points["x"], hexagon_center_points["y"]
 
         # Convert x- and y-coordinates to axial
-        q = (-2 / 3 * x) / self.hexagon_size
-        r = (1 / 3 * x + np.sqrt(3) / 3 * y) / self.hexagon_size
+        q = pl.Series((-2 / 3 * x) / self.hexagon_size).rename("q")
+        r = pl.Series((1 / 3 * x + math.sqrt(3) / 3 * y) / self.hexagon_size).rename("r")
 
         # Convert coordinates to integers and correct rounding errors
-        xgrid = np.round(q).astype(np.int32)
-        ygrid = np.round(r).astype(np.int32)
+        xgrid = q.round().cast(pl.Int32)
+        ygrid = r.round().cast(pl.Int32)
 
         q_diff = q - xgrid
         r_diff = r - ygrid
 
-        mask = np.abs(q_diff) > np.abs(r_diff)
-        xgrid[mask] = xgrid[mask] + np.round(q_diff[mask] + 0.5 * r_diff[mask])
-        ygrid[~mask] = ygrid[~mask] + np.round(r_diff[~mask] + 0.5 * q_diff[~mask])
+        mask = q_diff.abs() > r_diff.abs()
+        updated_x_grid = xgrid + (q_diff + 0.5 * r_diff).round().cast(pl.Int32)
+        xgrid = updated_x_grid.zip_with(mask, updated_x_grid)
 
-        return xgrid, ygrid
+        updated_y_grid = ygrid + (r_diff + 0.5 * q_diff).round().cast(pl.Int32)
+        ygrid = updated_y_grid.zip_with(~mask, updated_y_grid)
+
+        hexagon_center_points = hexagon_center_points.with_columns(xgrid, ygrid)
+
+        return hexagon_center_points
