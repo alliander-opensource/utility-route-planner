@@ -183,11 +183,12 @@ class TestHexagonGraphBuilder:
 class TestHexagonGraphBuilderWithHeightLevels:
     out = Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT
     hexagon_size = 1.0
-    debug: bool = True
+    debug: bool = False
 
     @pytest.fixture(autouse=True)
     def clean_start(self):
-        reset_geopackage(self.out, truncate=False)
+        if self.debug:
+            reset_geopackage(self.out, truncate=False)
 
     def test_build_graph_with_two_tunnels(self):
         """E.g., a road and a bicycle tunnel crossing each other."""
