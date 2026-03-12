@@ -40,9 +40,6 @@ class SmallAboveGroundObstacles(VectorPreprocessorBase):
             else:
                 bgt_others.append(gdf)
 
-        # gdf_bgt_scheiding = pd.DataFrame()
-        # gdf_remaining_obstacles = pd.DataFrame()
-
         if bgt_scheiding:
             logger.info("Processing bgt scheiding.")
             gdf_bgt_scheiding = pd.concat(bgt_scheiding)
