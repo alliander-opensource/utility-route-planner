@@ -2,7 +2,6 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 import geopandas as gpd
-import pandas as pd
 import polars as pl
 import rustworkx as rx
 import shapely
@@ -71,18 +70,17 @@ class HexagonGraphBuilder:
             node_x_coordinates.extend(block["x"])
             node_y_coordinates.extend(block["y"])
 
-            blocks_to_check = pl.concat(
-                [previous_row, current_row, block.select("node_id", "suitability_value", "q", "r")]
-            )
+            block_edge_attributes = block.select("node_id", "suitability_value", "q", "r")
+            blocks_to_check = pl.concat([previous_row, current_row, block_edge_attributes])
             for edges in hexagon_edge_generator.generate(block, blocks_to_check):
                 self.graph.add_edges_from(edges)
 
             # Store the edges of the current block for edge generation in the next block. In case this was the final
             # block of this row, the previous row is set to this row and current_row is reset to the last block.
-            edge_coordinates = self.get_block_edge_coordinates(block)
+            edge_coordinates = self.get_block_edge_coordinates(block_edge_attributes)
 
             if not final_column:
-                current_row = pd.concat([current_row, edge_coordinates])
+                current_row = pl.concat([current_row, edge_coordinates])
             else:
                 previous_row = current_row
                 current_row = edge_coordinates
@@ -98,7 +96,7 @@ class HexagonGraphBuilder:
         return self.graph, nodes_gdf
 
     @staticmethod
-    def get_block_edge_coordinates(block_coordinates: pd.DataFrame) -> pd.DataFrame:
+    def get_block_edge_coordinates(block_coordinates: pl.DataFrame) -> pl.DataFrame:
         """
         Given the coordinates of a block, get left side and bottom coordinates. The left edge are equal to the max
         axial q (due to the coordinate project being used). The bottom coordinates can be found by solving the equation
@@ -109,20 +107,18 @@ class HexagonGraphBuilder:
         :param block_coordinates: axial coordinates, node ids and suitability values for all nodes within a block
         :return: edge coordinates of the block including corresponding node ids and suitability values.
         """
-        block_coordinates_cp = block_coordinates.copy()
-
         # Max q represents the horizontal (left) edge of the block
-        max_q = block_coordinates_cp["axial_q"].max()
+        max_q = block_coordinates["q"].max()
 
         # In this coordinate system, the bottom edge follows a diagonal where q + 2r is minimal.
         # Include one extra row (min_diagonal + 2) to account for the hex offset between columns.
 
         # Horizontal coordinates follow rule : q + 2r. By checking where this equation is minimal in the block, we can
         # find the bottom edge.
-        bottom_coordinate_reference = (block_coordinates_cp["axial_q"] + 2 * block_coordinates_cp["axial_r"]).min()
+        bottom_coordinate_reference = (block_coordinates["q"] + 2 * block_coordinates["r"]).min()
 
-        edge_coordinates = block_coordinates_cp.loc[
-            (block_coordinates_cp["axial_q"] == max_q)
-            | (block_coordinates_cp["axial_q"] + 2 * block_coordinates_cp["axial_r"] == bottom_coordinate_reference)
-        ]
+        edge_coordinates = block_coordinates.filter(
+            (block_coordinates["q"] == max_q)
+            | (block_coordinates["q"] + 2 * block_coordinates["r"] == bottom_coordinate_reference)
+        )
         return edge_coordinates
