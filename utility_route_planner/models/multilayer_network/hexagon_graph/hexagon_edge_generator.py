@@ -46,7 +46,7 @@ class HexagonEdgeGenerator:
             ).alias("weight")
         )
         edges = [
-            (edge[0], edge[1], HexagonEdgeInfo(weight=edge[2]))
+            (edge[0], edge[1], edge[2])
             for edge in neighbours.select("source_node", "target_node", "weight").iter_rows()
         ]
         return edges
