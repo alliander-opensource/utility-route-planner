@@ -12,7 +12,6 @@ import structlog
 
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_utils import get_hexagon_width_and_height
 from settings import Config
-from utility_route_planner.util.timer import time_function
 
 logger = structlog.get_logger(__name__)
 
@@ -37,13 +36,12 @@ class HexagonGridBuilder:
         self.hexagon_width, self.hexagon_height = get_hexagon_width_and_height(hexagon_size)
         self.block_size = block_size
 
-    @time_function
     def construct_grid(self, project_area: shapely.Polygon) -> Generator[tuple[pd.DataFrame, bool], None, None]:
         x_matrix, y_matrix = self.construct_hexagonal_grid_for_bounding_box(project_area)
-        concat = self.concatenate_preprocessed_vectors()
+        concatenated_vectors = self.concatenate_preprocessed_vectors()
 
         for block, final_column in self.divide_matrices_into_blocks(x_matrix, y_matrix):
-            hexagonal_grid_for_block = self.filter_block_to_project_area(block, concat)
+            hexagonal_grid_for_block = self.filter_block_to_project_area(block, concatenated_vectors)
 
             # A block can be empty in case it does not intersect with any vector
             if not hexagonal_grid_for_block.empty:
@@ -147,9 +145,8 @@ class HexagonGridBuilder:
 
         return concatenated_vectors
 
-    def filter_block_to_project_area(
-        self, bounding_box_grid: gpd.GeoDataFrame, concatenated_vectors
-    ) -> gpd.GeoDataFrame:
+    @staticmethod
+    def filter_block_to_project_area(bounding_box_grid: gpd.GeoDataFrame, concatenated_vectors) -> gpd.GeoDataFrame:
         points_within_project_area = gpd.sjoin(
             bounding_box_grid,
             concatenated_vectors[["group", "suitability_value", "geometry"]],

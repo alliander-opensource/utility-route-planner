@@ -23,12 +23,6 @@ class OSMNodeInfo(NodeInfo):
 
 
 @dataclass
-class TempNode:
-    node_id: int
-    suitability_value: float
-
-
-@dataclass
 class EdgeInfo:
     edge_id: int = field(init=False)
     length: float = field(init=False)
