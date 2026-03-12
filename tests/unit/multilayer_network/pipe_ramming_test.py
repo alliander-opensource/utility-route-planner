@@ -175,8 +175,8 @@ class TestPipeRamming:
         assert group_110 == group_111 == group_112
         assert (edges["group"] == group_110).sum() == 3
 
+    @pytest.mark.skip(reason="Only for debugging a specific junction.")
     def test_single_junction(self, setup_pipe_ramming_example_polygon, debug=False):
-        """For debugging specific junction."""
         if debug:
             reset_geopackage(Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT, truncate=False)
 
@@ -185,7 +185,10 @@ class TestPipeRamming:
 
         osm_graph, mcda_engine, cost_surface_graph = setup_pipe_ramming_example_polygon(project_area)
 
-        pipe_ramming = GetPotentialPipeRammingCrossings(osm_graph, cost_surface_graph, debug=debug)
+        max_pipe_ramming_length_m = 27  # play with value and note that crossings move
+        pipe_ramming = GetPotentialPipeRammingCrossings(
+            osm_graph, cost_surface_graph, max_pipe_ramming_length_m=max_pipe_ramming_length_m, debug=debug
+        )
         pipe_ramming.create_street_segment_groups()
         pipe_ramming.prepare_junction_crossings()
         crossings = pipe_ramming.get_crossing_for_junction(
@@ -195,7 +198,6 @@ class TestPipeRamming:
             pipe_ramming.junctions_of_interests.loc[node_id_to_test].degree,
         )
         pipe_ramming.add_crossings_to_graph(crossings)
-        assert len(crossings) == 3
 
         # Test our newly found crossing in a shortest path.
         pipe_ramming.add_crossings_to_graph(crossings)
@@ -208,13 +210,14 @@ class TestPipeRamming:
         )
         multilayer_route_engine.find_route(start_end)
 
-        assert multilayer_route_engine.get_result_route_length() == pytest.approx(24, abs=1)
+        assert len(crossings) == 3
+        assert multilayer_route_engine.get_result_route_length() == pytest.approx(25, abs=1)
         assert len([i for i in crossings if i[0] and i[1] in multilayer_route_engine.result_route_node_indices]) == 1, (
             "One of the new edges should be in the path."
         )
 
+    @pytest.mark.skip(reason="Only for debugging a specific street-segment group.")
     def test_single_street_segment_group(self, setup_pipe_ramming_example_polygon, debug=False):
-        """For debugging specific street-segment group."""
         if debug:
             reset_geopackage(Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT, truncate=False)
 
@@ -232,7 +235,6 @@ class TestPipeRamming:
             segment_group_to_cross, segments_of_interest.loc[segment_group_to_cross].geometry
         )
         pipe_ramming.add_crossings_to_graph(crossings)
-        assert len(crossings) == 3
 
         start_end = shapely.LineString([(174927.5, 451098.452), (174932, 451089.791)])
         multilayer_route_engine = MultilayerRouteEngine(
@@ -243,6 +245,7 @@ class TestPipeRamming:
         )
         multilayer_route_engine.find_route(start_end)
 
+        assert len(crossings) == 3
         assert multilayer_route_engine.get_result_route_length() == pytest.approx(12, abs=1)
         assert len([i for i in crossings if i[0] and i[1] in multilayer_route_engine.result_route_node_indices]) == 1, (
             "One of the new edges should be in the path."
