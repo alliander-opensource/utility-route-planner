@@ -11,17 +11,37 @@ class HexagonEdgeGenerator:
     def generate(
         self, hexagonal_grid: pl.DataFrame, all_nodes: pl.DataFrame
     ) -> Iterator[list[tuple[int, int, HexagonEdgeInfo]]]:
-        vertical_neighbour_candidates = hexagonal_grid.select(
-            [pl.col("node_id").alias("source_node"), pl.col("q"), pl.col("r") + 1]
-        )
+        """
+        We need to generate edges for four directions instead of three, as we need to deal with cross-block edges.
+
+        TODO: can we do all crossings at once to prevent duplicate edge generation
+        """
+        # Left (-1, 0)
         left_neighbour_candidates = hexagonal_grid.select(
             [pl.col("node_id").alias("source_node"), pl.col("q") - 1, pl.col("r")]
         )
+
+        # Right (+1, 0)
         right_neighbour_candidates = hexagonal_grid.select(
-            [pl.col("node_id").alias("source_node"), pl.col("q") + 1, pl.col("r") - 1]
+            [pl.col("node_id").alias("source_node"), pl.col("q") + 1, pl.col("r")]
         )
 
-        for candidate in [vertical_neighbour_candidates, left_neighbour_candidates, right_neighbour_candidates]:
+        # Bottom-right (0, +1)
+        bottom_right_neighbour_candidates = hexagonal_grid.select(
+            [pl.col("node_id").alias("source_node"), pl.col("q"), pl.col("r") + 1]
+        )
+
+        # Bottom-left (-1, +1)
+        bottom_left_neighbour_candidates = hexagonal_grid.select(
+            [pl.col("node_id").alias("source_node"), pl.col("q") - 1, pl.col("r") + 1]
+        )
+
+        for candidate in [
+            left_neighbour_candidates,
+            right_neighbour_candidates,
+            bottom_right_neighbour_candidates,
+            bottom_left_neighbour_candidates,
+        ]:
             yield self._get_neighbouring_edges(all_nodes, candidate)
 
     @staticmethod
