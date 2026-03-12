@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 import geopandas as gpd
 import pandas as pd
+import polars as pl
 import rustworkx as rx
 import shapely
 import structlog
@@ -46,8 +47,12 @@ class HexagonGraphBuilder:
         )
         hexagon_edge_generator = HexagonEdgeGenerator()
 
-        previous_row: pd.DataFrame = pd.DataFrame()
-        current_row: pd.DataFrame = pd.DataFrame()
+        previous_row: pl.DataFrame = pl.DataFrame(
+            schema={"node_id": pl.Int32, "suitability_value": pl.Int16, "q": pl.Int32, "r": pl.Int32}
+        )
+        current_row: pl.DataFrame = pl.DataFrame(
+            schema={"node_id": pl.Int32, "suitability_value": pl.Int16, "q": pl.Int32, "r": pl.Int32}
+        )
 
         node_ids: list[int] = []
         node_suitability_values: list[int] = []
@@ -55,19 +60,20 @@ class HexagonGraphBuilder:
         node_y_coordinates: list[float] = []
 
         for i, (block, final_column) in enumerate(grid_constructor.construct_grid(self.project_area)):
-            suitability_values = block.loc[:, "suitability_value"].values
+            suitability_values = block["suitability_value"]
             block_node_ids = self.graph.add_nodes_from(suitability_values)
-            block.index = block_node_ids
+            block = block.with_columns(pl.Series("node_id", list(block_node_ids), dtype=pl.Int32))
 
             # Store all block information. Create a temporary dict to store all information of the block for edge
             # processing.
-            # block_coordinates: dict[tuple[int, int], TempNode] = {}
-            node_ids.extend(block.index)
-            node_suitability_values.extend(block["suitability_value"])
+            node_ids.extend(block_node_ids)
+            node_suitability_values.extend(suitability_values)
             node_x_coordinates.extend(block["x"])
             node_y_coordinates.extend(block["y"])
 
-            blocks_to_check = pd.concat([previous_row, current_row, block])
+            blocks_to_check = pl.concat(
+                [previous_row, current_row, block.select("node_id", "suitability_value", "q", "r")]
+            )
             for edges in hexagon_edge_generator.generate(block, blocks_to_check):
                 self.graph.add_edges_from(edges)
 

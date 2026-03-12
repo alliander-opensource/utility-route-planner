@@ -2,42 +2,51 @@
 #  #
 #  SPDX-License-Identifier: Apache-2.0
 from typing import Iterator
-import pandas as pd
+import polars as pl
 
 from utility_route_planner.models.multilayer_network.graph_datastructures import HexagonEdgeInfo
 
 
 class HexagonEdgeGenerator:
     def generate(
-        self, hexagonal_grid: pd.DataFrame, all_nodes: pd.DataFrame
+        self, hexagonal_grid: pl.DataFrame, all_nodes: pl.DataFrame
     ) -> Iterator[list[tuple[int, int, HexagonEdgeInfo]]]:
-        vertical_neighbour_candidates = hexagonal_grid.loc[:, ["axial_q", "axial_r"]] + (0, 1)
-        left_neighbour_candidates = hexagonal_grid.loc[:, ["axial_q", "axial_r"]] - (1, 0)
-        right_neighbour_candidates = hexagonal_grid.loc[:, ["axial_q", "axial_r"]] + (1, -1)
+        vertical_neighbour_candidates = hexagonal_grid.select(
+            [pl.col("node_id").alias("source_node"), pl.col("q"), pl.col("r") + 1]
+        )
+        left_neighbour_candidates = hexagonal_grid.select(
+            [pl.col("node_id").alias("source_node"), pl.col("q") - 1, pl.col("r")]
+        )
+        right_neighbour_candidates = hexagonal_grid.select(
+            [pl.col("node_id").alias("source_node"), pl.col("q") + 1, pl.col("r") - 1]
+        )
 
         for candidate in [vertical_neighbour_candidates, left_neighbour_candidates, right_neighbour_candidates]:
             yield self._get_neighbouring_edges(all_nodes, candidate)
 
     @staticmethod
     def _get_neighbouring_edges(
-        all_nodes: pd.DataFrame, neighbour_candidates: pd.DataFrame
+        all_nodes: pl.DataFrame, neighbour_candidates: pl.DataFrame
     ) -> list[tuple[int, int, HexagonEdgeInfo]]:
+        # TODO: can this be combined into a single polars expression?
         # Which neighbours do exist?
-        neighbour_candidates = neighbour_candidates.reset_index(names=["source_node"])
-
-        neighbours = neighbour_candidates.loc[:, ["axial_q", "axial_r", "source_node"]].merge(
-            all_nodes.loc[:, ["axial_q", "axial_r"]].reset_index(names=["target_node"]),
-            on=["axial_q", "axial_r"],
+        neighbours = neighbour_candidates.join(
+            all_nodes.select(pl.col("node_id").alias("target_node"), pl.col("q"), pl.col("r")),
+            on=["q", "r"],
             how="inner",
         )
-
-        neighbours["weight"] = (
-            all_nodes.loc[neighbours["source_node"], "suitability_value"].values
-            + all_nodes.loc[neighbours["target_node"], "suitability_value"].values
-        ) / 2
-
+        # Compute weights
+        neighbours = neighbours.with_columns(
+            (
+                (
+                    all_nodes.filter(all_nodes["node_id"].is_in(neighbours["source_node"]))["suitability_value"]
+                    + all_nodes.filter(all_nodes["node_id"].is_in(neighbours["target_node"]))["suitability_value"]
+                )
+                / 2
+            ).alias("weight")
+        )
         edges = [
-            (int(edge[0]), int(edge[1]), HexagonEdgeInfo(weight=edge[2]))
-            for edge in neighbours.loc[:, ["source_node", "target_node", "weight"]].values
+            (edge[0], edge[1], HexagonEdgeInfo(weight=edge[2]))
+            for edge in neighbours.select("source_node", "target_node", "weight").iter_rows()
         ]
         return edges
