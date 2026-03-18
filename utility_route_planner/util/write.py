@@ -1,15 +1,10 @@
 # SPDX-FileCopyrightText: Contributors to the utility-route-project and Alliander N.V.
 #
 # SPDX-License-Identifier: Apache-2.0
-
 import pathlib
-
-import geopandas
 import geopandas as gpd
 import shapely
 import structlog
-import os
-import fiona
 
 from settings import Config
 
@@ -26,22 +21,21 @@ def write_to_file(geometry: gpd.GeoSeries | gpd.GeoDataFrame | shapely.Geometry,
     geometry.to_file(Config.PATH_RESULTS / name)
 
 
-def reset_geopackage(path_geopackage: pathlib.Path, truncate=True) -> None:
+def reset_geopackage(path_geopackage: pathlib.Path, truncate: bool = True) -> None:
     """
     Clean start, delete or truncate result geopackage to write to.
     """
     logger.info(f"Resetting geopackage {path_geopackage} for a clean start.")
-    if os.path.exists(path_geopackage):
+    if path_geopackage.exists():
         if truncate:
-            existing_layers = [layer_name for layer_name in fiona.listlayers(path_geopackage)]
+            existing_layers = gpd.list_layers(path_geopackage)["name"].to_list()
             for layer_name in existing_layers:
                 gdf = gpd.read_file(path_geopackage, layer=layer_name)
-                if gdf.empty:
-                    return
-                gdf = gdf.iloc[0:0]
-                gdf.to_file(path_geopackage, layer=layer_name, driver="GPKG")
+                if not gdf.empty:
+                    gdf = gdf.iloc[0:0]
+                    gdf.to_file(path_geopackage, layer=layer_name, driver="GPKG")
         else:
-            os.remove(path_geopackage)
+            path_geopackage.unlink()
     else:
         logger.info("Geopackage does not exists, continuing as normal.")
 
@@ -50,7 +44,7 @@ def write_results_to_geopackage(
     path_geopackage: pathlib.Path,
     item_to_write: shapely.Geometry | gpd.GeoDataFrame | gpd.GeoSeries,
     layer_name: str,
-    overwrite=False,
+    overwrite: bool = False,
 ) -> None:
     """
     Write results to a geopackage file which is handy for debugging in QGIS and intermediate storage.
@@ -62,8 +56,8 @@ def write_results_to_geopackage(
     """
     logger.info(f"Writing features to geopackage: {layer_name}")
     if isinstance(item_to_write, shapely.Geometry):
-        item_to_write = geopandas.GeoSeries(item_to_write, crs=Config.CRS)
-    if isinstance(item_to_write, geopandas.GeoSeries | geopandas.GeoDataFrame):
+        item_to_write = gpd.GeoSeries(item_to_write, crs=Config.CRS)
+    if isinstance(item_to_write, gpd.GeoSeries | gpd.GeoDataFrame):
         if item_to_write.crs is None:
             item_to_write.set_crs(Config.CRS, inplace=True)
     if overwrite:
@@ -73,7 +67,7 @@ def write_results_to_geopackage(
         item_to_write.to_file(path_geopackage, layer=layer_name, driver="GPKG", mode=mode)
 
 
-def _get_writing_mode_geopackage(filename, path_geopackage):
+def _get_writing_mode_geopackage(filename: str, path_geopackage: pathlib.Path) -> str:
     """
     Function for determining the mode used for writing the results to file, specific for geopackage.
     - We want to create a new geopackage if it does not exist -> w
@@ -81,11 +75,11 @@ def _get_writing_mode_geopackage(filename, path_geopackage):
     - If the layer in the geopackage does not exist, create it -> w
     """
     # if geopackage does not exist, create a new one.
-    if not os.path.exists(path_geopackage):
+    if not path_geopackage.exists():
         mode = "w"
     else:
         # if layer does not exist, create a new one. Otherwise, append.
-        existing_layers = [layer_name for layer_name in fiona.listlayers(path_geopackage)]
+        existing_layers = gpd.list_layers(path_geopackage)["name"].to_list()
         if filename in existing_layers:
             mode = "a"
         else:

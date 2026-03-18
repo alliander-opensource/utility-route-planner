@@ -57,12 +57,14 @@ Run tests using pytest:
 ```bash
 poetry run python -m pytest tests/
 ```
+For quick experimentation, weights of existing criteria can be changed. This can be done by editing the `mcda_presets.py` file.
 
-Expanding criteria included in the `mcda_presets.py` can be done by:
+Adding new criteria can be done by:
 
-1. Adding a new class to the `criteria` folder.
-2. Implementing the `get_suitability` method.
-3. Adding the new class to the `mcda_presets.py` file. Set the group and weight of the new class.
+1. Add vector data to the case study geopackage in the `data/examples` folder.
+2. Adding a new entry to `mcda_presets.py` according to the pydantic model `RasterPresetCriteria`.
+3. Adding a new class to the `utility_route_planner/mcda/vector_preprocessing` folder.
+4. Implementing the `specific_preprocess` method. This commonly consists out reclassifying a dominant attribute.
 
 # Support
 

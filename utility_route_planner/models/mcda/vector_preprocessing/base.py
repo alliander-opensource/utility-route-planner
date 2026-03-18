@@ -7,8 +7,8 @@ from __future__ import annotations
 import abc
 import typing
 
-import fiona
 import pandas
+import pandas as pd
 import shapely
 import geopandas as gpd
 import structlog
@@ -36,20 +36,32 @@ class VectorPreprocessorBase(abc.ABC):
     @time_function
     def execute(
         self, general: RasterPresetGeneral, criterion: RasterPresetCriteria
-    ) -> tuple[bool, gpd.GeoDataFrame, list]:
+    ) -> tuple[bool, gpd.GeoDataFrame, pd.DataFrame, pd.DataFrame]:
         """Run all methods in order for a criteria returning the processed geodataframe with suitability values."""
         logger.info(f"Start preprocessing: {self.criterion}.")
 
-        prepared_gdfs = self.prepare_input_data(general.project_area_geometry, criterion, general.path_input_geopackage)
-        if len(prepared_gdfs) == 1 and prepared_gdfs[0].empty:
-            return False, get_empty_geodataframe(), []  # Nothing to process when there is no data available, return.
-        processed_gdf = self.specific_preprocess(prepared_gdfs, criterion)
-        if not self.is_valid_result(processed_gdf):
-            return False, get_empty_geodataframe(), []
-        height_levels = self.get_height_levels(processed_gdf)
-        self.write_to_file(general.prefix, processed_gdf)
+        gdf_prepared = self.prepare_input_data(general.project_area_geometry, criterion, general.path_input_geopackage)
+        if len(gdf_prepared) == 1 and gdf_prepared[0].empty:
+            return (
+                False,
+                get_empty_geodataframe(),
+                pd.DataFrame(),
+                [],
+            )  # Nothing to process when there is no data available, return.
+        gdf_processed = self.specific_preprocess(gdf_prepared, criterion)
+        if not self.is_valid_result(gdf_processed):
+            return (
+                False,
+                get_empty_geodataframe(),
+                pd.DataFrame(),
+                [],
+            )
 
-        return True, processed_gdf, height_levels
+        df_present_weights = self.get_statistics(criterion, gdf_processed)
+        height_levels = self.get_height_levels(gdf_processed)
+        self.write_to_file(general.prefix, gdf_processed)
+
+        return True, gdf_processed, df_present_weights, height_levels
 
     @staticmethod
     def prepare_input_data(
@@ -57,7 +69,7 @@ class VectorPreprocessorBase(abc.ABC):
     ) -> list[gpd.GeoDataFrame]:
         """Check existing layers in geopackage / clip data / check if gdf is empty / filter historic BGT data"""
         prepared_input = []
-        available_layers = fiona.listlayers(path_geopackage_mcda_input)
+        available_layers = gpd.list_layers(path_geopackage_mcda_input)["name"].to_list()
         for layer_name in criterion.layer_names:
             if layer_name not in available_layers:
                 logger.warning(f"Layer name: {layer_name} is not available in geopackage, skipping.")
@@ -84,16 +96,16 @@ class VectorPreprocessorBase(abc.ABC):
     def specific_preprocess(self, prepared_data, criterion) -> gpd.GeoDataFrame:
         """Subclasses must implement this abstract method which contains logic for handling the criteria."""
 
-    def is_valid_result(self, processed_gdf: gpd.GeoDataFrame) -> bool:
+    def is_valid_result(self, gdf_processed: gpd.GeoDataFrame) -> bool:
         """Validate the result if all features were assigned a valid suitability value."""
-        if processed_gdf.empty:
+        if gdf_processed.empty:
             logger.warning(f"No data available for criterion: {self.criterion}.")
             return False
         try:
-            processed_gdf.astype({"suitability_value": int}, errors="raise")
+            gdf_processed.astype({"suitability_value": int}, errors="raise")
         except (ValueError, IntCastingNaNError, TypeError):
             logger.error(
-                f"Suitability value is invalid rows: {processed_gdf.loc[~processed_gdf['suitability_value'].astype(str).str.isnumeric()]}. Check mcda_presets.yaml or preprocessing function for criteria: {self.criterion}."
+                f"Suitability value is invalid rows: {gdf_processed.loc[~gdf_processed['suitability_value'].astype(str).str.isnumeric()]}. Check mcda_presets.yaml or preprocessing function for criteria: {self.criterion}."
             )
             raise InvalidSuitabilityValue
         return True
@@ -108,6 +120,41 @@ class VectorPreprocessorBase(abc.ABC):
         logger.info(f"Found height levels: {height_levels} for criterion: {self.criterion}.")
         return height_levels
 
-    def write_to_file(self, prefix, validated_gdf: gpd.GeoDataFrame) -> None:
+    def write_to_file(self, prefix, gdf_validated: gpd.GeoDataFrame) -> None:
         """Write to the geopackage for debugging and rasterizing."""
-        write_results_to_geopackage(Config.PATH_GEOPACKAGE_MCDA_OUTPUT, validated_gdf, prefix + self.criterion)
+        write_results_to_geopackage(Config.PATH_GEOPACKAGE_MCDA_OUTPUT, gdf_validated, prefix + self.criterion)
+
+    def get_statistics(self, criterion: RasterPresetCriteria, gdf_processed: pd.DataFrame) -> pd.DataFrame:
+        """
+        Get some rudimentary statistics on present weights in the processed criteria gdf.
+        E.g., if waterdeel is processed, most of the time weight "zee" is not present in the project area.
+        """
+        columns_to_reclassify = criterion.columns_to_reclassify or []
+        columns_to_reclassify.append("suitability_value")
+        if len(columns_to_reclassify) > 1:
+            for column in columns_to_reclassify:
+                if column not in gdf_processed.columns:
+                    raise ValueError(
+                        f"Columns to reclassify: {column} not in processed gdf columns in criterion {self.criterion}."
+                        f"Check the preprocessing function if the column is created/retained correctly."
+                    )
+                # Some columns might be empty (e.g., SmallAboveGroundObstacles), ignore these.
+                if gdf_processed[column].isna().all():
+                    columns_to_reclassify.pop(columns_to_reclassify.index(column))
+
+        weights_per_m2 = gdf_processed.dissolve(by=columns_to_reclassify).area
+
+        df_present_weights = weights_per_m2.reset_index()
+        df_present_weights.rename(columns={0: "area_m2"}, inplace=True)
+        match len(columns_to_reclassify):
+            case 1:
+                df_present_weights["weight_key"] = self.criterion
+            case 2:
+                df_present_weights["weight_key"] = df_present_weights[columns_to_reclassify[:1]]
+            case 3:
+                df_present_weights["weight_key"] = df_present_weights[columns_to_reclassify[:2]].agg(": ".join, axis=1)
+            case _:
+                raise ValueError("More than 2 columns to reclassify is not supported for statistics.")
+
+        df_present_weights["criterion"] = self.criterion
+        return df_present_weights[["criterion", "weight_key", "suitability_value", "area_m2"]]

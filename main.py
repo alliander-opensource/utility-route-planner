@@ -52,7 +52,11 @@ def run_mcda_lcpa(
     logger.info(f"Route CPU time: {(time.process_time_ns() - start_cpu_time) / 1e9:.2f} seconds.")
     if compute_metrics:
         route_evaluation_metrics = RouteEvaluationMetrics(
-            lcpa_engine.lcpa_result, path_suitability_raster, human_designed_route, project_area_geometry
+            lcpa_engine.lcpa_result,
+            path_suitability_raster,
+            human_designed_route,
+            project_area_geometry,
+            mcda_engine.processed_vector_metrics,
         )
         route_evaluation_metrics.get_route_evaluation_metrics()
 
