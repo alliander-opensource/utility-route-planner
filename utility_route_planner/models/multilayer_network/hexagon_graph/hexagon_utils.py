@@ -13,6 +13,7 @@ import structlog
 from geopandas import GeoDataFrame
 
 from settings import Config
+from utility_route_planner.models.multilayer_network.graph_datastructures import HexagonEdgeInfo
 from utility_route_planner.util.geo_utilities import get_empty_geodataframe
 from utility_route_planner.util.timer import time_function
 
@@ -61,3 +62,17 @@ def convert_hexagon_graph_to_gdfs(
         return nodes_gdf, edges_gdf
     else:
         return nodes_gdf
+
+
+def get_hexagon_edge_weight(hexagon_edge: float | HexagonEdgeInfo) -> float:
+    """
+    When constructing the Hexagon graph, an edge can be set in two ways:
+    - When set in the HexagonGraphBuilder: weight is set as a float directly
+    - When set as part of piperamming: weight is set as part of the HexagonEdgeInfo dataclass
+
+    This function can be used to extract the edge weight when doing a shortest path analysis.
+    """
+    if isinstance(hexagon_edge, float):
+        return hexagon_edge
+    else:
+        return hexagon_edge.weight
