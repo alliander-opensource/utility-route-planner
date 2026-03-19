@@ -12,6 +12,7 @@ from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_edge_
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_grid_builder import (
     HexagonGridBuilder,
 )
+from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_utils import get_hexagon_width_and_height
 from utility_route_planner.util.timer import time_function
 
 logger = structlog.get_logger(__name__)
@@ -38,6 +39,7 @@ class HexagonGraphBuilder:
         self.hexagon_size = hexagon_size
         self.block_size = block_size
         self.graph = rx.PyGraph()
+        self.hexagon_width, self.hexagon_height = get_hexagon_width_and_height(hexagon_size)
 
     @time_function
     def build_graph(self) -> tuple[rx.PyGraph, gpd.GeoDataFrame]:
@@ -57,6 +59,7 @@ class HexagonGraphBuilder:
         node_suitability_values: list[int] = []
         node_x_coordinates: list[float] = []
         node_y_coordinates: list[float] = []
+        is_edge: list[bool] = []
 
         for i, (block, final_column) in enumerate(grid_constructor.construct_grid(self.project_area)):
             suitability_values = block["suitability_value"]
@@ -77,48 +80,31 @@ class HexagonGraphBuilder:
 
             # Store the edges of the current block for edge generation in the next block. In case this was the final
             # block of this row, the previous row is set to this row and current_row is reset to the last block.
-            edge_coordinates = self.get_block_edge_coordinates(block_edge_attributes)
+            edge_coordinates = self.get_block_edge_coordinates(block)
+            is_edge.extend(block["node_id"].is_in(edge_coordinates["node_id"]))
 
             if not final_column:
                 current_row = pl.concat([current_row, edge_coordinates])
             else:
                 previous_row = current_row
-                current_row = edge_coordinates
+                current_row = block_edge_attributes
 
         nodes_gdf = gpd.GeoDataFrame(
-            data={
-                "node_id": node_ids,
-                "suitability_value": node_suitability_values,
-            },
+            data={"node_id": node_ids, "suitability_value": node_suitability_values, "is_edge": is_edge},
             geometry=gpd.points_from_xy(x=node_x_coordinates, y=node_y_coordinates, crs=Config.CRS),
         )
 
         return self.graph, nodes_gdf
 
-    @staticmethod
-    def get_block_edge_coordinates(block_coordinates: pl.DataFrame) -> pl.DataFrame:
+    def get_block_edge_coordinates(self, block_coordinates: pl.DataFrame) -> pl.DataFrame:
         """
-        Given the coordinates of a block, get left side and bottom coordinates. The left edge are equal to the max
-        axial q (due to the coordinate project being used). The bottom coordinates can be found by solving the equation
-        (Δq, Δr) = (-2, +1), which means that q-2, r+1 if we do one step to the right on the grid. The solution to this
-        equation is q + 2r. By checking which coordinates are equal to this formulation, we can find the bottom corner
-        of the hexagon block.
-
-        :param block_coordinates: axial coordinates, node ids and suitability values for all nodes within a block
-        :return: edge coordinates of the block including corresponding node ids and suitability values.
+        Given the coordinates of a block, get left side and bottom coordinates
         """
-        # Max q represents the horizontal (left) edge of the block
-        max_q = block_coordinates["q"].max()
-
-        # In this coordinate system, the bottom edge follows a diagonal where q + 2r is minimal.
-        # Include one extra row (min_diagonal + 2) to account for the hex offset between columns.
-
-        # Horizontal coordinates follow rule : q + 2r. By checking where this equation is minimal in the block, we can
-        # find the bottom edge.
-        bottom_coordinate_reference = (block_coordinates["q"] + 2 * block_coordinates["r"]).min()
+        min_x_coordinate = block_coordinates["x"].min()
+        min_y_coordinate = block_coordinates["y"].min()
 
         edge_coordinates = block_coordinates.filter(
-            (block_coordinates["q"] == max_q)
-            | (block_coordinates["q"] + 2 * block_coordinates["r"] == bottom_coordinate_reference)
+            (pl.col("x") == min_x_coordinate) | ((pl.col("y") - min_y_coordinate) <= self.hexagon_height)
         )
-        return edge_coordinates
+
+        return edge_coordinates.select("node_id", "suitability_value", "q", "r")
