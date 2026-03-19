@@ -11,7 +11,11 @@ import structlog
 from settings import Config
 from utility_route_planner.models.multilayer_network.graph_datastructures import HexagonEdgeInfo
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_utils import convert_hexagon_graph_to_gdfs
-from utility_route_planner.util.geo_utilities import get_empty_geodataframe
+from utility_route_planner.util.geo_utilities import (
+    get_empty_geodataframe,
+    get_first_last_point_from_linestring,
+    get_perpendicular_line,
+)
 from utility_route_planner.util.timer import time_function
 from utility_route_planner.util.write import write_results_to_geopackage
 
@@ -62,7 +66,12 @@ class HexagonGraphComposer:
 
     @time_function
     def merge_graphs(self, main_height_level: int):
-        """Merge the different height level graphs into a single graph by connecting the subgraphs to the main graph."""
+        """
+        Merge the different height level graphs into a single graph by connecting the subgraphs to the main graph.
+
+        Note that height levels are joined directly to the main graph. Different height levels are not joined to other
+        height levels.
+        """
         for height, height_graph in self.processed_graphs_per_height_level.items():
             if height == main_height_level:
                 continue
@@ -72,7 +81,7 @@ class HexagonGraphComposer:
                 f"Height level: {height} contains {rx.number_connected_components(height_graph)} subgraph(s) to connect the main graph."
             )
 
-            height_mapping = self.get_height_mapping(height_graph, main_height_level)
+            height_mapping = self.add_height_graph_to_main_graph(height_graph, main_height_level)
 
             # Determine which nodes to connect to each other
             for component in rx.connected_components(height_graph):
@@ -102,6 +111,26 @@ class HexagonGraphComposer:
             nodes, edges = convert_hexagon_graph_to_gdfs(self.processed_graphs_per_height_level[main_height_level])
             write_results_to_geopackage(self.out, nodes, "pytest_merged_graph_nodes", overwrite=True)
             write_results_to_geopackage(self.out, edges, "pytest_merged_graph_edges", overwrite=True)
+
+    def add_height_graph_to_main_graph(self, height_graph: rx.PyGraph, main_height_level: int) -> dict[int, int]:
+        """Add the complete height graph to the main graph. Note it is still not connected at this point."""
+        mapping = {}  # idx_height_graph -> idx_main_graph mapping for graph merge
+
+        # Add nodes from the subgraph to the main graph
+        for old_idx, node_data in enumerate(height_graph.nodes()):
+            # Always add as new node (even if many map to same "right" node)
+            new_idx = self.processed_graphs_per_height_level[main_height_level].add_node(node_data)
+            self.processed_graphs_per_height_level[main_height_level][new_idx].node_id = new_idx
+            mapping[old_idx] = new_idx
+
+        # Add subgraph edges to the main graph
+        for u, v, weight in height_graph.weighted_edge_list():
+            new_idx = self.processed_graphs_per_height_level[main_height_level].add_edge(mapping[u], mapping[v], weight)
+            self.processed_graphs_per_height_level[main_height_level].get_edge_data_by_index(new_idx).set_edge_id(
+                new_idx
+            )
+
+        return mapping
 
     def add_edges_between_height_levels(
         self,
@@ -148,7 +177,7 @@ class HexagonGraphComposer:
                 ),
                 axis=1,
             )
-            write_results_to_geopackage(self.out, linestrings, "pytest_component_connection_lines", overwrite=True)
+            write_results_to_geopackage(self.out, linestrings, "pytest_component_connection_lines")
 
     def filter_component_nodes(
         self, component_area: shapely.Polygon, gdf_component: gpd.GeoDataFrame
@@ -156,28 +185,38 @@ class HexagonGraphComposer:
         """
         Filter the nodes of the component to connect so we do not connect halfway a bridge/tunnel, but only at the
         start and end.
+
+        Note this does not work well when a bridge/tunnel is wider than it is long due to the centerline approach.
         """
         # TODO validate pairs based on osm road (if available)
         # TODO try to find the counterpart at the other height level through shared boundary
         #  - expand node model first with bgt id's?
-        #  - Create extended line perpendicular on the endpoints of the centerline with a width equal to a road (8m)
-        component_area_centerline = pygeoops.centerline(component_area, extend=True)
-        if isinstance(component_area_centerline, shapely.LineString):
-            entrypoints = shapely.MultiPoint(
-                [shapely.get_point(component_area_centerline, 0), shapely.get_point(component_area_centerline, -1)]
-            )
-            gdf_component = gdf_component[gdf_component.dwithin(entrypoints, distance=3)]
-        else:
-            logger.warning(f"Unhandled situation: {type(component_area_centerline)}")
-
         gdf_component_outer_nodes = gdf_component[
             gdf_component.geometry.dwithin(component_area.boundary, self.hexagon_size)
         ]
+        component_area_simplified = component_area.simplify(self.hexagon_size + 0.1)
+        component_area_centerline = pygeoops.centerline(component_area_simplified, extend=True)
+        # TODO handle linestring with more than 2 points
+        if isinstance(component_area_centerline, shapely.LineString):
+            start, end = get_first_last_point_from_linestring(component_area_centerline)
+            line_1 = get_perpendicular_line(start, end, 40)
+            line_2 = get_perpendicular_line(end, start, 40)
+            entrypoint_lines = shapely.MultiLineString([line_1, line_2])
+            gdf_component_outer_nodes = gdf_component_outer_nodes[
+                gdf_component.dwithin(entrypoint_lines, distance=self.hexagon_size * 2)
+            ]
+        else:
+            entrypoint_lines = shapely.MultiLineString()
+            logger.warning(f"Unhandled situation: {type(component_area_centerline)}")
 
         if self.debug:
+            write_results_to_geopackage(self.out, gdf_component_outer_nodes, "pytest_component_area_outer_nodes")
             write_results_to_geopackage(self.out, component_area, "pytest_component_area")
+            write_results_to_geopackage(self.out, component_area_simplified, "pytest_component_area_simplified")
             write_results_to_geopackage(self.out, component_area_centerline, "pytest_component_area_centerline")
             write_results_to_geopackage(self.out, component_area.boundary, "pytest_component_area_boundary")
+
+            write_results_to_geopackage(self.out, entrypoint_lines, "pytest_component_entrypoint_lines")
         return gdf_component_outer_nodes
 
     def validate_main_to_subgraph_pairs(self, gdf_main_nodes_to_outer_subgraph_nodes):
@@ -199,23 +238,3 @@ class HexagonGraphComposer:
                     Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT, na_rows, "pytest_invalid_nodes"
                 )
         return gdf_main_nodes_to_outer_subgraph_nodes
-
-    def get_height_mapping(self, height_graph: rx.PyGraph, main_height_level: int) -> dict[int, int]:
-        """Add the complete subgraph to the main graph first."""
-        mapping = {}  # idx_height_graph → idx_main_graph mapping for graph merge
-
-        # Add nodes from the subgraph to the main graph
-        for old_idx, node_data in enumerate(height_graph.nodes()):
-            # Always add as new node (even if many map to same "right" node)
-            new_idx = self.processed_graphs_per_height_level[main_height_level].add_node(node_data)
-            self.processed_graphs_per_height_level[main_height_level][new_idx].node_id = new_idx
-            mapping[old_idx] = new_idx
-
-        # Add subgraph edges to the main graph
-        for u, v, weight in height_graph.weighted_edge_list():
-            new_idx = self.processed_graphs_per_height_level[main_height_level].add_edge(mapping[u], mapping[v], weight)
-            self.processed_graphs_per_height_level[main_height_level].get_edge_data_by_index(new_idx).set_edge_id(
-                new_idx
-            )
-
-        return mapping
