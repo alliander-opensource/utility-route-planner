@@ -1,7 +1,8 @@
 # SPDX-FileCopyrightText: Contributors to the utility-route-project and Alliander N.V.
 #
 # SPDX-License-Identifier: Apache-2.0
-
+import pathlib
+import pygeoops
 import shapely
 import geopandas as gpd
 import rustworkx as rx
@@ -23,16 +24,16 @@ class HexagonGraphComposer:
         processed_criteria_per_height_level: dict[int, list[str]],
         processed_graphs_per_height_level: dict[int, rx.PyGraph],
         hexagon_size: float,
-        gdf_osm_edges: gpd.GeoDataFrame = get_empty_geodataframe(),
         debug: bool = False,
+        out: pathlib.Path = Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT,
     ):
         self.processed_criteria_per_height_level = processed_criteria_per_height_level
         self.processed_graphs_per_height_level = processed_graphs_per_height_level
         self.hexagon_size = hexagon_size
-        self.gdf_osm_edges = gdf_osm_edges  # use for sanity checks?
-        self.debug = debug
-
         self.gdf_main_nodes: gpd.GeoDataFrame = get_empty_geodataframe()
+
+        self.debug = debug
+        self.out = out
 
     def compose(self) -> rx.PyGraph:
         n_height_levels = len(self.processed_graphs_per_height_level)
@@ -71,67 +72,74 @@ class HexagonGraphComposer:
                 f"Height level: {height} contains {rx.number_connected_components(height_graph)} subgraph(s) to connect the main graph."
             )
 
-            height_mapping = self.merge_height_graph_to_main_graph(height_graph, main_height_level)
+            height_mapping = self.get_height_mapping(height_graph, main_height_level)
 
             # Determine which nodes to connect to each other
             for component in rx.connected_components(height_graph):
-                gdf_component = gdf_nodes_height[gdf_nodes_height["node_id"].isin(component)]
+                gdf_component_nodes = gdf_nodes_height[gdf_nodes_height["node_id"].isin(component)]
                 # Get the outer nodes (nodes to join to the main graph) of the component.
-                component_area = gdf_component.buffer(self.hexagon_size).union_all(grid_size=0.1)
+                component_area = gdf_component_nodes.buffer(self.hexagon_size).union_all(grid_size=0.1)
                 if not isinstance(component_area, shapely.Polygon):
-                    logger.warning("Component area is not a polygon, this is unexpected.")
-                gdf_component_outer = gdf_component[
-                    gdf_component.geometry.dwithin(component_area.boundary, self.hexagon_size)
-                ]
-                gdf_main_nodes_to_outer_subgraph_nodes = gdf_component_outer.sjoin(
+                    logger.warning("Component area is not a polygon, this is unexpected. Skipping.")
+                    continue
+
+                gdf_component_outer_nodes = self.filter_component_nodes(component_area, gdf_component_nodes)
+                # Outer component nodes are duplicated for each node to connect to in the main graph
+                gdf_main_nodes_to_outer_component_nodes = gdf_component_outer_nodes.sjoin(
                     self.gdf_main_nodes[~self.gdf_main_nodes.intersects(component_area)],
                     distance=self.hexagon_size * 2,
                     how="left",
                     predicate="dwithin",
                 )
-
-                gdf_main_nodes_to_outer_subgraph_nodes = self.validate_main_to_subgraph_pairs(
-                    gdf_main_nodes_to_outer_subgraph_nodes
+                gdf_main_nodes_to_outer_component_nodes = self.validate_main_to_subgraph_pairs(
+                    gdf_main_nodes_to_outer_component_nodes
+                )
+                self.add_edges_between_height_levels(
+                    gdf_main_nodes_to_outer_component_nodes, height, height_mapping, main_height_level
                 )
 
-                edges_to_add = [
-                    (
-                        node_pair.node_id_right,
-                        height_mapping[node_pair.node_id_left],
-                        HexagonEdgeInfo(
-                            weight=(node_pair.suitability_value_left + node_pair.suitability_value_right) / 2,
-                            height_level=height,
-                            connects_height_levels=True,
-                            geometry=shapely.LineString(
-                                [
-                                    node_pair.geometry,
-                                    self.gdf_main_nodes.loc[
-                                        self.gdf_main_nodes["node_id"] == node_pair.node_id_right, "geometry"
-                                    ].iloc[0],
-                                ]
-                            ),
-                        ),
-                    )
-                    for node_pair in gdf_main_nodes_to_outer_subgraph_nodes.itertuples(index=False)
-                ]
+        if self.debug:
+            nodes, edges = convert_hexagon_graph_to_gdfs(self.processed_graphs_per_height_level[main_height_level])
+            write_results_to_geopackage(self.out, nodes, "pytest_merged_graph_nodes", overwrite=True)
+            write_results_to_geopackage(self.out, edges, "pytest_merged_graph_edges", overwrite=True)
 
-                edge_indices = self.processed_graphs_per_height_level[main_height_level].add_edges_from(edges_to_add)
-                [
-                    self.processed_graphs_per_height_level[main_height_level].get_edge_data_by_index(i).set_edge_id(i)
-                    for i in edge_indices
-                ]
-
-                # TODO validate pairs based on osm road (if available)
-                # TODO try to find the counterpart at the other height level through shared boundary
-                #  - expand node model first with bgt id's?
+    def add_edges_between_height_levels(
+        self,
+        gdf_main_nodes_to_outer_component_nodes: gpd.GeoDataFrame,
+        height: int,
+        height_mapping: dict[int, int],
+        main_height_level: int,
+    ):
+        """Add the edges which connect height levels between the main graph and the component/subgraph."""
+        edges_to_add = [
+            (
+                node_pair.node_id_right,
+                height_mapping[node_pair.node_id_left],
+                HexagonEdgeInfo(
+                    weight=(node_pair.suitability_value_left + node_pair.suitability_value_right) / 2,
+                    height_level=height,
+                    connects_height_levels=True,
+                    geometry=shapely.LineString(
+                        [
+                            node_pair.geometry,
+                            self.gdf_main_nodes.loc[
+                                self.gdf_main_nodes["node_id"] == node_pair.node_id_right, "geometry"
+                            ].iloc[0],
+                        ]
+                    ),
+                ),
+            )
+            for node_pair in gdf_main_nodes_to_outer_component_nodes.itertuples(index=False)
+        ]
+        edge_indices = self.processed_graphs_per_height_level[main_height_level].add_edges_from(edges_to_add)
+        [
+            self.processed_graphs_per_height_level[main_height_level].get_edge_data_by_index(i).set_edge_id(i)
+            for i in edge_indices
+        ]
 
         if self.debug:
-            out = Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT
-            write_results_to_geopackage(out, component_area, "pytest_component_area")
-            write_results_to_geopackage(out, component_area.boundary, "pytest_component_area_boundary")
-            write_results_to_geopackage(out, gdf_component_outer, "pytest_component_outer_nodes")
             # visualize the pairs / edges to be
-            linestrings = gdf_main_nodes_to_outer_subgraph_nodes.apply(
+            linestrings = gdf_main_nodes_to_outer_component_nodes.apply(
                 lambda x: shapely.LineString(
                     [
                         x.geometry,
@@ -140,21 +148,45 @@ class HexagonGraphComposer:
                 ),
                 axis=1,
             )
-            write_results_to_geopackage(out, linestrings, "pytest_component_connection_lines", overwrite=True)
-            nodes, edges = convert_hexagon_graph_to_gdfs(self.processed_graphs_per_height_level[main_height_level])
-            write_results_to_geopackage(out, nodes, "pytest_merged_graph_nodes", overwrite=True)
-            write_results_to_geopackage(out, edges, "pytest_merged_graph_edges", overwrite=True)
+            write_results_to_geopackage(self.out, linestrings, "pytest_component_connection_lines", overwrite=True)
+
+    def filter_component_nodes(
+        self, component_area: shapely.Polygon, gdf_component: gpd.GeoDataFrame
+    ) -> gpd.GeoDataFrame:
+        """
+        Filter the nodes of the component to connect so we do not connect halfway a bridge/tunnel, but only at the
+        start and end.
+        """
+        # TODO validate pairs based on osm road (if available)
+        # TODO try to find the counterpart at the other height level through shared boundary
+        #  - expand node model first with bgt id's?
+        #  - Create extended line perpendicular on the endpoints of the centerline with a width equal to a road (8m)
+        component_area_centerline = pygeoops.centerline(component_area, extend=True)
+        if isinstance(component_area_centerline, shapely.LineString):
+            entrypoints = shapely.MultiPoint(
+                [shapely.get_point(component_area_centerline, 0), shapely.get_point(component_area_centerline, -1)]
+            )
+            gdf_component = gdf_component[gdf_component.dwithin(entrypoints, distance=3)]
+        else:
+            logger.warning(f"Unhandled situation: {type(component_area_centerline)}")
+
+        gdf_component_outer_nodes = gdf_component[
+            gdf_component.geometry.dwithin(component_area.boundary, self.hexagon_size)
+        ]
+
+        if self.debug:
+            write_results_to_geopackage(self.out, component_area, "pytest_component_area")
+            write_results_to_geopackage(self.out, component_area_centerline, "pytest_component_area_centerline")
+            write_results_to_geopackage(self.out, component_area.boundary, "pytest_component_area_boundary")
+        return gdf_component_outer_nodes
 
     def validate_main_to_subgraph_pairs(self, gdf_main_nodes_to_outer_subgraph_nodes):
-        # TODO this can happen on nodes that are at the edge of the main graph I think
+        """This can occur on nodes that are at the edge of the main graph."""
         if gdf_main_nodes_to_outer_subgraph_nodes["node_id_right"].isna().any():
             logger.warning("Some outer subgraph nodes could not be connected to the main graph nodes.")
             na_rows = gdf_main_nodes_to_outer_subgraph_nodes[
                 gdf_main_nodes_to_outer_subgraph_nodes["node_id_right"].isna()
             ]
-            write_results_to_geopackage(
-                Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT, na_rows, "pytest_na_rows", overwrite=True
-            )
             gdf_main_nodes_to_outer_subgraph_nodes.dropna(subset=["node_id_right"], inplace=True)
             gdf_main_nodes_to_outer_subgraph_nodes["node_id_right"] = gdf_main_nodes_to_outer_subgraph_nodes[
                 "node_id_right"
@@ -162,9 +194,13 @@ class HexagonGraphComposer:
             gdf_main_nodes_to_outer_subgraph_nodes["node_id_left"] = gdf_main_nodes_to_outer_subgraph_nodes[
                 "node_id_left"
             ].astype(int)
+            if self.debug:
+                write_results_to_geopackage(
+                    Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT, na_rows, "pytest_invalid_nodes"
+                )
         return gdf_main_nodes_to_outer_subgraph_nodes
 
-    def merge_height_graph_to_main_graph(self, height_graph: rx.PyGraph, main_height_level: int) -> dict[int, int]:
+    def get_height_mapping(self, height_graph: rx.PyGraph, main_height_level: int) -> dict[int, int]:
         """Add the complete subgraph to the main graph first."""
         mapping = {}  # idx_height_graph → idx_main_graph mapping for graph merge
 

@@ -183,7 +183,7 @@ class TestHexagonGraphBuilder:
 class TestHexagonGraphBuilderWithHeightLevels:
     out = Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT
     hexagon_size = 1.0
-    debug: bool = False
+    debug: bool = True
 
     @pytest.fixture(autouse=True)
     def clean_start(self):
@@ -192,7 +192,7 @@ class TestHexagonGraphBuilderWithHeightLevels:
 
     def test_build_graph_with_two_tunnels(self):
         """E.g., a road and a bicycle tunnel crossing each other."""
-        project_area = shapely.Polygon([(0, 0), (0, 100), (100, 100), (100, 0)])
+        project_area = shapely.Polygon([(0, 0), (0, 100), (100, 100), (100, 0)]).buffer(0.01)
         # Large road without sidewalks
         road_geom = shapely.LineString([(0, 50), (100, 50)])
 
@@ -208,7 +208,7 @@ class TestHexagonGraphBuilderWithHeightLevels:
 
         road = gpd.GeoDataFrame(
             data=[
-                [10, 0, road_geom.buffer(10, cap_style="flat")],
+                [30, 0, road_geom.buffer(10, cap_style="flat")],
                 [5, 1, bicycle_tunnel_geom_1.buffer(3, cap_style="flat")],
                 [5, 0, bicycle_road_north_geom_1.buffer(3, cap_style="flat")],
                 [5, 0, bicycle_road_south_geom_1.buffer(3, cap_style="flat")],
@@ -241,7 +241,7 @@ class TestHexagonGraphBuilderWithHeightLevels:
 
         processed_criteria_per_height_level = {
             0: ["road", "grassland"],  # ground level
-            1: ["road"],  # bridge level
+            1: ["road"],  # tunnel level
         }
         raster_groups = {
             "road": "a",
@@ -254,7 +254,6 @@ class TestHexagonGraphBuilderWithHeightLevels:
             processed_criteria_vectors,
             project_area,
             raster_groups,
-            get_empty_geodataframe(),
         )
         route_engine = MultilayerRouteEngine(
             merged_graph, rx.PyGraph(), hexagon_graph_composer.gdf_main_nodes, write_output=self.debug
@@ -493,7 +492,6 @@ class TestHexagonGraphBuilderWithHeightLevels:
         processed_criteria_vectors,
         project_area,
         raster_groups,
-        gdf_osm_edges,
     ):
         # TODO extract to hex builder? Cache the project area node grid so it is not recomputed each time
         # Build hexagon graphs per height level
@@ -522,7 +520,6 @@ class TestHexagonGraphBuilderWithHeightLevels:
             processed_criteria_per_height_level,
             graphs_per_height,
             hexagon_size=self.hexagon_size,
-            gdf_osm_edges=gdf_osm_edges,
             debug=debug,
         )
         merged_graph = hexagon_graph_composer.compose()
