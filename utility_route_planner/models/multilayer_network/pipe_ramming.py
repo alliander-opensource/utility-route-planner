@@ -446,7 +446,11 @@ class GetPotentialPipeRammingCrossings:
                 # Ensure the linestring is longer than the buffered street segment is wide.
                 distance_to_stretch = (((self.max_pipe_ramming_length_m * 2) - street.length) / 2) + 0.5
                 street = extend_linestring_both_ends(street, distance_to_stretch)
-                assert street.length >= self.max_pipe_ramming_length_m * 2
+                if not street.length >= self.max_pipe_ramming_length_m * 2:
+                    logger.warning(
+                        "Stretching the street segment did not result in a long enough linestring for creating pipe ramming rectangles. Skipping"
+                    )
+                    continue
             street_rotated = shapely.affinity.rotate(street, 90, origin="centroid")
             interval = np.linspace(0, street_rotated.length / 2, int((street_rotated.length / 2) // 1), endpoint=False)[
                 1:
