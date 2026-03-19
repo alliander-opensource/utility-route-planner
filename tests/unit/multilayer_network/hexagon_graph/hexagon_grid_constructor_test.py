@@ -4,7 +4,6 @@
 
 import math
 import geopandas as gpd
-import geopandas.testing
 import numpy as np
 import polars as pl
 from polars.testing import assert_frame_equal
@@ -275,27 +274,46 @@ class TestAssignSuitabilityValuesToGrid:
         assert_frame_equal(expected_suitability_values, result.sort("node_id"))
 
 
-@pytest.mark.skip(reason="TODO: Add new coordinates after bug fix")
 class TestCartesianToAxialConversion:
     def test_conversion(self, grid_constructor: HexagonGridBuilder):
-        center_points = gpd.GeoDataFrame(
-            geometry=[
-                shapely.Point(174966.804, 451064.681),
-                shapely.Point(174967.554, 451065.114),
-                shapely.Point(174968.304, 451064.681),
-                shapely.Point(174967.554, 451064.248),
-                shapely.Point(174966.804, 451063.815),
-                shapely.Point(174967.554, 451063.382),
-                shapely.Point(174968.304, 451063.815),
-            ]
+        """
+        Verifies that all cartesian coordinates in an hexagon are converted succesfully to axial coordinates.
+        All coordinates should follow this format: https://www.redblobgames.com/grids/hexagons/#neighbors-axial
+
+        Note: the coordinates are upside down compared to the examples shown in the referenced link. This is due
+        to numpy creating coordinates from top to bottom.
+        """
+
+        center_points = pl.DataFrame(
+            data=[
+                # Upper neighbours of center
+                [22.490, 19.109],
+                [23.240, 19.542],
+                [23.990, 19.109],
+                # Center of hexagon
+                [23.240, 18.676],
+                # Lower neighbours of center
+                [22.490, 18.243],
+                [23.240, 17.810],
+                [23.990, 18.243],
+            ],
+            schema={"x": pl.Float32, "y": pl.Float32},
         )
-        xgrid_result, ygrid_result = grid_constructor.convert_cartesian_coordinates_to_axial(center_points)
+        result = grid_constructor.convert_cartesian_coordinates_to_axial(center_points)
 
-        #                           -1         0         +1          center(0)  -1         0         +1
-        expected_xgrid = np.array([[-233289], [-233290], [-233291], [-233290], [-233289], [-233290], [-233291]])
-
-        #                           0        +1        +1        center(0) -1        -1        0
-        expected_ygrid = np.array([[637489], [637490], [637490], [637489], [637488], [637488], [637489]])
-
-        assert all(expected_xgrid == xgrid_result)
-        assert all(expected_ygrid == ygrid_result)
+        expected_axial_coordinates = pl.DataFrame(
+            data=[
+                # Upper neighbours of center
+                [22.490, 19.109, -30, 37],  # +1, 0
+                [23.240, 19.542, -31, 38],  # 0, +1
+                [23.990, 19.109, -32, 38],  # -1, +1
+                # Center of hexagon
+                [23.240, 18.676, -31, 37],  # 0, 0 -> center point
+                # Lower neighbours of center
+                [22.490, 18.243, -30, 36],  # +1, -1
+                [23.240, 17.810, -31, 36],  # 0, -1
+                [23.990, 18.243, -32, 37],  # -1, 0
+            ],
+            schema={"x": pl.Float32, "y": pl.Float32, "q": pl.Int32, "r": pl.Int32},
+        )
+        assert_frame_equal(expected_axial_coordinates, result)
