@@ -76,3 +76,14 @@ def get_hexagon_edge_weight(hexagon_edge: float | HexagonEdgeInfo) -> float:
         return hexagon_edge
     else:
         return hexagon_edge.weight
+
+
+def get_hexagon_edge_geometries_for_path(
+    graph: rx.PyGraph, path_node_indices: list[int], nodes: gpd.GeoDataFrame
+) -> gpd.GeoDataFrame:
+    edges_list = []
+    for start_node, end_node in zip(path_node_indices, path_node_indices[1:]):
+        edge_weight = get_hexagon_edge_weight(graph.get_edge_data(start_node, end_node))
+        edge_linestring = shapely.LineString([nodes.loc[start_node, "geometry"], nodes.loc[end_node, "geometry"]])
+        edges_list.append((edge_weight, edge_linestring))
+    return gpd.GeoDataFrame(data=edges_list, columns=["weight", "geometry"], crs=Config.CRS)
