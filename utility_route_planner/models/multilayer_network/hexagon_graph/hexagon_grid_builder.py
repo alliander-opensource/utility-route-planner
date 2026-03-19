@@ -210,6 +210,7 @@ class HexagonGridBuilder:
         # Remove duplicate points, as a point could have joined multiple vector which results in duplicate rows within
         # the right dataframe.
         hexagon_points = hexagon_points.unique(subset=["node_id"])
+        hexagon_points = hexagon_points.cast({pl.Int64: pl.Int32, pl.Float64: pl.Float32})
 
         return hexagon_points
 
