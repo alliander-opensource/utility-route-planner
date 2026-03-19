@@ -238,3 +238,16 @@ def split_polygon_by_linestrings(
         )
 
     return split_polygon
+
+
+def get_perpendicular_line(
+    origin: shapely.Point, direction_point: shapely.Point, distance: float, debug: bool = False
+) -> shapely.LineString:
+    entrypoint_line_interpolated = extrapolate_point_to_target(origin, direction_point, 0.1)
+    perpendicular_line = shapely.affinity.rotate(entrypoint_line_interpolated, 90, origin=origin)
+    perpendicular_line_extended = extend_linestring_both_ends(perpendicular_line, distance)
+    if debug:
+        write_results_to_geopackage(
+            Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT, perpendicular_line, "pytest_entry_point_line"
+        )
+    return perpendicular_line_extended
