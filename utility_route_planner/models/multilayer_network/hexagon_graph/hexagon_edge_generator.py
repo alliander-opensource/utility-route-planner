@@ -12,32 +12,66 @@ class HexagonEdgeGenerator:
         block_coordinates: pl.DataFrame,
         previous_row_edge_coordinates: pl.DataFrame,
     ) -> list[tuple[int, int, HexagonEdgeInfo]]:
-        """ """
-        inner_block_edges = self._get_edge_candidates(block_coordinates)
-        candidates = pl.concat(inner_block_edges)
+        edge_candidates = self._get_edge_candidates(block_coordinates)
 
-        return self._get_neighbouring_edges(previous_row_edge_coordinates.lazy(), candidates.lazy())
+        # Use lazy dataframe to allow the query to make use of Polars query optimization.
+        return self._get_neighbouring_edges(previous_row_edge_coordinates.lazy(), edge_candidates.lazy())
 
     @staticmethod
     def _get_edge_candidates(
         block_coordinates: pl.DataFrame,
-    ) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame, pl.DataFrame]:
-        top = block_coordinates.select([pl.col("node_id").alias("source_node"), pl.col("q"), pl.col("r") + 1])
-        left_top = block_coordinates.select([pl.col("node_id").alias("source_node"), pl.col("q") + 1, pl.col("r")])
-        left_bottom = block_coordinates.select(
-            [pl.col("node_id").alias("source_node"), pl.col("q") + 1, pl.col("r") - 1]
+    ) -> pl.DataFrame:
+        """
+        For each node in the block, compute its potential edges by considering the neighbours based on the
+        axial coordinates. By using axial coordinates, all potential edges can be computed at once by
+        cross-joining an offset dataframe.
+
+        Note: as the grid is constructed in block-wise fashion, we need to compute in four instead of three
+        directions which causes duplicates. Using only three directions results in missing cross-block edges.
+        Duplicates are handled when generating the actual edges.
+
+        Information on the offsets can be found here: https://www.redblobgames.com/grids/hexagons/#neighbors-axial
+
+        :param block_coordinates: all axial coordinates in a single block to compute potential neighbours for
+        :return: axial coordinates of all potential neighbours per node in the block
+        """
+
+        offsets = pl.DataFrame(
+            data=[
+                # Vertical neighbour candidates (q, r+1)
+                [0, 1],
+                # Top-left neighbour candidates (q+1, r)
+                [1, 0],
+                # Bottom-left neighbour candidates (q+1, r-1)
+                [1, -1],
+                # Right-bottom neighbour candidates (q-1, r+1)
+                [-1, 1],
+            ],
+            schema={"dq": pl.Int8, "dr": pl.Int8},
         )
 
-        right_bottom = block_coordinates.select(
-            [pl.col("node_id").alias("source_node"), pl.col("q") - 1, pl.col("r") + 1]
+        neighbour_candidates = block_coordinates.join(offsets, how="cross").select(
+            pl.col("node_id").alias("source_node"),
+            (pl.col("q") + pl.col("dq")).alias("q"),
+            (pl.col("r") + pl.col("dr")).alias("r"),
         )
 
-        return (top, left_top, left_bottom, right_bottom)
+        return neighbour_candidates
 
     @staticmethod
     def _get_neighbouring_edges(
         all_nodes: pl.LazyFrame, neighbour_candidates: pl.LazyFrame
     ) -> list[tuple[int, int, HexagonEdgeInfo]]:
+        """
+        For each node, determine which neighbours candidates are valid. For each valid neighbour, the suitability
+        value is computed by (source_node_suitability + target_node_suitability) / 2. All valid neighbours are
+        transformed into edges
+
+        :param all_nodes: lazy dataframe which contains all nodes in the current block + previous nodes in the current
+        or previous row which could be cross-edge candidates.
+        :param neighbour_candidates: lazy dataframe which contains the potential neighbours per node in the current block
+        :return: list of tuples containing all valid edges with suitability values in the current block.
+        """
         neighbours = (
             # First, for join the candidates with nodes that are actually present in the graph. The neighbour
             # candidate computation does not take the existence of nodes into account, which is resolved by dropping
