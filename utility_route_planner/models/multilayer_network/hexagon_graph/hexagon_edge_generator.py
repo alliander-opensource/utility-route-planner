@@ -11,15 +11,12 @@ class HexagonEdgeGenerator:
     def generate(
         self,
         block_coordinates: pl.DataFrame,
-        block_edge_coordinates: pl.DataFrame,
         previous_row_edge_coordinates: pl.DataFrame,
     ) -> Iterator[list[tuple[int, int, HexagonEdgeInfo]]]:
         """ """
         inner_block_edges = self._get_edge_candidates(block_coordinates)
-        cross_block_edges = self._get_edge_candidates(block_edge_coordinates)
 
-        for inner, cross in zip(inner_block_edges, cross_block_edges):
-            candidate = pl.concat([inner, cross])
+        for candidate in inner_block_edges:
             yield self._get_neighbouring_edges(previous_row_edge_coordinates, candidate)
 
     @staticmethod
