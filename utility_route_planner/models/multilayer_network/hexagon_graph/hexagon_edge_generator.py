@@ -1,7 +1,6 @@
 #  SPDX-FileCopyrightText: Contributors to the utility-route-project and Alliander N.V.
 #  #
 #  SPDX-License-Identifier: Apache-2.0
-from typing import Iterator
 import polars as pl
 
 from utility_route_planner.models.multilayer_network.graph_datastructures import HexagonEdgeInfo
@@ -12,12 +11,12 @@ class HexagonEdgeGenerator:
         self,
         block_coordinates: pl.DataFrame,
         previous_row_edge_coordinates: pl.DataFrame,
-    ) -> Iterator[list[tuple[int, int, HexagonEdgeInfo]]]:
+    ) -> list[tuple[int, int, HexagonEdgeInfo]]:
         """ """
         inner_block_edges = self._get_edge_candidates(block_coordinates)
+        candidates = pl.concat(inner_block_edges)
 
-        for candidate in inner_block_edges:
-            yield self._get_neighbouring_edges(previous_row_edge_coordinates, candidate)
+        return self._get_neighbouring_edges(previous_row_edge_coordinates.lazy(), candidates.lazy())
 
     @staticmethod
     def _get_edge_candidates(
@@ -29,7 +28,6 @@ class HexagonEdgeGenerator:
             [pl.col("node_id").alias("source_node"), pl.col("q") + 1, pl.col("r") - 1]
         )
 
-        # right_top = block_coordinates.select([pl.col("node_id").alias("source_node"), pl.col("q") -1, pl.col("r")])
         right_bottom = block_coordinates.select(
             [pl.col("node_id").alias("source_node"), pl.col("q") - 1, pl.col("r") + 1]
         )
@@ -38,9 +36,12 @@ class HexagonEdgeGenerator:
 
     @staticmethod
     def _get_neighbouring_edges(
-        all_nodes: pl.DataFrame, neighbour_candidates: pl.DataFrame
+        all_nodes: pl.LazyFrame, neighbour_candidates: pl.LazyFrame
     ) -> list[tuple[int, int, HexagonEdgeInfo]]:
         neighbours = (
+            # First, for join the candidates with nodes that are actually present in the graph. The neighbour
+            # candidate computation does not take the existence of nodes into account, which is resolved by dropping
+            # candidate neighbours that cannot be joined
             neighbour_candidates.join(
                 all_nodes.select(
                     pl.col("node_id").alias("target_node"),
@@ -51,7 +52,6 @@ class HexagonEdgeGenerator:
                 on=["q", "r"],
                 how="inner",
             )
-            .unique(subset=["source_node", "target_node"])
             .join(
                 all_nodes.select(
                     pl.col("node_id"),
@@ -62,9 +62,15 @@ class HexagonEdgeGenerator:
                 how="inner",
             )
             .with_columns(((pl.col("source_suitability") + pl.col("target_suitability")) / 2).alias("weight"))
+            # Remove duplicate edges. Due to adding candidates for four directions (instead of three), duplicate
+            # edges occur in the query. By normalizing by taking the lowest and highest node id horizontally,
+            # duplicates can be identified and removed in the query.
+            .with_columns(
+                pl.min_horizontal("source_node", "target_node").alias("edge_low"),
+                pl.max_horizontal("source_node", "target_node").alias("edge_high"),
+            )
+            .unique(subset=["edge_low", "edge_high"])
+            .select("source_node", "target_node", "weight")
+            .collect()
         )
-        edges = [
-            (edge[0], edge[1], edge[2])
-            for edge in neighbours.select("source_node", "target_node", "weight").iter_rows()
-        ]
-        return edges
+        return neighbours.rows()

@@ -79,8 +79,8 @@ class HexagonGraphBuilder:
             previous_edge_coordinates = pl.concat(
                 [current_row_edge_coordinates, previous_row_edge_coordinates, block_edge_attributes]
             )
-            for edges in hexagon_edge_generator.generate(block_edge_attributes, previous_edge_coordinates):
-                self.graph.add_edges_from(edges)
+            edges = hexagon_edge_generator.generate(block_edge_attributes, previous_edge_coordinates)
+            self.graph.add_edges_from(edges)
 
             # Store the edges of the current block for edge generation in the next block. In case this was the final
             # block of this row, the previous row is set to this row and current_row is reset to the last block.
