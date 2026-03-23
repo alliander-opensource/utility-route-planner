@@ -48,20 +48,20 @@ class HexagonGraphBuilder:
         )
         hexagon_edge_generator = HexagonEdgeGenerator()
 
-        previous_row: pl.DataFrame = pl.DataFrame(
-            schema={"node_id": pl.Int32, "suitability_value": pl.Int16, "q": pl.Int32, "r": pl.Int32}
-        )
-        current_row: pl.DataFrame = pl.DataFrame(
-            schema={"node_id": pl.Int32, "suitability_value": pl.Int16, "q": pl.Int32, "r": pl.Int32}
-        )
-
         node_ids: list[int] = []
         node_suitability_values: list[int] = []
         node_x_coordinates: list[float] = []
         node_y_coordinates: list[float] = []
         is_edge: list[bool] = []
 
-        for i, (block, final_column) in enumerate(grid_constructor.construct_grid(self.project_area)):
+        current_row_edge_coordinates = pl.DataFrame(
+            schema={"node_id": pl.Int32, "suitability_value": pl.Int16, "q": pl.Int32, "r": pl.Int32}
+        )
+        previous_row_edge_coordinates = pl.DataFrame(
+            schema={"node_id": pl.Int32, "suitability_value": pl.Int16, "q": pl.Int32, "r": pl.Int32}
+        )
+
+        for block, last_column in grid_constructor.construct_grid(self.project_area):
             suitability_values = block["suitability_value"]
             block_node_ids = self.graph.add_nodes_from(suitability_values)
             block = block.with_columns(pl.Series("node_id", list(block_node_ids), dtype=pl.Int32))
@@ -74,20 +74,30 @@ class HexagonGraphBuilder:
             node_y_coordinates.extend(block["y"])
 
             block_edge_attributes = block.select("node_id", "suitability_value", "q", "r")
-            blocks_to_check = pl.concat([previous_row, current_row, block_edge_attributes])
-            for edges in hexagon_edge_generator.generate(block, blocks_to_check):
+            block_edge_coordinates = self.get_block_edge_coordinates(block)
+            current_row_edge_coordinates = pl.concat([current_row_edge_coordinates, block_edge_coordinates])
+            previous_edge_coordinates = pl.concat(
+                [current_row_edge_coordinates, previous_row_edge_coordinates, block_edge_attributes]
+            )
+            for edges in hexagon_edge_generator.generate(
+                block_edge_attributes, block_edge_coordinates, previous_edge_coordinates
+            ):
                 self.graph.add_edges_from(edges)
 
             # Store the edges of the current block for edge generation in the next block. In case this was the final
             # block of this row, the previous row is set to this row and current_row is reset to the last block.
-            edge_coordinates = self.get_block_edge_coordinates(block)
-            is_edge.extend(block["node_id"].is_in(edge_coordinates["node_id"]))
+            is_edge.extend(block["node_id"].is_in(block_edge_coordinates["node_id"]))
+            # current_row_bottom_coordinates = pl.concat([current_row_bottom_coordinates, bottom_coordinates])
 
-            if not final_column:
-                current_row = pl.concat([current_row, edge_coordinates])
-            else:
-                previous_row = current_row
-                current_row = block_edge_attributes
+            if last_column:
+                previous_row_edge_coordinates = current_row_edge_coordinates
+                current_row_edge_coordinates.clear()
+
+            # if not final_column:
+            #     row_bottom_coordinates = pl.concat([row_bottom_coordinates, bottom_coordinates])
+            # else:
+            #     previous_row = bottom_coordinates
+            #     current_row = block_edge_attributes
 
         nodes_gdf = gpd.GeoDataFrame(
             data={"node_id": node_ids, "suitability_value": node_suitability_values, "is_edge": is_edge},
@@ -98,13 +108,16 @@ class HexagonGraphBuilder:
 
     def get_block_edge_coordinates(self, block_coordinates: pl.DataFrame) -> pl.DataFrame:
         """
-        Given the coordinates of a block, get left side and bottom coordinates
+        Given the coordinates of a block, get right side and bottom coordinates
         """
-        min_x_coordinate = block_coordinates["x"].min()
-        min_y_coordinate = block_coordinates["y"].min()
+        min_x_coordinate, max_x_coordinate = block_coordinates["x"].min(), block_coordinates["x"].max()
+        min_y_coordinate, max_y_coordinate = block_coordinates["y"].min(), block_coordinates["y"].max()
 
         edge_coordinates = block_coordinates.filter(
-            (pl.col("x") == min_x_coordinate) | ((pl.col("y") - min_y_coordinate) <= self.hexagon_height)
-        )
+            (pl.col("x") == min_x_coordinate)
+            | (pl.col("x") == max_x_coordinate)
+            | (abs(pl.col("y") - min_y_coordinate) <= 0.6 * self.hexagon_height)
+            | (abs(pl.col("y") - max_y_coordinate) <= 0.6 * self.hexagon_height)
+        ).select("node_id", "suitability_value", "q", "r")
 
-        return edge_coordinates.select("node_id", "suitability_value", "q", "r")
+        return edge_coordinates
