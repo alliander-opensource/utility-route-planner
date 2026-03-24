@@ -178,7 +178,7 @@ class TestPipeRamming:
         assert group_110 == group_111 == group_112
         assert (edges["group"] == group_110).sum() == 3
 
-    # @pytest.mark.skip(reason="Only for debugging a specific junction.")
+    @pytest.mark.skip(reason="Only for debugging a specific junction.")
     def test_single_junction(self, setup_pipe_ramming_example_polygon, debug=False):
         if debug:
             reset_geopackage(Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT, truncate=False)
@@ -231,9 +231,9 @@ class TestPipeRamming:
         segment_group_to_cross = 48
 
         project_area = shapely.Point(174974, 451093).buffer(150)
-        osm_graph, mcda_engine, cost_surface_graph = setup_pipe_ramming_example_polygon(project_area)
+        osm_graph, _, cost_surface_graph, cost_surface_nodes = setup_pipe_ramming_example_polygon(project_area)
 
-        pipe_ramming = GetPotentialPipeRammingCrossings(osm_graph, cost_surface_graph, debug=debug)
+        pipe_ramming = GetPotentialPipeRammingCrossings(osm_graph, cost_surface_graph, cost_surface_nodes, debug=debug)
         pipe_ramming.suitability_value_obstacles_threshold = 77
         pipe_ramming.create_street_segment_groups()
         pipe_ramming.prepare_junction_crossings()
@@ -263,9 +263,9 @@ class TestPipeRamming:
         if debug:
             reset_geopackage(Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT, truncate=False)
 
-        osm_graph, mcda_engine, cost_surface_graph = setup_pipe_ramming_example_polygon()
+        osm_graph, _, cost_surface_graph, cost_surface_nodes = setup_pipe_ramming_example_polygon()
 
-        pipe_ramming = GetPotentialPipeRammingCrossings(osm_graph, cost_surface_graph, debug=debug)
+        pipe_ramming = GetPotentialPipeRammingCrossings(osm_graph, cost_surface_graph, cost_surface_nodes, debug=debug)
         # Enable for visual checking without full debug mode which slows the test down.
         pipe_ramming.plot_crossings = False
         crossings = pipe_ramming.get_crossings()

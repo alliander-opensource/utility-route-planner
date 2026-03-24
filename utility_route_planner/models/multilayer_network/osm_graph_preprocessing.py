@@ -74,9 +74,9 @@ class OSMGraphPreprocessor:
         for (_, _, edge), edge_id in zip(edges, edge_ids):
             edge.edge_id = edge_id
 
-        for node, node_index in nx_rx_node_mapping.items():
-            data = nx_graph.nodes[node]
-            info = OSMNodeInfo(shapely.Point(data.get("x", 0), data.get("y", 0)), node)
+        for osm_node_id, node_index in nx_rx_node_mapping.items():
+            data = nx_graph.nodes[osm_node_id]
+            info = OSMNodeInfo(osm_node_id, shapely.Point(data.get("x", 0), data.get("y", 0)))
             info.node_id = node_index
             rx_graph[node_index] = info
 
