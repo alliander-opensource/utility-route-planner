@@ -88,7 +88,9 @@ class HexagonGraphBuilder:
 
             if last_column:
                 previous_row_edge_coordinates = current_row_edge_coordinates
-                current_row_edge_coordinates.clear()
+                current_row_edge_coordinates = pl.DataFrame(
+                    schema={"node_id": pl.Int32, "suitability_value": pl.Int16, "q": pl.Int32, "r": pl.Int32}
+                )
 
         nodes_gdf = gpd.GeoDataFrame(
             data={"node_id": node_ids, "suitability_value": node_suitability_values, "is_edge": is_edge},
