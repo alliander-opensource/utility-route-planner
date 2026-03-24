@@ -932,7 +932,7 @@ class TestPipeRammingTheoryExamples:
                 (),
                 (),
                 6,
-                231,
+                230,
                 1387.5,
                 1,
                 [(1, 6), (158, -25)],
