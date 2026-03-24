@@ -67,8 +67,8 @@ class HexagonGridBuilder:
         # Reverse order of matrices twice, to make sure y-coordinates are decreasing going south and x-coordinates are
         # increasing going east. This is required since the numpy default initialization does not respect the same order
         # as the coordinate system being used.
-        x_matrix = np.flip(np.flip(x_matrix), axis=1)
-        y_matrix = np.flip(np.flip(y_matrix), axis=1)
+        x_matrix = np.flip(x_matrix)
+        y_matrix = np.flip(y_matrix)
 
         # Every even column must be offset by half of the hexagon height to properly determine the vertical
         # position of the hexagon.

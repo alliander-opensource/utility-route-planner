@@ -40,12 +40,12 @@ class HexagonEdgeGenerator:
             data=[
                 # Vertical neighbour candidates (q, r+1)
                 [0, 1],
-                # Top-left neighbour candidates (q+1, r)
-                [1, 0],
-                # Bottom-left neighbour candidates (q+1, r-1)
-                [1, -1],
-                # Right-bottom neighbour candidates (q-1, r+1)
-                [-1, 1],
+                # Top-right neighbour candidates (q+1, r)
+                [-1, +1],
+                # Bottom-right neighbour candidates (q+1, r-1)
+                [-1, 0],
+                # Top-left neighbour candidates (q-1, r+1)
+                [+1, 0],
             ],
             schema={"dq": pl.Int8, "dr": pl.Int8},
         )

@@ -2,6 +2,7 @@
 #  #
 #  SPDX-License-Identifier: Apache-2.0
 
+from dataclasses import asdict
 import math
 
 import geopandas as gpd
@@ -13,7 +14,7 @@ import structlog
 from geopandas import GeoDataFrame
 
 from settings import Config
-from utility_route_planner.models.multilayer_network.graph_datastructures import HexagonEdgeInfo
+from utility_route_planner.models.multilayer_network.graph_datastructures import HexagonEdgeInfo, PipeRammingEdgeInfo
 from utility_route_planner.util.geo_utilities import get_empty_geodataframe
 from utility_route_planner.util.timer import time_function
 
@@ -83,10 +84,15 @@ def get_hexagon_edge_geometries_for_path(
 ) -> gpd.GeoDataFrame:
     edges_list = []
     for start_node, end_node in zip(path_node_indices, path_node_indices[1:]):
-        edge_weight = get_hexagon_edge_weight(graph.get_edge_data(start_node, end_node))
+        edge_data = graph.get_edge_data(start_node, end_node)
         edge_linestring = shapely.LineString([nodes.loc[start_node, "geometry"], nodes.loc[end_node, "geometry"]])
-        edges_list.append((edge_weight, edge_linestring))
-    return gpd.GeoDataFrame(data=edges_list, columns=["weight", "geometry"], crs=Config.CRS)
+        if isinstance(edge_data, PipeRammingEdgeInfo):
+            edge_meta_data = asdict(edge_data)
+        else:
+            edge_meta_data = dict(weight=get_hexagon_edge_weight(edge_data), geometry=edge_linestring)
+
+        edges_list.append(edge_meta_data)
+    return gpd.GeoDataFrame(data=edges_list, crs=Config.CRS)
 
 
 def convert_hexagon_edges_to_gdf(graph: rx.PyGraph, nodes: gpd.GeoDataFrame) -> gpd.GeoDataFrame:

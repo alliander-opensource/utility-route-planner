@@ -101,11 +101,11 @@ class HexagonGraphBuilder:
         """
         Given the coordinates of a block, get right side and bottom coordinates
         """
-        max_x_coordinate = block_coordinates["x"].max()
+        min_x_coordinate = block_coordinates["x"].min()
         min_y_coordinate = block_coordinates["y"].min()
 
         edge_coordinates = block_coordinates.filter(
-            (pl.col("x") == max_x_coordinate) | (abs(pl.col("y") - min_y_coordinate) <= 0.6 * self.hexagon_height)
+            (pl.col("x") == min_x_coordinate) | (abs(pl.col("y") - min_y_coordinate) <= 0.6 * self.hexagon_height)
         ).select("node_id", "suitability_value", "q", "r")
 
         return edge_coordinates
