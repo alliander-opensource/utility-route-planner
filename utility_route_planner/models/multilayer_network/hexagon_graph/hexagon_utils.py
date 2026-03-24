@@ -87,3 +87,31 @@ def get_hexagon_edge_geometries_for_path(
         edge_linestring = shapely.LineString([nodes.loc[start_node, "geometry"], nodes.loc[end_node, "geometry"]])
         edges_list.append((edge_weight, edge_linestring))
     return gpd.GeoDataFrame(data=edges_list, columns=["weight", "geometry"], crs=Config.CRS)
+
+
+def convert_hexagon_edges_to_gdf(graph: rx.PyGraph, nodes: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
+    """
+    Convert all edges in a Hexagon graph to a GeoDataframe.
+
+    Note: when supplying large graphs, this function can take some time to complete due to the geometry creation
+    of all edges in the graph.
+
+    :param graph: graph to convert edges for
+    :param nodes: all nodes in the graph as a geodataframe containing the source and target geometries
+    :return: geodataframe with all edges, edge weights and geometries from the input graph
+    """
+    node_to_geom_mapping = nodes.set_index("node_id")["geometry"]
+
+    edge_weight_map = graph.edge_index_map()
+    source_nodes = [source_node for source_node, _, _ in edge_weight_map.values()]
+    target_nodes = [target_node for _, target_node, _ in edge_weight_map.values()]
+    weights = [get_hexagon_edge_weight(weight) for _, _, weight in edge_weight_map.values()]
+
+    source_coordinates = node_to_geom_mapping.loc[source_nodes].get_coordinates().values
+    target_coordinates = node_to_geom_mapping.loc[target_nodes].get_coordinates().values
+    edge_geometries = shapely.linestrings(np.stack([source_coordinates, target_coordinates], axis=1))
+
+    return gpd.GeoDataFrame(
+        {"source_node": source_nodes, "target_node": target_nodes, "weight": weights, "geometry": edge_geometries},
+        crs=Config.CRS,
+    )
