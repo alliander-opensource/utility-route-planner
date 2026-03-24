@@ -14,7 +14,6 @@ from settings import Config
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_graph_builder import HexagonGraphBuilder
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_utils import (
     convert_hexagon_edges_to_gdf,
-    convert_hexagon_graph_to_gdfs,
 )
 from utility_route_planner.models.multilayer_network.multilayer_route_planner import MultilayerRouteEngine
 from utility_route_planner.util.graph_utilities import create_osm_edge_info
@@ -62,18 +61,17 @@ class TestPipeRamming:
                 hexagon_size=Config.HEXAGON_SIZE,
                 block_size=Config.HEXAGON_BLOCK_SIZE,
             )
-            cost_surface_graph = hexagon_graph_builder.build_graph()
+            cost_surface_graph, cost_surface_nodes = hexagon_graph_builder.build_graph()
 
             if debug:
                 osm_nodes, osm_edges = osm_graph_to_gdfs(osm_graph_preprocessed)
-                cost_surface_nodes = convert_hexagon_graph_to_gdfs(cost_surface_graph, edges=False)
                 out = Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT
                 reset_geopackage(out, truncate=False)
                 write_results_to_geopackage(out, osm_nodes, "osm_nodes")
                 write_results_to_geopackage(out, osm_edges, "osm_edges")
                 write_results_to_geopackage(out, cost_surface_nodes, "cost_surface_nodes")
 
-            return osm_graph_preprocessed, mcda_engine, cost_surface_graph
+            return osm_graph_preprocessed, mcda_engine, cost_surface_graph, cost_surface_nodes
 
         return _setup
 
@@ -135,7 +133,9 @@ class TestPipeRamming:
             edge[2].edge_id = edge_id
 
         # Enable debug for visual debugging in QGIS.
-        crossings = GetPotentialPipeRammingCrossings(osm_graph, rx.PyGraph(), debug=debug)
+        crossings = GetPotentialPipeRammingCrossings(
+            osm_graph, cost_surface_graph=rx.PyGraph(), cost_surface_nodes=gpd.GeoDataFrame(), debug=debug
+        )
         crossings.create_street_segment_groups()
 
         edges, nodes = crossings.osm_edges, crossings.osm_nodes
@@ -178,7 +178,7 @@ class TestPipeRamming:
         assert group_110 == group_111 == group_112
         assert (edges["group"] == group_110).sum() == 3
 
-    @pytest.mark.skip(reason="Only for debugging a specific junction.")
+    # @pytest.mark.skip(reason="Only for debugging a specific junction.")
     def test_single_junction(self, setup_pipe_ramming_example_polygon, debug=False):
         if debug:
             reset_geopackage(Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT, truncate=False)
@@ -186,11 +186,15 @@ class TestPipeRamming:
         node_id_to_test = 3
         project_area = shapely.Point(174967.12, 450898.60).buffer(150)
 
-        osm_graph, mcda_engine, cost_surface_graph = setup_pipe_ramming_example_polygon(project_area)
+        osm_graph, _, cost_surface_graph, cost_surface_nodes = setup_pipe_ramming_example_polygon(project_area)
 
         max_pipe_ramming_length_m = 27  # play with value and note that crossings move
         pipe_ramming = GetPotentialPipeRammingCrossings(
-            osm_graph, cost_surface_graph, max_pipe_ramming_length_m=max_pipe_ramming_length_m, debug=debug
+            osm_graph,
+            cost_surface_graph,
+            cost_surface_nodes,
+            max_pipe_ramming_length_m=max_pipe_ramming_length_m,
+            debug=debug,
         )
         pipe_ramming.create_street_segment_groups()
         pipe_ramming.prepare_junction_crossings()
@@ -456,18 +460,18 @@ class TestPipeRammingTheoryExamples:
                 [(0.6, 6.5), (56, 49.5)],
             ),
             # With obstacles
-            # (
-            #     [
-            #         [120, shapely.LineString([(1, -18), (99, -18)]).buffer(8, cap_style="flat")],
-            #         [120, shapely.LineString([(32, 10), (32, 46)]).buffer(8, cap_style="flat")],
-            #     ],
-            #     [[20, shapely.Point(43.6, -8.2).buffer(6)], [20, shapely.Point(58, 19).buffer(4)]],
-            #     2,
-            #     106,
-            #     821,
-            #     1,
-            #     [(0.6, 6.5), (56, 49.5)],
-            # ),
+            (
+                [
+                    [120, shapely.LineString([(1, -18), (99, -18)]).buffer(8, cap_style="flat")],
+                    [120, shapely.LineString([(32, 10), (32, 46)]).buffer(8, cap_style="flat")],
+                ],
+                [[20, shapely.Point(43.6, -8.2).buffer(6)], [20, shapely.Point(58, 19).buffer(4)]],
+                2,
+                106,
+                821,
+                1,
+                [(0.6, 6.5), (56, 49.5)],
+            ),
         ],
     )
     def test_theory_junction_degree_3_crossing_simple(
