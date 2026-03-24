@@ -14,7 +14,10 @@ import structlog
 from geopandas import GeoDataFrame
 
 from settings import Config
-from utility_route_planner.models.multilayer_network.graph_datastructures import HexagonEdgeInfo, PipeRammingEdgeInfo
+from utility_route_planner.models.multilayer_network.graph_datastructures import (
+    HexagonConnectionEdgeInfo,
+    PipeRammingEdgeInfo,
+)
 from utility_route_planner.util.geo_utilities import get_empty_geodataframe
 from utility_route_planner.util.timer import time_function
 
@@ -65,7 +68,7 @@ def convert_hexagon_graph_to_gdfs(
         return nodes_gdf
 
 
-def get_hexagon_edge_weight(hexagon_edge: float | HexagonEdgeInfo) -> float:
+def get_hexagon_edge_weight(hexagon_edge: float | HexagonConnectionEdgeInfo) -> float:
     """
     When constructing the Hexagon graph, an edge can be set in two ways:
     - When set in the HexagonGraphBuilder: weight is set as a float directly

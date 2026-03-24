@@ -9,7 +9,7 @@ import rustworkx as rx
 import structlog
 
 from settings import Config
-from utility_route_planner.models.multilayer_network.graph_datastructures import HexagonEdgeInfo
+from utility_route_planner.models.multilayer_network.graph_datastructures import HexagonConnectionEdgeInfo
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_utils import convert_hexagon_graph_to_gdfs
 from utility_route_planner.util.geo_utilities import (
     get_empty_geodataframe,
@@ -144,7 +144,7 @@ class HexagonGraphComposer:
             (
                 node_pair.node_id_right,
                 height_mapping[node_pair.node_id_left],
-                HexagonEdgeInfo(
+                HexagonConnectionEdgeInfo(
                     weight=(node_pair.suitability_value_left + node_pair.suitability_value_right) / 2,
                     height_level=height,
                     connects_height_levels=True,

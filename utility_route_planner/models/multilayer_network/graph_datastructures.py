@@ -9,17 +9,13 @@ import shapely
 
 
 @dataclass
-class NodeInfo:
+class OSMNodeInfo:
     node_id: int = field(init=False)
+    osm_id: int
+    geometry: shapely.Point
 
     def set_node_id(self, node_id: int):
         self.node_id = node_id
-
-
-@dataclass
-class OSMNodeInfo(NodeInfo):
-    osm_id: int
-    geometry: shapely.Point
 
 
 @dataclass
@@ -41,9 +37,11 @@ class OSMEdgeInfo(EdgeInfo):
 
 
 @dataclass
-class HexagonEdgeInfo:
+class HexagonConnectionEdgeInfo(EdgeInfo):
     weight: float
-    connects_height_levels: bool = False
+    connects_height_levels: (
+        bool  # always True when this type of edge is used, but useful for debugging to make explicit
+    )
     height_level: Optional[int] = None  # Only the non-main height level gets assigned explicitly.
 
 
@@ -56,7 +54,7 @@ class PipeRammingOrigin(enum.StrEnum):
 
 @dataclass
 class PipeRammingEdgeInfo(EdgeInfo):
+    weight: float
     osm_id_junction: int | None
     segment_group: int
-    weight: float
     origin: PipeRammingOrigin
