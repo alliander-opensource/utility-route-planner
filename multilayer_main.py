@@ -46,9 +46,10 @@ def run_multilayer_network(
         raster_groups,
         mcda_engine.processed_vectors,
         hexagon_size=Config.HEXAGON_SIZE,
+        block_size=Config.HEXAGON_BLOCK_SIZE,
     )
-    cost_surface_graph = hexagon_graph_builder.build_graph()
-    pipe_ramming = GetPotentialPipeRammingCrossings(osm_graph_preprocessed, cost_surface_graph)
+    cost_surface_graph, cost_surface_nodes = hexagon_graph_builder.build_graph()
+    pipe_ramming = GetPotentialPipeRammingCrossings(osm_graph_preprocessed, cost_surface_graph, cost_surface_nodes)
     _ = pipe_ramming.get_crossings()
 
     multi_layer_route_engine = MultilayerRouteEngine(
@@ -71,15 +72,12 @@ if __name__ == "__main__":
     # )
 
     benchmark_routes = BenchmarkRouteCollection()
+    benchmark_route = benchmark_routes.route_2
     run_multilayer_network(
         Config.RASTER_PRESET_NAME_BENCHMARK,
-        benchmark_routes.route_1.path_geopackage,
-        gpd.read_file(
-            benchmark_routes.route_1.path_geopackage, layer=benchmark_routes.route_1.layer_name_human_designed_route
-        )
+        benchmark_route.path_geopackage,
+        gpd.read_file(benchmark_route.path_geopackage, layer=benchmark_route.layer_name_human_designed_route)
         .iloc[0]
         .geometry,
-        gpd.read_file(benchmark_routes.route_1.path_geopackage, layer=benchmark_routes.route_1.layer_name_project_area)
-        .iloc[0]
-        .geometry,
+        gpd.read_file(benchmark_route.path_geopackage, layer=benchmark_route.layer_name_project_area).iloc[0].geometry,
     )
