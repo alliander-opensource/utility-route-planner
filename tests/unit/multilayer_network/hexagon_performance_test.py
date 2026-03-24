@@ -9,10 +9,23 @@ import geopandas as gpd
 from utility_route_planner.models.mcda.mcda_engine import McdaCostSurfaceEngine
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_graph_builder import HexagonGraphBuilder
 from settings import Config
+from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_utils import convert_hexagon_edges_to_gdf
 from utility_route_planner.util.write import write_results_to_geopackage, reset_geopackage
 
 
 class TestVectorToGraph:
+    @pytest.fixture()
+    def small_project_area(self) -> shapely.Polygon:
+        return shapely.Polygon(
+            [
+                shapely.Point(174951.82, 451015.49),
+                shapely.Point(174997.14, 451014.54),
+                shapely.Point(175009.01, 450981.23),
+                shapely.Point(174948.54, 450979.32),
+                shapely.Point(174951.82, 451015.49),
+            ]
+        )
+
     @pytest.fixture()
     def larger_project_area(self) -> shapely.Polygon:
         return shapely.Polygon(
@@ -59,18 +72,13 @@ class TestVectorToGraph:
             mcda_engine.project_area_geometry,
             raster_groups,
             mcda_engine.processed_vectors,
-            hexagon_size=0.5,
-            block_size=64,
+            hexagon_size=4,
+            block_size=8,
         )
         graph, nodes_gdf = hexagon_graph_builder.build_graph()
 
         if debug:
-            edges_line_strings = []
-            for source_node, target_node, _ in graph.edge_index_map().values():
-                source_point = nodes_gdf.loc[nodes_gdf["node_id"] == source_node].geometry.iloc[0]
-                target_point = nodes_gdf.loc[nodes_gdf["node_id"] == target_node].geometry.iloc[0]
-                edges_line_strings.append(shapely.LineString([source_point, target_point]))
-            edges = gpd.GeoDataFrame(geometry=edges_line_strings, crs=Config.CRS)
+            edges = convert_hexagon_edges_to_gdf(graph, nodes_gdf)
             reset_geopackage(Config.PATH_GEOPACKAGE_VECTOR_GRAPH_OUTPUT)
             write_results_to_geopackage(
                 Config.PATH_GEOPACKAGE_VECTOR_GRAPH_OUTPUT, nodes_gdf, "graph_nodes", overwrite=True

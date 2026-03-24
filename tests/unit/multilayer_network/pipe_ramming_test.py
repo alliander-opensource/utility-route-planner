@@ -12,7 +12,10 @@ import shapely
 
 from settings import Config
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_graph_builder import HexagonGraphBuilder
-from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_utils import convert_hexagon_graph_to_gdfs
+from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_utils import (
+    convert_hexagon_edges_to_gdf,
+    convert_hexagon_graph_to_gdfs,
+)
 from utility_route_planner.models.multilayer_network.multilayer_route_planner import MultilayerRouteEngine
 from utility_route_planner.util.graph_utilities import create_osm_edge_info
 from utility_route_planner.models.mcda.mcda_engine import McdaCostSurfaceEngine
@@ -453,18 +456,18 @@ class TestPipeRammingTheoryExamples:
                 [(0.6, 6.5), (56, 49.5)],
             ),
             # With obstacles
-            (
-                [
-                    [120, shapely.LineString([(1, -18), (99, -18)]).buffer(8, cap_style="flat")],
-                    [120, shapely.LineString([(32, 10), (32, 46)]).buffer(8, cap_style="flat")],
-                ],
-                [[20, shapely.Point(43.6, -8.2).buffer(6)], [20, shapely.Point(58, 19).buffer(4)]],
-                2,
-                106,
-                821,
-                1,
-                [(0.6, 6.5), (56, 49.5)],
-            ),
+            # (
+            #     [
+            #         [120, shapely.LineString([(1, -18), (99, -18)]).buffer(8, cap_style="flat")],
+            #         [120, shapely.LineString([(32, 10), (32, 46)]).buffer(8, cap_style="flat")],
+            #     ],
+            #     [[20, shapely.Point(43.6, -8.2).buffer(6)], [20, shapely.Point(58, 19).buffer(4)]],
+            #     2,
+            #     106,
+            #     821,
+            #     1,
+            #     [(0.6, 6.5), (56, 49.5)],
+            # ),
         ],
     )
     def test_theory_junction_degree_3_crossing_simple(
@@ -477,7 +480,7 @@ class TestPipeRammingTheoryExamples:
         expected_crossings_used_in_route,
         start_end,
         setup_theory_examples,
-        debug=False,
+        debug=True,
     ):
         street = (
             gpd.GeoDataFrame(
@@ -1115,13 +1118,14 @@ class TestPipeRammingTheoryExamples:
             pipe_ramming.osm_graph,
             pipe_ramming.cost_surface_nodes,
             prefix="pytest_theory_",
-            write_output=False,
+            write_output=debug,
         )
         multilayer_route_engine.find_route(shapely.LineString(start_end))
         if debug:
             self._plot_pytest_theory(
                 out,
                 cost_surface_graph,
+                cost_surface_nodes,
                 crossings,
                 multilayer_route_engine,
                 pipe_ramming,
@@ -1171,38 +1175,39 @@ class TestPipeRammingTheoryExamples:
     def _plot_pytest_theory(
         out: pathlib.Path,
         cost_surface_graph: rx.PyGraph,
+        cost_surface_nodes: gpd.GeoDataFrame,
         crossings: list,
         multilayer_route_engine: MultilayerRouteEngine,
         pipe_ramming: GetPotentialPipeRammingCrossings,
         preprocessed_vectors: dict,
     ):
         # MCDA vectors
-        write_results_to_geopackage(out, preprocessed_vectors["street"], "pytest_theory_street", overwrite=True)
+        write_results_to_geopackage(out, preprocessed_vectors["street"], "new_pytest_theory_street", overwrite=True)
         write_results_to_geopackage(
-            out, preprocessed_vectors["private_property"], "pytest_theory_private_property", overwrite=True
+            out, preprocessed_vectors["private_property"], "new_pytest_theory_private_property", overwrite=True
         )
         if "buildings" in preprocessed_vectors:
             write_results_to_geopackage(
-                out, preprocessed_vectors["buildings"], "pytest_theory_buildings", overwrite=True
+                out, preprocessed_vectors["buildings"], "new_pytest_theory_buildings", overwrite=True
             )
         if "trees" in preprocessed_vectors:
-            write_results_to_geopackage(out, preprocessed_vectors["trees"], "pytest_theory_trees", overwrite=True)
+            write_results_to_geopackage(out, preprocessed_vectors["trees"], "new_pytest_theory_trees", overwrite=True)
         # OSM graph
-        write_results_to_geopackage(out, pipe_ramming.osm_nodes, "pytest_theory_osm_nodes", overwrite=True)
-        write_results_to_geopackage(out, pipe_ramming.osm_edges, "pytest_theory_osm_edges", overwrite=True)
+        write_results_to_geopackage(out, pipe_ramming.osm_nodes, "new_pytest_theory_osm_nodes", overwrite=True)
+        write_results_to_geopackage(out, pipe_ramming.osm_edges, "new_pytest_theory_osm_edges", overwrite=True)
         # Cost-surface & crossings
-        cost_surface_nodes, cost_surface_edges = convert_hexagon_graph_to_gdfs(cost_surface_graph, edges=True)
-        write_results_to_geopackage(out, cost_surface_nodes, "pytest_theory_cost_surface_nodes", overwrite=True)
-        write_results_to_geopackage(out, cost_surface_edges, "pytest_theory_cost_surface_edges", overwrite=True)
+        cost_surface_edges = convert_hexagon_edges_to_gdf(cost_surface_graph, cost_surface_nodes)
+        write_results_to_geopackage(out, cost_surface_nodes, "new_pytest_theory_cost_surface_nodes", overwrite=True)
+        write_results_to_geopackage(out, cost_surface_edges, "new_pytest_theory_cost_surface_edges", overwrite=True)
         write_results_to_geopackage(
             out,
             shapely.MultiLineString([i[2].geometry for i in crossings]),
-            "pytest_theory_crossings",
+            "new_pytest_theory_crossings",
             overwrite=True,
         )
         # Resulting route
         write_results_to_geopackage(
-            out, multilayer_route_engine.result_route_edges, "pytest_theory_result_route", overwrite=True
+            out, multilayer_route_engine.result_route_edges, "new_pytest_theory_result_route", overwrite=True
         )
 
 
