@@ -83,16 +83,38 @@ def get_hexagon_edge_weight(hexagon_edge: float | HexagonConnectionEdgeInfo) -> 
 
 
 def get_hexagon_edge_geometries_for_path(
-    graph: rx.PyGraph, path_node_indices: list[int], nodes: gpd.GeoDataFrame
+    graph: rx.PyGraph, path_node_indices: list[int], hexagon_nodes: gpd.GeoDataFrame
 ) -> gpd.GeoDataFrame:
+    """
+    Given a list of node indices which resprent a path on the graph, construct a dataframe to
+    represent the path as a list of linestrings (edges).
+
+    :param graph: graph for which the path was calculated
+    :param path_node_indices: list of node indices that represent the path
+    :param hexagon_nodes: all nodes on the hexagon graph. This dataframe is used to determine
+    the edge geometries on the hexagon graph.
+    """
+
     edges_list = []
-    for start_node, end_node in zip(path_node_indices, path_node_indices[1:]):
-        edge_data = graph.get_edge_data(start_node, end_node)
-        edge_linestring = shapely.LineString([nodes.loc[start_node, "geometry"], nodes.loc[end_node, "geometry"]])
+    for source_node, target_node in zip(path_node_indices, path_node_indices[1:]):
+        edge_data = graph.get_edge_data(source_node, target_node)
+
+        # As "vanilla" hexagon edges do not have dataclasses as edge attribute, the data must
+        # be constructed manually. For PipeRamming edges, the attributes can be simply converted
+        # from the dataclass
         if isinstance(edge_data, PipeRammingEdgeInfo):
             edge_meta_data = asdict(edge_data)
         else:
-            edge_meta_data = dict(weight=get_hexagon_edge_weight(edge_data), geometry=edge_linestring)
+            edge_id = graph.edge_indices_from_endpoints(source_node, target_node)[0]
+            edge_linestring = shapely.LineString(
+                [hexagon_nodes.loc[source_node, "geometry"], hexagon_nodes.loc[target_node, "geometry"]]
+            )
+            edge_meta_data = dict(
+                edge_id=edge_id,
+                weight=get_hexagon_edge_weight(edge_data),
+                length=edge_linestring.length,
+                geometry=edge_linestring,
+            )
 
         edges_list.append(edge_meta_data)
     return gpd.GeoDataFrame(data=edges_list, crs=Config.CRS)
