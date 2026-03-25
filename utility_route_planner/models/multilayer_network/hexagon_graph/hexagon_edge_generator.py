@@ -46,6 +46,7 @@ class HexagonEdgeGenerator:
                 [+1, 0],
             ],
             schema={"dq": pl.Int8, "dr": pl.Int8},
+            orient="row",
         )
 
         neighbour_candidates = block_coordinates.join(offsets, how="cross").select(
