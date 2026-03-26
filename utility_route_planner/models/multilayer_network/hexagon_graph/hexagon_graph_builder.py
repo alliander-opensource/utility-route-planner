@@ -8,6 +8,7 @@ import rustworkx as rx
 import shapely
 import structlog
 
+from settings import Config
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_edge_generator import HexagonEdgeGenerator
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_grid_builder import (
     HexagonGridBuilder,
@@ -107,12 +108,14 @@ class HexagonGraphBuilder:
             else:
                 previous_block_edge_coordinates = block_edge_coordinates
 
-        # nodes_gdf = gpd.GeoDataFrame(
-        #     data={"node_id": node_ids},
-        #     geometry=gpd.points_from_xy(x=node_x_coordinates, y=node_y_coordinates, crs=Config.CRS),
-        # )
+        # Only include filled rows for node geodataframe conversion
+        nodes = np.extract(nodes["node_id"] >= 0, nodes)
+        nodes_gdf = gpd.GeoDataFrame(
+            data={"node_id": nodes["node_id"], "suitability_value": nodes["suitability_value"]},
+            geometry=gpd.points_from_xy(x=nodes["x"], y=nodes["y"], crs=Config.CRS),
+        )
 
-        return self.graph, gpd.GeoDataFrame()
+        return self.graph, nodes_gdf
 
     def get_block_edge_coordinates(self, block_coordinates: pl.DataFrame) -> pl.DataFrame:
         """
