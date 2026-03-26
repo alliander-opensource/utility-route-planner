@@ -70,7 +70,11 @@ class MultilayerRouteEngine:
         return self.result_route_edges.geometry.length.sum()
 
     def get_result_route_cost(self) -> float:
-        return self.result_route_edges["weight"].sum()
+        """
+        For now, divide total route cost by 2 as the edge weight is now computed as the sum of the weights of the source
+        and target nodes.
+        """
+        return self.result_route_edges["weight"].sum() / 2
 
     def validate_connectivity(self):
         merged = shapely.line_merge(self.result_route_edges.union_all())

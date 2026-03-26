@@ -11,7 +11,9 @@ import rustworkx as rx
 import shapely
 
 from settings import Config
+from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_edge_generator import HexagonEdgeGenerator
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_graph_builder import HexagonGraphBuilder
+from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_grid_builder import HexagonGridBuilder
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_utils import (
     convert_hexagon_edges_to_gdf,
 )
@@ -51,17 +53,18 @@ class TestPipeRamming:
             )
             mcda_engine.preprocess_vectors()
 
+            grid_builder = HexagonGridBuilder(hexagon_size=Config.HEXAGON_SIZE, block_size=Config.HEXAGON_BLOCK_SIZE)
+            hexagon_edge_generator = HexagonEdgeGenerator()
+            hexagon_graph_builder = HexagonGraphBuilder(
+                hexagon_size=Config.HEXAGON_SIZE, grid_builder=grid_builder, edge_generator=hexagon_edge_generator
+            )
+
             raster_groups = {
                 criteria_key: criteria.group for criteria_key, criteria in mcda_engine.raster_preset.criteria.items()
             }
-            hexagon_graph_builder = HexagonGraphBuilder(
-                mcda_engine.project_area_geometry,
-                raster_groups,
-                mcda_engine.processed_vectors,
-                hexagon_size=Config.HEXAGON_SIZE,
-                block_size=Config.HEXAGON_BLOCK_SIZE,
+            cost_surface_graph, cost_surface_nodes = hexagon_graph_builder.build_graph(
+                project_area, raster_groups, mcda_engine.processed_vectors
             )
-            cost_surface_graph, cost_surface_nodes = hexagon_graph_builder.build_graph()
 
             if debug:
                 osm_nodes, osm_edges = osm_graph_to_gdfs(osm_graph_preprocessed)
@@ -300,14 +303,14 @@ class TestPipeRammingTheoryExamples:
                 preprocessed_vectors.pop("trees")
                 raster_criteria_groups.pop("trees")
 
+            grid_builder = HexagonGridBuilder(hexagon_size=Config.HEXAGON_SIZE, block_size=Config.HEXAGON_BLOCK_SIZE)
+            hexagon_edge_generator = HexagonEdgeGenerator()
             hexagon_graph_builder = HexagonGraphBuilder(
-                project_area,
-                raster_criteria_groups,
-                preprocessed_vectors,
-                hexagon_size=Config.HEXAGON_SIZE,
-                block_size=Config.HEXAGON_BLOCK_SIZE,
+                hexagon_size=Config.HEXAGON_SIZE, grid_builder=grid_builder, edge_generator=hexagon_edge_generator
             )
-            cost_surface_graph, cost_surface_nodes = hexagon_graph_builder.build_graph()
+            cost_surface_graph, cost_surface_nodes = hexagon_graph_builder.build_graph(
+                project_area, raster_criteria_groups, preprocessed_vectors
+            )
 
             if debug:
                 out = Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT
@@ -351,7 +354,7 @@ class TestPipeRammingTheoryExamples:
                 ],
                 2,
                 128,
-                839,
+                840,
                 2,
                 [(0.3, -6.7), (99, 39.8)],
             ),
@@ -455,7 +458,7 @@ class TestPipeRammingTheoryExamples:
                 (),
                 3,
                 106,
-                681,
+                681.5,
                 1,
                 [(0.6, 6.5), (56, 49.5)],
             ),
@@ -468,7 +471,7 @@ class TestPipeRammingTheoryExamples:
                 [[20, shapely.Point(43.6, -8.2).buffer(6)], [20, shapely.Point(58, 19).buffer(4)]],
                 2,
                 106,
-                821,
+                821.5,
                 1,
                 [(0.6, 6.5), (56, 49.5)],
             ),
@@ -484,7 +487,7 @@ class TestPipeRammingTheoryExamples:
         expected_crossings_used_in_route,
         start_end,
         setup_theory_examples,
-        debug=True,
+        debug=False,
     ):
         street = (
             gpd.GeoDataFrame(
@@ -572,7 +575,7 @@ class TestPipeRammingTheoryExamples:
                 (),
                 4,
                 118,
-                802,
+                803,
                 2,
                 [(0.3, -6.7), (56.23, 49.68)],
             ),
@@ -597,7 +600,7 @@ class TestPipeRammingTheoryExamples:
                 ],
                 4,
                 118,
-                806,
+                806.5,
                 2,
                 [(0.3, -6.7), (56.23, 49.68)],
             ),
@@ -708,7 +711,7 @@ class TestPipeRammingTheoryExamples:
                 (),
                 10,
                 124,
-                783,
+                783.5,
                 1,
                 ((1, -3), (93, 45)),
             ),
@@ -718,7 +721,7 @@ class TestPipeRammingTheoryExamples:
                 [[20, shapely.Point(43, 6).buffer(4)]],
                 9,
                 138,
-                913,
+                913.5,
                 2,
                 [(1, -3), (93, 45)],
             ),
@@ -829,7 +832,7 @@ class TestPipeRammingTheoryExamples:
                 (),
                 3,
                 123,
-                761,
+                761.5,
                 1,
                 [(1, 8), (98, -6)],
             ),
@@ -843,7 +846,7 @@ class TestPipeRammingTheoryExamples:
                 [[20, shapely.Point(30, -8).buffer(4)], [20, shapely.Point(65, 9).buffer(4)]],
                 3,
                 123,
-                761,
+                761.5,
                 1,
                 [(1, 8), (98, -6)],
             ),
@@ -972,7 +975,7 @@ class TestPipeRammingTheoryExamples:
                 ],
                 4,
                 246,
-                1483.5,
+                1484,
                 1,
                 [(1, 6), (158, -25)],
             ),
@@ -1125,16 +1128,16 @@ class TestPipeRammingTheoryExamples:
             write_output=debug,
         )
         multilayer_route_engine.find_route(shapely.LineString(start_end))
-        if debug:
-            self._plot_pytest_theory(
-                out,
-                cost_surface_graph,
-                cost_surface_nodes,
-                crossings,
-                multilayer_route_engine,
-                pipe_ramming,
-                hexagon_graph_builder.preprocessed_vectors,
-            )
+        # if debug:
+        #     self._plot_pytest_theory(
+        #         out,
+        #         cost_surface_graph,
+        #         cost_surface_nodes,
+        #         crossings,
+        #         multilayer_route_engine,
+        #         pipe_ramming,
+        #         hexagon_graph_builder.preprocessed_vectors,
+        #     )
 
         self._assert_crossings(crossings, hexagon_graph_builder, pipe_ramming, n_expected_crossings)
         assert multilayer_route_engine.get_result_route_length() == pytest.approx(expected_route_length, abs=1)
