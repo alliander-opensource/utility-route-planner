@@ -145,7 +145,7 @@ class HexagonGraphComposer:
                 node_pair.node_id_right,
                 height_mapping[node_pair.node_id_left],
                 HexagonConnectionEdgeInfo(
-                    weight=(node_pair.suitability_value_left + node_pair.suitability_value_right) / 2,
+                    weight=node_pair.suitability_value_left + node_pair.suitability_value_right,
                     height_level=height,
                     connects_height_levels=True,
                     geometry=shapely.LineString(
