@@ -36,8 +36,9 @@ class HexagonGridBuilder:
         self.hexagon_width, self.hexagon_height = get_hexagon_width_and_height(hexagon_size)
         self.block_size = block_size
 
-    def construct_grid(self, project_area: shapely.Polygon) -> Generator[tuple[pd.DataFrame, bool], None, None]:
-        x_matrix, y_matrix = self.construct_hexagonal_grid_for_bounding_box(project_area)
+    def construct_grid(
+        self, x_matrix: np.ndarray, y_matrix: np.ndarray
+    ) -> Generator[tuple[pd.DataFrame, bool], None, None]:
         concatenated_vectors = self.concatenate_preprocessed_vectors()
 
         for block, final_column in self.divide_matrices_into_blocks(x_matrix, y_matrix):

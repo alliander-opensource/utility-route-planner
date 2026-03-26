@@ -2,6 +2,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 import geopandas as gpd
+import numpy as np
 import polars as pl
 import rustworkx as rx
 import shapely
@@ -61,15 +62,26 @@ class HexagonGraphBuilder:
             schema={"node_id": pl.Int32, "suitability_value": pl.Int16, "q": pl.Int32, "r": pl.Int32}
         )
 
-        for block, last_column in grid_constructor.construct_grid(self.project_area):
-            block_node_ids = self.graph.add_nodes_from(block.select("suitability_value", "x", "y").rows())
+        x_matrix, y_matrix = grid_constructor.construct_hexagonal_grid_for_bounding_box(self.project_area)
+
+        # Initialize numpy structured array based on the total nodes for the bounding box. This must be trimmed
+        # after creating the graph as the array is based on the bounding box instead of the project area perimeter.
+        n_nodes = x_matrix.shape[0] * x_matrix.shape[1]
+        nodes = np.full(
+            n_nodes,
+            fill_value=-1,
+            dtype=[("node_id", np.int32), ("suitability_value", np.int16), ("x", np.float32), ("y", np.float32)],
+        )
+
+        for block, last_column in grid_constructor.construct_grid(x_matrix, y_matrix):
+            block_node_ids = self.graph.add_nodes_from(block["suitability_value"])
             block = block.with_columns(pl.Series("node_id", list(block_node_ids), dtype=pl.Int32))
 
-            # Store all block information. Create a temporary dict to store all information of the block for edge
-            # processing.
-            # node_ids.extend(block_node_ids)
-            # node_x_coordinates.extend(block["x"])
-            # node_y_coordinates.extend(block["y"])
+            # Store all block information in the total node array
+            nodes["node_id"][block_node_ids] = block_node_ids
+            nodes["suitability_value"][block_node_ids] = block["suitability_value"]
+            nodes["x"][block_node_ids] = block["x"]
+            nodes["y"][block_node_ids] = block["y"]
 
             block_edge_attributes = block.select("node_id", "suitability_value", "q", "r")
             block_edge_coordinates = self.get_block_edge_coordinates(block)

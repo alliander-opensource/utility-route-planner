@@ -63,7 +63,7 @@ class HexagonEdgeGenerator:
     ) -> list[tuple[int, int, float]]:
         """
         For each node, determine which neighbours candidates are valid. For each valid neighbour, the suitability
-        value is computed by (source_node_suitability + target_node_suitability) / 2. All valid neighbours are
+        value is computed by: source_node_suitability + target_node_suitability. All valid neighbours are
         transformed into edges
 
         :param all_nodes: lazy dataframe which contains all nodes in the current block + previous nodes in the current
