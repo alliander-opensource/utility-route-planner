@@ -94,7 +94,7 @@ class HexagonEdgeGenerator:
                 right_on="node_id",
                 how="inner",
             )
-            .with_columns(((pl.col("source_suitability") + pl.col("target_suitability")) / 2).alias("weight"))
+            .with_columns((pl.col("source_suitability") + pl.col("target_suitability")).alias("weight"))
             # Remove duplicate edges. Due to adding candidates for four directions (instead of three), duplicate
             # edges occur in the query. By normalizing by taking the lowest and highest node id horizontally,
             # duplicates can be identified and removed in the query.
