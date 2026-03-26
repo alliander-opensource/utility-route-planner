@@ -26,47 +26,38 @@ class HexagonGraphBuilder:
     and intersecting vector.
     """
 
-    def __init__(
+    def __init__(self, hexagon_size: float, grid_builder: HexagonGridBuilder, edge_generator: HexagonEdgeGenerator):
+        self.hexagon_size = hexagon_size
+        self.hexagon_width, self.hexagon_height = get_hexagon_width_and_height(hexagon_size)
+        self.grid_builder = grid_builder
+        self.edge_generator = edge_generator
+
+    @time_function
+    def build_graph(
         self,
         project_area: shapely.Polygon,
         raster_groups: dict[str, str],
         preprocessed_vectors: dict[str, gpd.GeoDataFrame],
-        hexagon_size: float,
-        block_size: int,
-    ):
-        self.project_area = project_area
-        self.raster_groups = raster_groups
-        self.preprocessed_vectors = preprocessed_vectors
-        self.hexagon_size = hexagon_size
-        self.block_size = block_size
-        self.graph = rx.PyGraph()
-        self.hexagon_width, self.hexagon_height = get_hexagon_width_and_height(hexagon_size)
-
-    @time_function
-    def build_graph(self) -> tuple[rx.PyGraph, gpd.GeoDataFrame]:
-        grid_constructor = HexagonGridBuilder(
-            self.raster_groups, self.preprocessed_vectors, self.hexagon_size, self.block_size
-        )
-        hexagon_edge_generator = HexagonEdgeGenerator()
-
-        # node_ids: list[int] = []
-        # node_x_coordinates: list[float] = []
-        # node_y_coordinates: list[float] = []
-
+    ) -> tuple[rx.PyGraph, gpd.GeoDataFrame]:
+        # Left-side and bottom coordinates for all blocks in the current row.
         current_row_edge_coordinates = pl.DataFrame(
             schema={"node_id": pl.Int32, "suitability_value": pl.Int16, "q": pl.Int32, "r": pl.Int32}
         )
+
+        # Left-side and bottom coordinates for all blocks in the previous row. When finishing a row, this
+        # is set by the current_row_edge_coordinates dataframe. It is used to connect the top side of blocks
+        # in the current row to the previous row.
         previous_row_edge_coordinates = pl.DataFrame(
             schema={"node_id": pl.Int32, "suitability_value": pl.Int16, "q": pl.Int32, "r": pl.Int32}
         )
+
+        # Edge coordinates of the previous block. It is used to create edges from the current to the previous
+        # block in a row.
         previous_block_edge_coordinates = pl.DataFrame(
             schema={"node_id": pl.Int32, "suitability_value": pl.Int16, "q": pl.Int32, "r": pl.Int32}
         )
 
-        x_matrix, y_matrix = grid_constructor.construct_hexagonal_grid_for_bounding_box(self.project_area)
-
-        # Initialize numpy structured array based on the total nodes for the bounding box. This must be trimmed
-        # after creating the graph as the array is based on the bounding box instead of the project area perimeter.
+        x_matrix, y_matrix = self.grid_builder.construct_hexagonal_grid_for_bounding_box(project_area)
         n_nodes = x_matrix.shape[0] * x_matrix.shape[1]
         nodes = np.full(
             n_nodes,
@@ -74,8 +65,12 @@ class HexagonGraphBuilder:
             dtype=[("node_id", np.int32), ("suitability_value", np.int16), ("x", np.float32), ("y", np.float32)],
         )
 
-        for block, last_column in grid_constructor.construct_grid(x_matrix, y_matrix):
-            block_node_ids = self.graph.add_nodes_from(block["suitability_value"])
+        # Construct hexagonal graph using a sliding-window approach
+        graph = rx.PyGraph()
+        for block, last_column in self.grid_builder.construct_grid_blocks(
+            x_matrix, y_matrix, preprocessed_vectors, raster_groups
+        ):
+            block_node_ids = graph.add_nodes_from(block["suitability_value"])
             block = block.with_columns(pl.Series("node_id", list(block_node_ids), dtype=pl.Int32))
 
             # Store all block information in the total node array
@@ -88,14 +83,15 @@ class HexagonGraphBuilder:
             block_edge_coordinates = self.get_block_edge_coordinates(block)
             current_row_edge_coordinates = pl.concat([current_row_edge_coordinates, block_edge_coordinates])
 
+            # Only check previous row nodes that are on top of the current block to reduce unnecessary joins
             relevant_previous_row_nodes = previous_row_edge_coordinates.filter(
                 pl.col("q").is_between(block_edge_attributes["q"].min() - 1, block_edge_attributes["q"].max() + 1)
             )
             nodes_to_check = pl.concat(
                 [block_edge_attributes, previous_block_edge_coordinates, relevant_previous_row_nodes]
             )
-            edges = hexagon_edge_generator.generate(block_edge_attributes, nodes_to_check)
-            self.graph.add_edges_from(edges)
+            edges = self.edge_generator.generate(block_edge_attributes, nodes_to_check)
+            graph.add_edges_from(edges)
 
             if last_column:
                 previous_row_edge_coordinates = current_row_edge_coordinates
@@ -108,18 +104,18 @@ class HexagonGraphBuilder:
             else:
                 previous_block_edge_coordinates = block_edge_coordinates
 
-        # Only include filled rows for node geodataframe conversion
+        # Only include filled rows for node geodataframe conversion (placeholder rows can be identified with node_id==-1)
         nodes = np.extract(nodes["node_id"] >= 0, nodes)
         nodes_gdf = gpd.GeoDataFrame(
             data={"node_id": nodes["node_id"], "suitability_value": nodes["suitability_value"]},
             geometry=gpd.points_from_xy(x=nodes["x"], y=nodes["y"], crs=Config.CRS),
         )
 
-        return self.graph, nodes_gdf
+        return graph, nodes_gdf
 
     def get_block_edge_coordinates(self, block_coordinates: pl.DataFrame) -> pl.DataFrame:
         """
-        Given the coordinates of a block, get right side and bottom coordinates
+        Given the coordinates of a block, get left side and bottom coordinates
         """
         min_x_coordinate = block_coordinates["x"].min()
         min_y_coordinate = block_coordinates["y"].min()

@@ -25,21 +25,21 @@ class HexagonGridBuilder:
 
     def __init__(
         self,
-        raster_groups: dict[str, str],
-        preprocessed_vectors: dict[str, gpd.GeoDataFrame],
         hexagon_size: float,
         block_size: int,
     ):
-        self.raster_groups = raster_groups
-        self.preprocessed_vectors = preprocessed_vectors
         self.hexagon_size = hexagon_size
         self.hexagon_width, self.hexagon_height = get_hexagon_width_and_height(hexagon_size)
         self.block_size = block_size
 
-    def construct_grid(
-        self, x_matrix: np.ndarray, y_matrix: np.ndarray
+    def construct_grid_blocks(
+        self,
+        x_matrix: np.ndarray,
+        y_matrix: np.ndarray,
+        preprocessed_vectors: dict[str, gpd.GeoDataFrame],
+        raster_groups: dict[str, str],
     ) -> Generator[tuple[pd.DataFrame, bool], None, None]:
-        concatenated_vectors = self.concatenate_preprocessed_vectors()
+        concatenated_vectors = self.concatenate_preprocessed_vectors(preprocessed_vectors, raster_groups)
 
         for block, final_column in self.divide_matrices_into_blocks(x_matrix, y_matrix):
             hexagonal_grid_for_block = self.filter_block_to_project_area(block, concatenated_vectors)
@@ -125,14 +125,17 @@ class HexagonGridBuilder:
                 final_column = column_end == column_splits[-1]
                 yield block_grid, final_column
 
-    def concatenate_preprocessed_vectors(self):
+    @staticmethod
+    def concatenate_preprocessed_vectors(
+        preprocessed_vectors: dict[str, gpd.GeoDataFrame], raster_groups: dict[str, str]
+    ):
         """
         Concatenate all preprocessed vectors into a single geodataframe.
         """
-        for criterion, vector_gdf in self.preprocessed_vectors.items():
+        for criterion, vector_gdf in preprocessed_vectors.items():
             vector_gdf["criterion"] = criterion
-            vector_gdf["group"] = self.raster_groups[criterion]
-        concatenated_vectors = gpd.GeoDataFrame(pd.concat(self.preprocessed_vectors.values()), crs=Config.CRS)
+            vector_gdf["group"] = raster_groups[criterion]
+        concatenated_vectors = gpd.GeoDataFrame(pd.concat(preprocessed_vectors.values()), crs=Config.CRS)
 
         return concatenated_vectors
 
