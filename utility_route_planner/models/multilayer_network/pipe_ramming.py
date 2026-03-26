@@ -632,7 +632,7 @@ class GetPotentialPipeRammingCrossings:
                 closest_node_pairs[index].iloc[1],
             )
             # TODO-discuss: what is the cost of going through the cost surface this way?
-            crossing_weight = int(weight[closest_node_pairs[index].iloc[1]] / 3)
+            crossing_weight = round(weight[closest_node_pairs[index].iloc[1]] / 3)
             if crossing_weight <= 0:
                 logger.warning(
                     f"Calculated crossing weight for segment group {segment_group} is {crossing_weight}, setting to 1."
