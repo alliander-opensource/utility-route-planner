@@ -15,7 +15,6 @@ from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_graph
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_graph_composer import HexagonGraphComposer
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_utils import convert_hexagon_graph_to_gdfs
 from utility_route_planner.models.multilayer_network.multilayer_route_planner import MultilayerRouteEngine
-from utility_route_planner.util.geo_utilities import get_empty_geodataframe
 from utility_route_planner.util.write import reset_geopackage, write_results_to_geopackage
 
 
@@ -27,17 +26,18 @@ class TestHexagonGraphBuilder:
     """
 
     @pytest.fixture()
-    def ede_project_area(self) -> shapely.MultiPolygon:
-        return (
+    def ede_project_area(self) -> shapely.Polygon:
+        return shapely.get_geometry(
             gpd.read_file(Config.PYTEST_PATH_GEOPACKAGE_MCDA, layer=Config.PYTEST_LAYER_NAME_PROJECT_AREA)
             .iloc[0]
-            .geometry
+            .geometry,
+            0,
         )
 
     def test_build_graph_for_single_criterion(
         self,
         single_criterion_vectors: Callable,
-        ede_project_area: shapely.MultiPolygon,
+        ede_project_area: shapely.Polygon,
         debug: bool = False,
     ):
         max_value = Config.MAX_NODE_SUITABILITY_VALUE
@@ -292,24 +292,24 @@ class TestHexagonGraphBuilderWithHeightLevels:
         """E.g., a road on a bridge crossing water. Could also be an ecoduct crossing a motorway."""
         project_area = shapely.Polygon([(0, 0), (0, 100), (100, 100), (100, 0)])
         # Road on a bridge with sidewalks
-        road_geom_west = shapely.LineString([(0, 50), (25, 50)])
-        bridge_geom = shapely.LineString([(25, 50), (75, 50)])
-        road_geom_east = shapely.LineString([(75, 50), (100, 50)])
+        road_geom_west = shapely.LineString([(0, 50), (20, 50)])
+        bridge_geom = shapely.LineString([(20, 50), (80, 50)])
+        road_geom_east = shapely.LineString([(80, 50), (100, 50)])
 
         road = gpd.GeoDataFrame(
             data=[
                 # west
                 [10, 0, road_geom_west.buffer(10, cap_style="flat")],
-                [5, 0, road_geom_west.offset_curve(15).buffer(5, cap_style="flat")],
-                [5, 0, road_geom_west.offset_curve(-15).buffer(5, cap_style="flat")],
+                [5, 0, road_geom_west.offset_curve(12).buffer(2, cap_style="flat")],
+                [5, 0, road_geom_west.offset_curve(-12).buffer(2, cap_style="flat")],
                 # bridge
                 [10, 1, bridge_geom.buffer(10, cap_style="flat")],
-                [5, 1, bridge_geom.offset_curve(15).buffer(5, cap_style="flat")],
-                [5, 1, bridge_geom.offset_curve(-15).buffer(5, cap_style="flat")],
+                [5, 1, bridge_geom.offset_curve(12).buffer(2, cap_style="flat")],
+                [5, 1, bridge_geom.offset_curve(-12).buffer(2, cap_style="flat")],
                 # east
                 [10, 0, road_geom_east.buffer(10, cap_style="flat")],
-                [5, 0, road_geom_east.offset_curve(15).buffer(5, cap_style="flat")],
-                [5, 0, road_geom_east.offset_curve(-15).buffer(5, cap_style="flat")],
+                [5, 0, road_geom_east.offset_curve(12).buffer(2, cap_style="flat")],
+                [5, 0, road_geom_east.offset_curve(-12).buffer(2, cap_style="flat")],
             ],
             geometry="geometry",
             crs=Config.CRS,
@@ -376,7 +376,7 @@ class TestHexagonGraphBuilderWithHeightLevels:
         )
         assert rx.number_connected_components(merged_graph) == 1
         _, e = convert_hexagon_graph_to_gdfs(merged_graph)
-        assert len(e[e.connects_height_levels]) == 100
+        assert len(e[e.connects_height_levels]) == 72
 
         # Find a route under the bridge
         route_engine.find_route(shapely.LineString([(6, 95), (6, 5)]))  # route should go under the bridge here (grass)
@@ -405,13 +405,13 @@ class TestHexagonGraphBuilderWithHeightLevels:
         tunnel_south = shapely.LineString([(50, 0), (50, 20)])
 
         # Bridge crossing the tunnel
-        bridge_north = shapely.LineString([(30, 70), (30, 100)])
-        bridge_middle = shapely.LineString([(70, 30), (70, 50), (30, 50), (30, 70)])
-        bridge_south = shapely.LineString([(70, 0), (70, 30)])
+        bridge_north = shapely.LineString([(30, 80), (30, 100)])
+        bridge_middle = shapely.LineString([(85, 20), (70, 20), (70, 50), (30, 50), (30, 80)])
+        bridge_south = shapely.LineString([(85, 20), (100, 20)])
 
         road = gpd.GeoDataFrame(
             data=[
-                [10, 0, road_geom.buffer(10, cap_style="flat")],
+                [50, 0, road_geom.buffer(10, cap_style="flat")],
                 [5, 0, tunnel_north.buffer(3, cap_style="flat")],
                 [5, -1, tunnel_middle.buffer(3, cap_style="flat")],
                 [5, 0, tunnel_south.buffer(3, cap_style="flat")],
@@ -423,10 +423,11 @@ class TestHexagonGraphBuilderWithHeightLevels:
             crs=Config.CRS,
             columns=["suitability_value", "relatieveHoogteligging", "geometry"],
         ).clip(project_area)
+        # Make grass a bit more expensive to force tunnel usage
         grassland = (
             gpd.GeoDataFrame(
                 data=[
-                    [2, 0, project_area.difference(road[road["relatieveHoogteligging"] == 0].geometry.union_all())],
+                    [6, 0, project_area.difference(road[road["relatieveHoogteligging"] == 0].geometry.union_all())],
                 ],
                 geometry="geometry",
                 crs=Config.CRS,
@@ -465,22 +466,124 @@ class TestHexagonGraphBuilderWithHeightLevels:
 
         assert rx.number_connected_components(merged_graph) == 1
         _, e = convert_hexagon_graph_to_gdfs(merged_graph)
-        # assert len(e[e.connects_height_levels]) == 100
+        assert len(e[e.connects_height_levels]) == 51
 
-        # find a route over the bridge
-        route_engine.find_route()
+        # find a route over the bridge, we do not cross grass
+        route_engine.find_route(shapely.LineString([(30, 100), (100, 20)]))
+        assert route_engine.get_result_route_length() == pytest.approx(145.3, 0.5)
+        assert len(route_engine.result_route_edges[route_engine.result_route_edges.connects_height_levels]) == 2
+        assert all(route_engine.result_route_edges.weight <= 5)
 
-        # find a route under the tunnel
+        # find a route under the tunnel, we do not cross grass
+        route_engine.find_route(shapely.LineString([(50, 100), (50, 0)]))
+        assert route_engine.get_result_route_length() == pytest.approx(145.3, 0.5)
+        assert len(route_engine.result_route_edges[route_engine.result_route_edges.connects_height_levels]) == 2
+        assert all(route_engine.result_route_edges.weight <= 5)
 
-        # find a route with just grassland
+        # find a route with just grassland.
+        route_engine.find_route(shapely.LineString([(1, 90), (99, 90)]))
+        assert route_engine.get_result_route_length() == pytest.approx(112.4, 0.5)
+        assert len(route_engine.result_route_edges[route_engine.result_route_edges.connects_height_levels]) == 0
+        assert all(route_engine.result_route_edges.weight <= 6)
 
-    def test_build_graph_with_t_shaped_bridge_height_levels(self):
-        pass
+    def test_build_graph_with_t_shaped_bridge(self):
+        """E.g., a road and a bridge."""
+        project_area = shapely.Polygon([(0, 0), (0, 100), (100, 100), (100, 0)])
+        # Road for cars
+        road = shapely.LineString([(0, 50), (100, 50)])
+        # Road on a bridge
+        bridge_geom_south = shapely.LineString([(50, 20), (50, 50)])
+        bridge_geom_north_west = shapely.LineString([(50, 50), (17, 80)])
+        bridge_geom_north_east = shapely.LineString([(50, 50), (50, 80), (80, 80)])
+        # Connecting parts to the bridge
+        bridge_geom_south_0 = shapely.LineString([(50, 20), (50, 0)])
+        bridge_geom_north_west_0 = shapely.LineString([(17, 80), (-5, 100)])
+        bridge_geom_north_east_0 = shapely.LineString([(80, 80), (100, 80)])
 
+        road = gpd.GeoDataFrame(
+            data=[
+                # road
+                [50, 0, road.buffer(10, cap_style="flat")],
+                # bridge
+                [5, 1, bridge_geom_south.buffer(5, cap_style="flat")],
+                [5, 1, bridge_geom_north_west.buffer(5, cap_style="flat")],
+                [5, 1, bridge_geom_north_east.buffer(5, cap_style="flat")],
+                # connecting parts to bridge
+                [5, 0, bridge_geom_south_0.buffer(5, cap_style="flat")],
+                [5, 0, bridge_geom_north_west_0.buffer(5, cap_style="flat")],
+                [5, 0, bridge_geom_north_east_0.buffer(5, cap_style="flat")],
+            ],
+            geometry="geometry",
+            crs=Config.CRS,
+            columns=["suitability_value", "relatieveHoogteligging", "geometry"],
+        ).clip(project_area)
+        # Surrounding grassland
+        gdf_street_height_0 = road[road["relatieveHoogteligging"] == 0]
+        grassland = (
+            gpd.GeoDataFrame(
+                data=[
+                    [6, 0, project_area.difference(gdf_street_height_0.geometry.union_all())],
+                ],
+                geometry="geometry",
+                crs=Config.CRS,
+                columns=["suitability_value", "relatieveHoogteligging", "geometry"],
+            )
+            .explode()
+            .reset_index(drop=True)
+        )
+        processed_criteria_vectors = {
+            "road": road,
+            "grassland": grassland,
+        }
+        if self.debug:
+            self.debug_write_output_vectors(project_area, processed_criteria_vectors)
+
+        # Expected output from mcda engine after changes
+        processed_criteria_per_height_level = {
+            0: ["road", "grassland"],  # ground level
+            1: ["road"],  # bridge level
+        }
+        raster_groups = {
+            "road": "a",
+            "grassland": "a",
+        }
+
+        hexagon_graph_composer, merged_graph = self._build_and_merge_graphs(
+            self.debug,
+            processed_criteria_per_height_level,
+            processed_criteria_vectors,
+            project_area,
+            raster_groups,
+        )
+
+        route_engine = MultilayerRouteEngine(
+            merged_graph, rx.PyGraph(), hexagon_graph_composer.gdf_main_nodes, write_output=self.debug
+        )
+        assert rx.number_connected_components(merged_graph) == 1
+        _, e = convert_hexagon_graph_to_gdfs(merged_graph)
+        assert len(e[e.connects_height_levels]) == 47
+
+        # Find a route over the bridge, both ways
+        route_engine.find_route(shapely.LineString([(0, 95), (50, 0)]))
+        assert route_engine.get_result_route_length() == pytest.approx(124.5, 0.5)
+        assert len(route_engine.result_route_edges[route_engine.result_route_edges.connects_height_levels]) == 2
+        assert all(route_engine.result_route_edges.weight <= 5)
+
+        route_engine.find_route(shapely.LineString([(100, 80), (50, 0)]))
+        assert route_engine.get_result_route_length() == pytest.approx(128, 0.5)
+        assert len(route_engine.result_route_edges[route_engine.result_route_edges.connects_height_levels]) == 2
+        assert all(route_engine.result_route_edges.weight <= 5)
+
+    @pytest.mark.skip(reason="For debugging purposes.")
     def test_example_data_integration(self):
         """Use for testing a specific area of the example geopackages with known bridges/tunnels."""
         reset_geopackage(Config.PATH_GEOPACKAGE_MCDA_OUTPUT, truncate=False)
+        # Case 4 situation with bridge
         project_area = shapely.Point(187224.708, 429010.295).buffer(200)
+
+        # Case 2 situation with narrow bridges
+        # project_area = shapely.Point(174247.66, 441869.33).buffer(200)
+
         mcda_engine = McdaCostSurfaceEngine(
             Config.RASTER_PRESET_NAME_BENCHMARK,
             BenchmarkRouteCollection.route_4.path_geopackage,
@@ -498,15 +601,12 @@ class TestHexagonGraphBuilderWithHeightLevels:
             mcda_engine.processed_vectors,
             project_area,
             raster_groups,
-            get_empty_geodataframe(),
         )
 
         route_engine = MultilayerRouteEngine(
             merged_graph, rx.PyGraph(), hexagon_graph_composer.gdf_main_nodes, write_output=self.debug
         )
-        route_engine.find_route(
-            shapely.LineString([(187174.77, 429021.37), (187259.45, 429011.20)])
-        )  # route should go under
+        route_engine.find_route(shapely.LineString([(187139.16, 429004.25), (187324.59, 428983.47)]))
 
     def debug_write_output_vectors(
         self,
