@@ -7,19 +7,15 @@ import math
 
 import geopandas as gpd
 import numpy as np
-import pandas as pd
 import rustworkx as rx
 import shapely
 import structlog
-from geopandas import GeoDataFrame
 
 from settings import Config
 from utility_route_planner.models.multilayer_network.graph_datastructures import (
     HexagonConnectionEdgeInfo,
     PipeRammingEdgeInfo,
 )
-from utility_route_planner.util.geo_utilities import get_empty_geodataframe
-from utility_route_planner.util.timer import time_function
 
 logger = structlog.get_logger(__name__)
 
@@ -41,34 +37,7 @@ def get_hexagon_width_and_height(hexagon_size: float) -> tuple[float, float]:
     return hexagon_width, hexagon_height
 
 
-@time_function
-def convert_hexagon_graph_to_gdfs(
-    hexagon_graph: rx.PyGraph, edges: bool = True
-) -> tuple[GeoDataFrame, None] | GeoDataFrame:
-    if hexagon_graph.num_nodes() == 0:
-        logger.warning("Hexagon graph is empty, returning empty GeoDataFrame.")
-        return get_empty_geodataframe()
-
-    nodes_gdf = gpd.GeoDataFrame(hexagon_graph.nodes(), crs=Config.CRS)
-
-    if edges:
-        edge_keys = pd.DataFrame(hexagon_graph.edge_list(), columns=["u", "v"])
-        edge_attributes = gpd.GeoDataFrame(hexagon_graph.edges())
-        edges_gdf = gpd.GeoDataFrame(pd.concat([edge_keys, edge_attributes], axis=1), crs=Config.CRS)
-        u_coords = nodes_gdf.loc[edges_gdf["u"]].get_coordinates().values
-        v_coords = nodes_gdf.loc[edges_gdf["v"]].get_coordinates().values
-
-        # Stack u and v coordinates on axis 1 to get correct linestring coordinate format: [[u_x, u_y], [v_x, v_y]]
-        line_string_coords = np.stack([u_coords, v_coords], axis=1)
-        edge_line_strings = shapely.linestrings(line_string_coords)
-
-        edges_gdf = edges_gdf.set_geometry(edge_line_strings, crs=Config.CRS)
-        return nodes_gdf, edges_gdf
-    else:
-        return nodes_gdf
-
-
-def get_hexagon_edge_weight(hexagon_edge: float | HexagonConnectionEdgeInfo) -> float:
+def get_hexagon_edge_weight(hexagon_edge: float | HexagonConnectionEdgeInfo) -> int | float:
     """
     When constructing the Hexagon graph, an edge can be set in two ways:
     - When set in the HexagonGraphBuilder: weight is set as a float directly
@@ -76,10 +45,13 @@ def get_hexagon_edge_weight(hexagon_edge: float | HexagonConnectionEdgeInfo) -> 
 
     This function can be used to extract the edge weight when doing a shortest path analysis.
     """
-    if isinstance(hexagon_edge, float):
-        return hexagon_edge
-    else:
-        return hexagon_edge.weight
+    match hexagon_edge:
+        case float():
+            return hexagon_edge
+        case HexagonConnectionEdgeInfo():
+            return hexagon_edge.weight
+        case _:
+            raise ValueError("Encountered invalid edge type")
 
 
 def get_hexagon_edge_geometries_for_path(
@@ -107,7 +79,10 @@ def get_hexagon_edge_geometries_for_path(
         else:
             edge_id = graph.edge_indices_from_endpoints(source_node, target_node)[0]
             edge_linestring = shapely.LineString(
-                [hexagon_nodes.loc[source_node, "geometry"], hexagon_nodes.loc[target_node, "geometry"]]
+                [
+                    hexagon_nodes.loc[hexagon_nodes["node_id"] == source_node, "geometry"].values[0],
+                    hexagon_nodes.loc[hexagon_nodes["node_id"] == target_node, "geometry"].values[0],
+                ]
             )
             edge_meta_data = dict(
                 edge_id=edge_id,
