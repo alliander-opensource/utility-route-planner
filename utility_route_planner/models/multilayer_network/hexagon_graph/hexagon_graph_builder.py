@@ -91,7 +91,7 @@ class HexagonGraphBuilder:
                 [block_edge_attributes, previous_block_edge_coordinates, relevant_previous_row_nodes]
             )
             edges = self.edge_generator.generate(block_edge_attributes, nodes_to_check)
-            graph.add_edges_from(edges)
+            graph.add_edges_from(edges.rows())
 
             if last_column:
                 previous_row_edge_coordinates = current_row_edge_coordinates
