@@ -9,7 +9,7 @@ class HexagonEdgeGenerator:
         self,
         block_coordinates: pl.DataFrame,
         previous_row_edge_coordinates: pl.DataFrame,
-    ) -> list[tuple[int, int, float]]:
+    ) -> pl.DataFrame:
         edge_candidates = self._get_edge_candidates(block_coordinates)
 
         # Use lazy dataframe to allow the query to make use of Polars query optimization.
@@ -58,9 +58,7 @@ class HexagonEdgeGenerator:
         return neighbour_candidates
 
     @staticmethod
-    def _get_neighbouring_edges(
-        all_nodes: pl.LazyFrame, neighbour_candidates: pl.LazyFrame
-    ) -> list[tuple[int, int, float]]:
+    def _get_neighbouring_edges(all_nodes: pl.LazyFrame, neighbour_candidates: pl.LazyFrame) -> pl.DataFrame:
         """
         For each node, determine which neighbours candidates are valid. For each valid neighbour, the suitability
         value is computed by: source_node_suitability + target_node_suitability. All valid neighbours are
@@ -106,4 +104,4 @@ class HexagonEdgeGenerator:
             .select("source_node", "target_node", "weight")
             .collect()
         )
-        return neighbours.rows()
+        return neighbours
