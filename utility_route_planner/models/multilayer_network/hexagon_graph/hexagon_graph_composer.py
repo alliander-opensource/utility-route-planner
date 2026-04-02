@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 from dataclasses import dataclass
 import pathlib
+import pandas as pd
 import pygeoops
 import shapely
 import geopandas as gpd
@@ -46,7 +47,7 @@ class HexagonGraphComposer:
         self.debug = debug
         self.out = out
 
-    def compose(self) -> rx.PyGraph:
+    def compose(self) -> HeightLevelGraph:
         n_height_levels = len(self.processed_graphs_and_nodes_per_height_level)
         if n_height_levels == 1:
             logger.info("Only a single height level is present, no merging is required.")
@@ -60,7 +61,7 @@ class HexagonGraphComposer:
         self.gdf_main_nodes = self.processed_graphs_and_nodes_per_height_level[main_height_level].nodes_gdf
         self.merge_graphs(main_height_level)
 
-        return self.processed_graphs_and_nodes_per_height_level[main_height_level].graph
+        return self.processed_graphs_and_nodes_per_height_level[main_height_level]
 
     def get_main_height_level(self):
         """Doublecheck the main height level is 0. This is the expected value for the BGT."""
@@ -90,7 +91,10 @@ class HexagonGraphComposer:
                 f"Height level: {height} contains {rx.number_connected_components(height_graph.graph)} subgraph(s) to connect the main graph."
             )
 
-            height_mapping = self.add_height_graph_to_main_graph(height_graph.graph, main_height_level)
+            # TODO put node dataframe in this function and concat to the main df
+            height_mapping = self.add_height_graph_to_main_graph(
+                height_graph.graph, height_graph.nodes_gdf, main_height_level
+            )
 
             # Determine which nodes to connect to each other
             for component in rx.connected_components(height_graph.graph):
@@ -124,7 +128,9 @@ class HexagonGraphComposer:
             write_results_to_geopackage(self.out, nodes, "pytest_merged_graph_nodes", overwrite=True)
             write_results_to_geopackage(self.out, edges, "pytest_merged_graph_edges", overwrite=True)
 
-    def add_height_graph_to_main_graph(self, height_graph: rx.PyGraph, main_height_level: int) -> dict[int, int]:
+    def add_height_graph_to_main_graph(
+        self, height_graph: rx.PyGraph, height_node_df: gpd.GeoDataFrame, main_height_level: int
+    ) -> dict[int, int]:
         """Add the complete height graph to the main graph. Note it is still not connected at this point."""
         mapping = {}  # idx_height_graph -> idx_main_graph mapping for graph merge
 
@@ -134,12 +140,18 @@ class HexagonGraphComposer:
             new_idx = self.processed_graphs_and_nodes_per_height_level[main_height_level].graph.add_node(node_data)
 
             # TODO is updating the nodes_gdf sufficient here? Which one should we update?
+            # TODO concat height level node_df (if not main) to main node df and reassign ids on main level
             # self.processed_graphs_and_nodes_per_height_level[main_height_level].graph[new_idx].node_id = new_idx
-            self.gdf_main_nodes.loc[self.gdf_main_nodes["node_id"] == old_idx, "node_id"] = new_idx
+            # self.gdf_main_nodes.loc[self.gdf_main_nodes["node_id"] == old_idx, "node_id"] = new_idx
             # self.processed_graphs_and_nodes_per_height_level[main_height_level].nodes_gdf.loc[
             #     self.processed_graphs_and_nodes_per_height_level[main_height_level].nodes_gdf["node_id"] == old_idx,
             # "node_id"] = new_idx
             mapping[old_idx] = new_idx
+        height_node_df["node_id"] = height_node_df["node_id"].replace(mapping)
+
+        self.processed_graphs_and_nodes_per_height_level[main_height_level].nodes_gdf = gpd.GeoDataFrame(
+            pd.concat([self.processed_graphs_and_nodes_per_height_level[main_height_level].nodes_gdf, height_node_df])
+        )
 
         # Add subgraph edges to the main graph
         for u, v, weight in height_graph.weighted_edge_list():
