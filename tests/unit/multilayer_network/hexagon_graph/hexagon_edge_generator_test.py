@@ -1,14 +1,25 @@
 #  SPDX-FileCopyrightText: Contributors to the utility-route-project and Alliander N.V.
 #  #
 #  SPDX-License-Identifier: Apache-2.0
+import math
+
+import geopandas as gpd
+import numpy as np
 import polars as pl
 from polars.testing import assert_frame_equal
 import pytest
+import shapely
 
+from settings import Config
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_edge_generator import HexagonEdgeGenerator
+from utility_route_planner.util.write import write_results_to_geopackage
 
 
 class TestHexagonEdgeGenerator:
+    @pytest.fixture()
+    def hexagon_size(self) -> int:
+        return 4
+
     @pytest.fixture()
     def hexagonal_grid(self) -> pl.DataFrame:
         """
@@ -71,7 +82,9 @@ class TestHexagonEdgeGenerator:
             },
         )
 
-    def test_generate_edges_without_previous_blocks(self, hexagonal_grid: pl.DataFrame, block: pl.DataFrame):
+    def test_generate_edges_without_previous_blocks(
+        self, hexagonal_grid: pl.DataFrame, block: pl.DataFrame, hexagon_size: int, debug: bool = False
+    ):
         """
         Test that verifies that all edges are present, have correct edge weights and length when generating edges
         for a block without having previous edges. This means only edges within the block itself are expected.
@@ -109,13 +122,17 @@ class TestHexagonEdgeGenerator:
         )
         assert_frame_equal(expected_edges, result_edges, check_row_order=False)
 
-        # hexagon_points, edges_linestrings = self.convert_nodes_and_edges_to_gdfs(hexagonal_grid, result_edges)
-        # assert all([length == pytest.approx(6.93, abs=0.01) for length in edges_linestrings.length])
+        hexagon_points, edges_linestrings = self.convert_nodes_and_edges_to_gdfs(
+            hexagonal_grid, result_edges, hexagon_size=hexagon_size
+        )
+        assert all([length == pytest.approx(6.93, abs=0.01) for length in edges_linestrings.length])
 
-        # if debug:
-        #     self.write_debug(hexagon_points, edges_linestrings)
+        if debug:
+            self.write_debug(hexagon_points, edges_linestrings, suffix="no_previous_nodes")
 
-    def test_generate_edges_with_previous_blocks(self, hexagonal_grid: pl.DataFrame, block: pl.DataFrame):
+    def test_generate_edges_with_previous_blocks(
+        self, hexagonal_grid: pl.DataFrame, block: pl.DataFrame, hexagon_size: int, debug: bool = False
+    ):
         """
         Test that verifies that all edges are present, have correct edge weights and length when generating edges
         for a block when having previous edges in both the current and previous row.
@@ -186,47 +203,53 @@ class TestHexagonEdgeGenerator:
         )
         assert_frame_equal(expected_edges, result_edges, check_row_order=False)
 
-        # hexagon_points, edges_linestrings = self.convert_nodes_and_edges_to_gdfs(hexagonal_grid, result_edges)
-        # assert all([length == pytest.approx(6.93, abs=0.01) for length in edges_linestrings.length])
+        hexagon_points, edges_linestrings = self.convert_nodes_and_edges_to_gdfs(
+            hexagonal_grid, result_edges, hexagon_size=hexagon_size
+        )
+        assert all([length == pytest.approx(6.93, abs=0.01) for length in edges_linestrings.length])
 
-        # if debug:
-        #     self.write_debug(hexagon_points, edges_linestrings)
+        if debug:
+            self.write_debug(hexagon_points, edges_linestrings, suffix="previous_block_and_rows")
 
-    # @staticmethod
-    # def convert_nodes_and_edges_to_gdfs(
-    #     grid: pl.DataFrame, edges: pl.DataFrame
-    # ) -> tuple[gpd.GeoDataFrame, gpd.GeoDataFrame]:
-    #     hexagon_points = gpd.GeoDataFrame(
-    #         data=grid.select("node_id", "suitability_value"),
-    #         geometry=gpd.points_from_xy(grid["x"], grid["y"]),
-    #         columns=["node_id", "suitability_value"],
-    #         crs=Config.CRS,
-    #     ).set_index("node_id")
-    #     source_points = hexagon_points.loc[edges["source_node"], "geometry"]
-    #     target_points = hexagon_points.loc[edges["target_node"], "geometry"]
-    #     edges_linestrings = gpd.GeoDataFrame(
-    #         data=edges["weight"],
-    #         geometry=shapely.linestrings(
-    #             np.stack([source_points.get_coordinates().values, target_points.get_coordinates().values], axis=1)
-    #         ),
-    #         columns=["weight"],
-    #         crs=Config.CRS,
-    #     )
-    #     return hexagon_points, edges_linestrings
-    #
-    # @staticmethod
-    # def write_debug(hexagon_points: gpd.GeoDataFrame, edges_linestrings: gpd.GeoDataFrame):
-    #     reset_geopackage(Config.PATH_GEOPACKAGE_VECTOR_GRAPH_OUTPUT)
-    #
-    #     write_results_to_geopackage(
-    #         Config.PATH_GEOPACKAGE_VECTOR_GRAPH_OUTPUT,
-    #         hexagon_points,
-    #         "pytest_graph_nodes_no_previous_blocks",
-    #         overwrite=True,
-    #     )
-    #     write_results_to_geopackage(
-    #         Config.PATH_GEOPACKAGE_VECTOR_GRAPH_OUTPUT,
-    #         edges_linestrings,
-    #         "pytest_graph_edges_no_previous_blocks",
-    #         overwrite=True,
-    #     )
+    @staticmethod
+    def convert_nodes_and_edges_to_gdfs(
+        grid: pl.DataFrame, edges: pl.DataFrame, hexagon_size: int
+    ) -> tuple[gpd.GeoDataFrame, gpd.GeoDataFrame]:
+        # Convert axial coordinates to cartesian coordinates
+        q = grid["q"]
+        r = grid["r"]
+        x = q * (-3 / 2 * hexagon_size)
+        y = (r + q / 2) * (math.sqrt(3) * hexagon_size)
+
+        hexagon_points = gpd.GeoDataFrame(
+            data=grid.select("node_id", "suitability_value"),
+            geometry=gpd.points_from_xy(x, y),
+            columns=["node_id", "suitability_value"],
+            crs=Config.CRS,
+        ).set_index("node_id")
+        source_points = hexagon_points.loc[edges["source_node"], "geometry"]
+        target_points = hexagon_points.loc[edges["target_node"], "geometry"]
+        edges_linestrings = gpd.GeoDataFrame(
+            data=edges["weight"],
+            geometry=shapely.linestrings(
+                np.stack([source_points.get_coordinates().values, target_points.get_coordinates().values], axis=1)
+            ),
+            columns=["weight"],
+            crs=Config.CRS,
+        )
+        return hexagon_points, edges_linestrings
+
+    @staticmethod
+    def write_debug(hexagon_points: gpd.GeoDataFrame, edges_linestrings: gpd.GeoDataFrame, suffix: str):
+        write_results_to_geopackage(
+            Config.PATH_GEOPACKAGE_VECTOR_GRAPH_OUTPUT,
+            hexagon_points,
+            f"pytest_hexagon_edges_test_nodes_{suffix}",
+            overwrite=True,
+        )
+        write_results_to_geopackage(
+            Config.PATH_GEOPACKAGE_VECTOR_GRAPH_OUTPUT,
+            edges_linestrings,
+            f"pytest_hexagon_edges_test_nodes_{suffix}",
+            overwrite=True,
+        )
