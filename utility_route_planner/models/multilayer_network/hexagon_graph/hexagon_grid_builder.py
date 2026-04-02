@@ -243,12 +243,13 @@ class HexagonGridBuilder:
         q_diff = q - xgrid
         r_diff = r - ygrid
 
+        # Update x and y grid where q difference is larger than r difference
         mask = q_diff.abs() > r_diff.abs()
         updated_x_grid = xgrid + (q_diff + 0.5 * r_diff).round().cast(pl.Int32)
-        xgrid = updated_x_grid.zip_with(mask, updated_x_grid)
+        xgrid = updated_x_grid.zip_with(mask, xgrid)
 
         updated_y_grid = ygrid + (r_diff + 0.5 * q_diff).round().cast(pl.Int32)
-        ygrid = updated_y_grid.zip_with(~mask, updated_y_grid)
+        ygrid = updated_y_grid.zip_with(~mask, ygrid)
 
         hexagon_center_points = hexagon_center_points.with_columns(xgrid, ygrid)
 
