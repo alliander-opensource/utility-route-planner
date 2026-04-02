@@ -40,13 +40,13 @@ class MultilayerRouteEngine:
     @time_function
     def find_route(self, start_end: shapely.LineString):
         start, end = get_first_last_point_from_linestring(start_end)
-        source = self.gdf_cost_surface_nodes.distance(start).idxmin()
-        target = self.gdf_cost_surface_nodes.distance(end).idxmin()
+        source = self.gdf_cost_surface_nodes.loc[self.gdf_cost_surface_nodes.distance(start).idxmin(), "node_id"]
+        target = self.gdf_cost_surface_nodes.loc[self.gdf_cost_surface_nodes.distance(end).idxmin(), "node_id"]
 
         # HexagonEdgeInfo.weight is used as edge weight for dijkstra
         path_node_indices = rx.dijkstra_shortest_paths(self.cost_surface_graph, source, target, get_hexagon_edge_weight)
         path_node_indices = path_node_indices[target]
-        gdf_path_nodes = self.gdf_cost_surface_nodes.loc[path_node_indices]
+        gdf_path_nodes = self.gdf_cost_surface_nodes.loc[self.gdf_cost_surface_nodes["node_id"].isin(path_node_indices)]
 
         gdf_path_edges = get_hexagon_edge_geometries_for_path(
             self.cost_surface_graph, path_node_indices, gdf_path_nodes

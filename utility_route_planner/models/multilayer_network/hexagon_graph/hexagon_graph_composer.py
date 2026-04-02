@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: Contributors to the utility-route-project and Alliander N.V.
 #
 # SPDX-License-Identifier: Apache-2.0
+from dataclasses import dataclass
 import pathlib
 import pygeoops
 import shapely
@@ -10,7 +11,7 @@ import structlog
 
 from settings import Config
 from utility_route_planner.models.multilayer_network.graph_datastructures import HexagonConnectionEdgeInfo
-from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_utils import convert_hexagon_graph_to_gdfs
+from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_utils import convert_hexagon_edges_to_gdf
 from utility_route_planner.util.geo_utilities import (
     get_empty_geodataframe,
     get_first_last_point_from_linestring,
@@ -22,17 +23,23 @@ from utility_route_planner.util.write import write_results_to_geopackage
 logger = structlog.get_logger(__name__)
 
 
+@dataclass
+class HeightLevelGraph:
+    graph: rx.PyGraph
+    nodes_gdf: gpd.GeoDataFrame
+
+
 class HexagonGraphComposer:
     def __init__(
         self,
         processed_criteria_per_height_level: dict[int, list[str]],
-        processed_graphs_per_height_level: dict[int, rx.PyGraph],
+        processed_graphs_and_nodes_per_height_level: dict[int, HeightLevelGraph],
         hexagon_size: float,
         debug: bool = False,
         out: pathlib.Path = Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT,
     ):
         self.processed_criteria_per_height_level = processed_criteria_per_height_level
-        self.processed_graphs_per_height_level = processed_graphs_per_height_level
+        self.processed_graphs_and_nodes_per_height_level = processed_graphs_and_nodes_per_height_level
         self.hexagon_size = hexagon_size
         self.gdf_main_nodes: gpd.GeoDataFrame = get_empty_geodataframe()
 
@@ -40,24 +47,27 @@ class HexagonGraphComposer:
         self.out = out
 
     def compose(self) -> rx.PyGraph:
-        n_height_levels = len(self.processed_graphs_per_height_level)
+        n_height_levels = len(self.processed_graphs_and_nodes_per_height_level)
         if n_height_levels == 1:
             logger.info("Only a single height level is present, no merging is required.")
-            return self.processed_graphs_per_height_level[next(iter(self.processed_graphs_per_height_level))]
+            return self.processed_graphs_and_nodes_per_height_level[
+                next(iter(self.processed_graphs_and_nodes_per_height_level))
+            ].graph
         else:
             logger.info(f"Connecting {n_height_levels - 1} height level(s) to the main graph.")
 
         main_height_level = self.get_main_height_level()
-        self.gdf_main_nodes = convert_hexagon_graph_to_gdfs(
-            self.processed_graphs_per_height_level[main_height_level], edges=False
-        )
+        self.gdf_main_nodes = self.processed_graphs_and_nodes_per_height_level[main_height_level].nodes_gdf
         self.merge_graphs(main_height_level)
 
-        return self.processed_graphs_per_height_level[main_height_level]
+        return self.processed_graphs_and_nodes_per_height_level[main_height_level].graph
 
     def get_main_height_level(self):
         """Doublecheck the main height level is 0. This is the expected value for the BGT."""
-        node_count = {height: graph.num_nodes() for height, graph in self.processed_graphs_per_height_level.items()}
+        node_count = {
+            height: graph.graph.num_nodes()
+            for height, graph in self.processed_graphs_and_nodes_per_height_level.items()
+        }
         main_height_level = max(node_count, key=node_count.get)
         if main_height_level != 0:
             logger.warning(f"Main height level is expected to be 0, but found {main_height_level} instead.")
@@ -72,20 +82,19 @@ class HexagonGraphComposer:
         Note that height levels are joined directly to the main graph. Different height levels are not joined to other
         height levels.
         """
-        for height, height_graph in self.processed_graphs_per_height_level.items():
+        for height, height_graph in self.processed_graphs_and_nodes_per_height_level.items():
             if height == main_height_level:
                 continue
-            gdf_nodes_height = convert_hexagon_graph_to_gdfs(height_graph, edges=False)
 
             logger.info(
-                f"Height level: {height} contains {rx.number_connected_components(height_graph)} subgraph(s) to connect the main graph."
+                f"Height level: {height} contains {rx.number_connected_components(height_graph.graph)} subgraph(s) to connect the main graph."
             )
 
-            height_mapping = self.add_height_graph_to_main_graph(height_graph, main_height_level)
+            height_mapping = self.add_height_graph_to_main_graph(height_graph.graph, main_height_level)
 
             # Determine which nodes to connect to each other
-            for component in rx.connected_components(height_graph):
-                gdf_component_nodes = gdf_nodes_height[gdf_nodes_height["node_id"].isin(component)]
+            for component in rx.connected_components(height_graph.graph):
+                gdf_component_nodes = height_graph.nodes_gdf[height_graph.nodes_gdf["node_id"].isin(component)]
                 # Get the outer nodes (nodes to join to the main graph) of the component.
                 component_area = gdf_component_nodes.buffer(self.hexagon_size).union_all(grid_size=0.1)
                 if not isinstance(component_area, shapely.Polygon):
@@ -108,7 +117,10 @@ class HexagonGraphComposer:
                 )
 
         if self.debug:
-            nodes, edges = convert_hexagon_graph_to_gdfs(self.processed_graphs_per_height_level[main_height_level])
+            main_height_level_graph = self.processed_graphs_and_nodes_per_height_level[main_height_level]
+            nodes = main_height_level_graph.nodes_gdf
+            edges = convert_hexagon_edges_to_gdf(main_height_level_graph.graph, nodes)
+
             write_results_to_geopackage(self.out, nodes, "pytest_merged_graph_nodes", overwrite=True)
             write_results_to_geopackage(self.out, edges, "pytest_merged_graph_edges", overwrite=True)
 
@@ -119,16 +131,25 @@ class HexagonGraphComposer:
         # Add nodes from the subgraph to the main graph
         for old_idx, node_data in enumerate(height_graph.nodes()):
             # Always add as new node (even if many map to same "right" node)
-            new_idx = self.processed_graphs_per_height_level[main_height_level].add_node(node_data)
-            self.processed_graphs_per_height_level[main_height_level][new_idx].node_id = new_idx
+            new_idx = self.processed_graphs_and_nodes_per_height_level[main_height_level].graph.add_node(node_data)
+
+            # TODO is updating the nodes_gdf sufficient here? Which one should we update?
+            # self.processed_graphs_and_nodes_per_height_level[main_height_level].graph[new_idx].node_id = new_idx
+            self.gdf_main_nodes.loc[self.gdf_main_nodes["node_id"] == old_idx, "node_id"] = new_idx
+            # self.processed_graphs_and_nodes_per_height_level[main_height_level].nodes_gdf.loc[
+            #     self.processed_graphs_and_nodes_per_height_level[main_height_level].nodes_gdf["node_id"] == old_idx,
+            # "node_id"] = new_idx
             mapping[old_idx] = new_idx
 
         # Add subgraph edges to the main graph
         for u, v, weight in height_graph.weighted_edge_list():
-            new_idx = self.processed_graphs_per_height_level[main_height_level].add_edge(mapping[u], mapping[v], weight)
-            self.processed_graphs_per_height_level[main_height_level].get_edge_data_by_index(new_idx).set_edge_id(
-                new_idx
+            # TODO is setting the edge id on the graph required here?
+            self.processed_graphs_and_nodes_per_height_level[main_height_level].graph.add_edge(
+                mapping[u], mapping[v], weight
             )
+            # self.processed_graphs_and_nodes_per_height_level[main_height_level].graph.get_edge_data_by_index(new_idx).set_edge_id(
+            #     new_idx
+            # )
 
         return mapping
 
@@ -160,9 +181,13 @@ class HexagonGraphComposer:
             )
             for node_pair in gdf_main_nodes_to_outer_component_nodes.itertuples(index=False)
         ]
-        edge_indices = self.processed_graphs_per_height_level[main_height_level].add_edges_from(edges_to_add)
+        edge_indices = self.processed_graphs_and_nodes_per_height_level[main_height_level].graph.add_edges_from(
+            edges_to_add
+        )
         [
-            self.processed_graphs_per_height_level[main_height_level].get_edge_data_by_index(i).set_edge_id(i)
+            self.processed_graphs_and_nodes_per_height_level[main_height_level]
+            .graph.get_edge_data_by_index(i)
+            .set_edge_id(i)
             for i in edge_indices
         ]
 
