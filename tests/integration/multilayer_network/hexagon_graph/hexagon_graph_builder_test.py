@@ -183,7 +183,7 @@ class TestHexagonGraphBuilder:
 class TestHexagonGraphBuilderWithHeightLevels:
     out = Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT
     hexagon_size = 1.0
-    debug: bool = True
+    debug: bool = False
 
     @pytest.fixture(autouse=True)
     def clean_start(self):
@@ -257,7 +257,11 @@ class TestHexagonGraphBuilderWithHeightLevels:
             raster_groups,
         )
         route_engine = MultilayerRouteEngine(
-            merged_graph, rx.PyGraph(), hexagon_graph_composer.gdf_main_nodes, write_output=self.debug
+            merged_graph,
+            rx.PyGraph(),
+            hexagon_graph_composer.gdf_main_nodes,
+            hexagon_size=self.hexagon_size,
+            write_output=self.debug,
         )
 
         # assert that we have a fully connected graph and no dangling parts.
@@ -372,7 +376,11 @@ class TestHexagonGraphBuilderWithHeightLevels:
         )
 
         route_engine = MultilayerRouteEngine(
-            merged_graph, rx.PyGraph(), hexagon_graph_composer.gdf_main_nodes, write_output=self.debug
+            merged_graph,
+            rx.PyGraph(),
+            hexagon_graph_composer.gdf_main_nodes,
+            hexagon_size=self.hexagon_size,
+            write_output=self.debug,
         )
         assert rx.number_connected_components(merged_graph) == 1
         _, e = convert_hexagon_graph_to_gdfs(merged_graph)
@@ -461,7 +469,11 @@ class TestHexagonGraphBuilderWithHeightLevels:
         )
 
         route_engine = MultilayerRouteEngine(
-            merged_graph, rx.PyGraph(), hexagon_graph_composer.gdf_main_nodes, write_output=self.debug
+            merged_graph,
+            rx.PyGraph(),
+            hexagon_graph_composer.gdf_main_nodes,
+            hexagon_size=self.hexagon_size,
+            write_output=self.debug,
         )
 
         assert rx.number_connected_components(merged_graph) == 1
@@ -557,7 +569,11 @@ class TestHexagonGraphBuilderWithHeightLevels:
         )
 
         route_engine = MultilayerRouteEngine(
-            merged_graph, rx.PyGraph(), hexagon_graph_composer.gdf_main_nodes, write_output=self.debug
+            merged_graph,
+            rx.PyGraph(),
+            hexagon_graph_composer.gdf_main_nodes,
+            hexagon_size=self.hexagon_size,
+            write_output=self.debug,
         )
         assert rx.number_connected_components(merged_graph) == 1
         _, e = convert_hexagon_graph_to_gdfs(merged_graph)
@@ -604,7 +620,11 @@ class TestHexagonGraphBuilderWithHeightLevels:
         )
 
         route_engine = MultilayerRouteEngine(
-            merged_graph, rx.PyGraph(), hexagon_graph_composer.gdf_main_nodes, write_output=self.debug
+            merged_graph,
+            rx.PyGraph(),
+            hexagon_graph_composer.gdf_main_nodes,
+            hexagon_size=self.hexagon_size,
+            write_output=self.debug,
         )
         route_engine.find_route(shapely.LineString([(187139.16, 429004.25), (187324.59, 428983.47)]))
 
