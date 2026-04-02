@@ -35,7 +35,7 @@ class HexagonGraphBuilder:
     @time_function
     def build_graph(
         self,
-        project_area: shapely.Polygon,
+        project_area: shapely.Polygon | shapely.MultiPolygon,
         raster_groups: dict[str, str],
         preprocessed_vectors: dict[str, gpd.GeoDataFrame],
     ) -> tuple[rx.PyGraph, gpd.GeoDataFrame]:

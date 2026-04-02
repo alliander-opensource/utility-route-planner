@@ -11,9 +11,14 @@ import rustworkx as rx
 from settings import Config
 from utility_route_planner.models.benchmark_routes import BenchmarkRouteCollection
 from utility_route_planner.models.mcda.mcda_engine import McdaCostSurfaceEngine
+from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_edge_generator import HexagonEdgeGenerator
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_graph_builder import HexagonGraphBuilder
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_graph_composer import HexagonGraphComposer
-from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_utils import convert_hexagon_graph_to_gdfs
+from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_grid_builder import HexagonGridBuilder
+from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_utils import (
+    convert_hexagon_graph_to_gdfs,
+    convert_hexagon_edges_to_gdf,
+)
 from utility_route_planner.models.multilayer_network.multilayer_route_planner import MultilayerRouteEngine
 from utility_route_planner.util.geo_utilities import get_empty_geodataframe
 from utility_route_planner.util.write import reset_geopackage, write_results_to_geopackage
@@ -34,10 +39,20 @@ class TestHexagonGraphBuilder:
             .geometry
         )
 
+    @pytest.fixture()
+    def hexagon_graph_builder(self) -> HexagonGraphBuilder:
+        grid_constructor = HexagonGridBuilder(hexagon_size=Config.HEXAGON_SIZE, block_size=Config.HEXAGON_BLOCK_SIZE)
+        hexagon_edge_generator = HexagonEdgeGenerator()
+        _hexagon_graph_builder = HexagonGraphBuilder(
+            hexagon_size=Config.HEXAGON_SIZE, grid_builder=grid_constructor, edge_generator=hexagon_edge_generator
+        )
+        return _hexagon_graph_builder
+
     def test_build_graph_for_single_criterion(
         self,
         single_criterion_vectors: Callable,
         ede_project_area: shapely.MultiPolygon,
+        hexagon_graph_builder: HexagonGraphBuilder,
         debug: bool = False,
     ):
         max_value = Config.MAX_NODE_SUITABILITY_VALUE
@@ -48,15 +63,10 @@ class TestHexagonGraphBuilder:
         preprocessed_vectors = {"test": single_criterion_vectors}
         raster_criteria_groups = {"test": "a"}
 
-        hexagon_graph_builder = HexagonGraphBuilder(
-            ede_project_area,
-            raster_criteria_groups,
-            preprocessed_vectors,
-            hexagon_size=Config.HEXAGON_SIZE,
-            block_size=Config.HEXAGON_BLOCK_SIZE,
+        graph, nodes_gdf = hexagon_graph_builder.build_graph(
+            ede_project_area, raster_criteria_groups, preprocessed_vectors
         )
-        graph = hexagon_graph_builder.build_graph()
-        nodes_gdf, edges_gdf = convert_hexagon_graph_to_gdfs(graph)
+        edges_gdf = convert_hexagon_edges_to_gdf(graph, nodes_gdf)
 
         sample_points = gpd.GeoDataFrame(
             data=[
@@ -74,17 +84,23 @@ class TestHexagonGraphBuilder:
             geometry="geometry",
             crs=Config.CRS,
             columns=["sample_id", "expected_suitability_value", "geometry"],
-        )
+        ).astype({"expected_suitability_value": "int16"})
 
         # Verify that the nodes near the sample points are equal to the expected value on the sample points.
         joined_sample_points = sample_points.sjoin_nearest(nodes_gdf)
         assert joined_sample_points["expected_suitability_value"].equals(joined_sample_points["suitability_value"])
 
         if debug:
-            self.write_debug_output(ede_project_area, preprocessed_vectors, nodes_gdf, edges_gdf, sample_points)
+            self.write_debug_output(
+                ede_project_area, preprocessed_vectors, nodes_gdf, edges_gdf, sample_points, suffix="multiple_criterion"
+            )
 
     def test_build_graph_for_multiple_criteria(
-        self, multi_criteria_vectors: Callable, ede_project_area: shapely.MultiPolygon, debug: bool = False
+        self,
+        multi_criteria_vectors: Callable,
+        ede_project_area: shapely.MultiPolygon,
+        hexagon_graph_builder: HexagonGraphBuilder,
+        debug: bool = False,
     ):
         max_value = Config.MAX_NODE_SUITABILITY_VALUE
         min_value = Config.MIN_NODE_SUITABILITY_VALUE
@@ -95,16 +111,10 @@ class TestHexagonGraphBuilder:
             criterion_name: criterion_gdf for criterion_name, _, criterion_gdf in multiple_criteria_vectors
         }
 
-        hexagon_graph_builder = HexagonGraphBuilder(
-            ede_project_area,
-            raster_criteria_groups,
-            preprocessed_vectors,
-            hexagon_size=Config.HEXAGON_SIZE,
-            block_size=Config.HEXAGON_BLOCK_SIZE,
+        graph, nodes_gdf = hexagon_graph_builder.build_graph(
+            ede_project_area, raster_criteria_groups, preprocessed_vectors
         )
-
-        graph = hexagon_graph_builder.build_graph()
-        nodes_gdf, edges_gdf = convert_hexagon_graph_to_gdfs(graph)
+        edges_gdf = convert_hexagon_edges_to_gdf(graph, nodes_gdf)
 
         sample_points = gpd.GeoDataFrame(
             data=[
@@ -140,14 +150,16 @@ class TestHexagonGraphBuilder:
             geometry="geometry",
             crs=Config.CRS,
             columns=["sample_id", "expected_suitability_value", "geometry"],
-        )
+        ).astype({"expected_suitability_value": "int16"})
 
         # Verify that the nodes near the sample points are equal to the expected value on the sample points.
         joined_sample_points = sample_points.sjoin_nearest(nodes_gdf)
         assert joined_sample_points["expected_suitability_value"].equals(joined_sample_points["suitability_value"])
 
         if debug:
-            self.write_debug_output(ede_project_area, preprocessed_vectors, nodes_gdf, edges_gdf, sample_points)
+            self.write_debug_output(
+                ede_project_area, preprocessed_vectors, nodes_gdf, edges_gdf, sample_points, suffix="multiple_criteria"
+            )
 
     @staticmethod
     def write_debug_output(
@@ -156,6 +168,7 @@ class TestHexagonGraphBuilder:
         nodes_gdf: gpd.GeoDataFrame,
         edges_gdf: gpd.GeoDataFrame,
         sample_points: gpd.GeoDataFrame,
+        suffix: str,
     ):
         reset_geopackage(Config.PATH_GEOPACKAGE_VECTOR_GRAPH_OUTPUT)
         write_results_to_geopackage(
@@ -170,13 +183,22 @@ class TestHexagonGraphBuilder:
             )
 
         write_results_to_geopackage(
-            Config.PATH_GEOPACKAGE_VECTOR_GRAPH_OUTPUT, nodes_gdf, "pytest_graph_nodes", overwrite=True
+            Config.PATH_GEOPACKAGE_VECTOR_GRAPH_OUTPUT,
+            nodes_gdf,
+            f"pytest_graph_builder_integration_nodes_{suffix}",
+            overwrite=True,
         )
         write_results_to_geopackage(
-            Config.PATH_GEOPACKAGE_VECTOR_GRAPH_OUTPUT, edges_gdf, "pytest_graph_edges", overwrite=True
+            Config.PATH_GEOPACKAGE_VECTOR_GRAPH_OUTPUT,
+            edges_gdf,
+            f"pytest_graph_builder_integration_edges_{suffix}",
+            overwrite=True,
         )
         write_results_to_geopackage(
-            Config.PATH_GEOPACKAGE_VECTOR_GRAPH_OUTPUT, sample_points, "pytest_points_to_sample", overwrite=True
+            Config.PATH_GEOPACKAGE_VECTOR_GRAPH_OUTPUT,
+            sample_points,
+            f"pytest_graph_builder_sample_points_{suffix}",
+            overwrite=True,
         )
 
 
