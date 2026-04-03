@@ -181,7 +181,7 @@ class TestPipeRamming:
     @pytest.mark.skip(reason="Only for debugging a specific junction.")
     def test_single_junction(self, setup_pipe_ramming_example_polygon):
         if self.debug:
-            reset_geopackage(Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT, truncate=False)
+            reset_geopackage(self.out, truncate=False)
 
         node_id_to_test = 3
         project_area = shapely.Point(174967.12, 450898.60).buffer(150)
@@ -223,7 +223,7 @@ class TestPipeRamming:
     @pytest.mark.skip(reason="Only for debugging a specific street-segment group.")
     def test_single_street_segment_group(self, setup_pipe_ramming_example_polygon):
         if self.debug:
-            reset_geopackage(Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT, truncate=False)
+            reset_geopackage(self.out, truncate=False)
 
         segment_group_to_cross = 48
 
@@ -259,7 +259,7 @@ class TestPipeRamming:
     @pytest.mark.skip(reason="Longer test for full example set, enable when big (TM) changes are made to pipe ramming.")
     def test_find_all_rammings_example_set(self, setup_pipe_ramming_example_polygon):
         if self.debug:
-            reset_geopackage(Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT, truncate=False)
+            reset_geopackage(self.out, truncate=False)
 
         osm_graph, mcda_engine, cost_surface_graph = setup_pipe_ramming_example_polygon()
 
@@ -271,9 +271,10 @@ class TestPipeRamming:
 
 
 class TestPipeRammingTheoryExamples:
-    debug: bool = False
+    debug: bool = True
     out: pathlib.Path = Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT
     hexagon_size = 0.5
+    prefix: str = "pytest_theory_"
 
     @pytest.fixture
     def setup_theory_examples(self):
@@ -957,7 +958,6 @@ class TestPipeRammingTheoryExamples:
         expected_crossings_used_in_route,
         start_end,
         setup_theory_examples,
-        debug=False,
     ):
         street_linestring = shapely.LineString(
             [(0, 0), (20, 0), (50, 25), (75, -40), (120, -40), (150, -20), (160, -20)]
@@ -1073,7 +1073,7 @@ class TestPipeRammingTheoryExamples:
             suitability_value_crossing_threshold=10,
             suitability_value_obstacles_threshold=80,
             hexagon_size=hexagon_graph_builder.hexagon_size,
-            debug_out=Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT,
+            debug_out=self.out,
             debug=self.debug,
         )
         crossings = pipe_ramming.get_crossings()
@@ -1082,15 +1082,14 @@ class TestPipeRammingTheoryExamples:
             pipe_ramming.osm_graph,
             pipe_ramming.cost_surface_nodes,
             hexagon_size=self.hexagon_size,
-            prefix="pytest_theory_",
-            write_output=False,
+            prefix=self.prefix,
+            write_output=self.debug,
         )
         multilayer_route_engine.find_route(shapely.LineString(start_end))
         if self.debug:
             self._plot_pytest_theory(
                 cost_surface_graph,
                 crossings,
-                multilayer_route_engine,
                 pipe_ramming,
                 hexagon_graph_builder.preprocessed_vectors,
             )
@@ -1138,37 +1137,32 @@ class TestPipeRammingTheoryExamples:
         self,
         cost_surface_graph: rx.PyGraph,
         crossings: list,
-        multilayer_route_engine: MultilayerRouteEngine,
         pipe_ramming: GetPotentialPipeRammingCrossings,
         preprocessed_vectors: dict,
     ):
         # MCDA vectors
-        write_results_to_geopackage(self.out, preprocessed_vectors["street"], "pytest_theory_street", overwrite=True)
+        write_results_to_geopackage(self.out, preprocessed_vectors["street"], f"{self.prefix}street", overwrite=True)
         write_results_to_geopackage(
-            self.out, preprocessed_vectors["private_property"], "pytest_theory_private_property", overwrite=True
+            self.out, preprocessed_vectors["private_property"], f"{self.prefix}private_property", overwrite=True
         )
         if "buildings" in preprocessed_vectors:
             write_results_to_geopackage(
-                self.out, preprocessed_vectors["buildings"], "pytest_theory_buildings", overwrite=True
+                self.out, preprocessed_vectors["buildings"], f"{self.prefix}buildings", overwrite=True
             )
         if "trees" in preprocessed_vectors:
-            write_results_to_geopackage(self.out, preprocessed_vectors["trees"], "pytest_theory_trees", overwrite=True)
+            write_results_to_geopackage(self.out, preprocessed_vectors["trees"], f"{self.prefix}trees", overwrite=True)
         # OSM graph
-        write_results_to_geopackage(self.out, pipe_ramming.osm_nodes, "pytest_theory_osm_nodes", overwrite=True)
-        write_results_to_geopackage(self.out, pipe_ramming.osm_edges, "pytest_theory_osm_edges", overwrite=True)
+        write_results_to_geopackage(self.out, pipe_ramming.osm_nodes, f"{self.prefix}osm_nodes", overwrite=True)
+        write_results_to_geopackage(self.out, pipe_ramming.osm_edges, f"{self.prefix}osm_edges", overwrite=True)
         # Cost-surface & crossings
         cost_surface_nodes, cost_surface_edges = convert_hexagon_graph_to_gdfs(cost_surface_graph, edges=True)
-        write_results_to_geopackage(self.out, cost_surface_nodes, "pytest_theory_cost_surface_nodes", overwrite=True)
-        write_results_to_geopackage(self.out, cost_surface_edges, "pytest_theory_cost_surface_edges", overwrite=True)
+        write_results_to_geopackage(self.out, cost_surface_nodes, f"{self.prefix}cost_surface_nodes", overwrite=True)
+        write_results_to_geopackage(self.out, cost_surface_edges, f"{self.prefix}cost_surface_edges", overwrite=True)
         write_results_to_geopackage(
             self.out,
             shapely.MultiLineString([i[2].geometry for i in crossings]),
-            "pytest_theory_crossings",
+            f"{self.prefix}crossings",
             overwrite=True,
-        )
-        # Resulting route
-        write_results_to_geopackage(
-            self.out, multilayer_route_engine.result_route_edges, "pytest_theory_result_route", overwrite=True
         )
 
 
