@@ -1,5 +1,5 @@
 <!--
-SPDX-FileCopyrightText: Contributors to the utility-route-project and Alliander N.V.
+SPDX-FileCopyrightText: Contributors to the utility-route-project
 
 SPDX-License-Identifier: Apache-2.0
 -->
@@ -68,8 +68,7 @@ Adding new criteria can be done by:
 
 # Support
 
-If you have trouble installing, building, or using utility-route-planner, but you don't think you've encountered a genuine bug, you can ask a question in the Issues tab of the repository.
-If you have an idea for a new feature or a recommendation for existing features or documentation, you can also propose it in the Issues tab.
+If you have trouble installing, building, or using utility-route-planner, but you don't think you've encountered a genuine bug, you can ask a question in the Issues tab of the repository. If you have an idea for a new feature or a recommendation for existing features or documentation, you can also propose it in the Issues tab.
 
 ## How to report a bug or a security vulnerability
 
@@ -77,20 +76,16 @@ This project manages bug and enhancement using the GitHub issue tracker.
 
 # Contributing
 
-Please read CODE_OF_CONDUCT and CONTRIBUTING, for details on the process for submitting pull requests to us.
-
-# Project governance
-
-The lead developer is responsible for reviewing contributions from the community and general direction of development.
-When the community has grown to a size where it would be helpful, the project will set up independent community governance.
-
-The lead developer is [Jelmar Versleijen](https://github.com/JelmarVersleijen).
+Please read [CODE_OF_CONDUCT](https://github.com/PowerGridModel/alliander-opensource/utility-route-planner/main/CODE_OF_CONDUCT.md),
+[CONTRIBUTING](https://github.com/PowerGridModel/alliander-opensource/utility-route-planner/main/CONTRIBUTING.md) and
+[PROJECT GOVERNANCE](https://github.com/alliander-opensource/utility-route-planner/blob/main/GOVERNANCE.md) for details on the process for submitting pull
+requests to us.
 
 # License
+This project is licensed under the Apache-2.0 - see [LICENSE](https://github.com/alliander-opensource/utility-route-planner/blob/main/LICENSE) for details.
 
-utility-route-designer is under: [Apache License Version 2.0](https://www.apache.org/licenses/LICENSE-2.0)
-
-The software is largely dependent on data. Data is incorporated in the example folder and is licensed separately from the repo:
+## Licenses data 
+This project is largely dependent on data. Data is incorporated in the example folder and is licensed under their own respective Open-Source licenses:
 
 - BGT: [CC PDM 1.0](https://creativecommons.org/publicdomain/mark/1.0/deed.en) downloaded from [PDOK](https://www.nationaalgeoregister.nl/geonetwork/srv/dut/catalog.search#/metadata/e01e63cd-6b3d-4c58-b34e-8d343a3c264b)
 - Natura2000: [CC PDM 1.0](https://creativecommons.org/publicdomain/mark/1.0/deed.en) downloaded from [PDOK](https://nationaalgeoregister.nl/geonetwork/srv/dut/catalog.search#/metadata/1601e160-91e8-4091-9aca-10294f819d42)
