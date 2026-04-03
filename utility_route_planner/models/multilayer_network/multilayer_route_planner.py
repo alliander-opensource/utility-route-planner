@@ -1,6 +1,8 @@
 # SPDX-FileCopyrightText: Contributors to the utility-route-project and Alliander N.V.
 #
 # SPDX-License-Identifier: Apache-2.0
+from pathlib import Path
+
 import rustworkx as rx
 import shapely
 import geopandas as gpd
@@ -23,13 +25,16 @@ class MultilayerRouteEngine:
         gdf_cost_surface_nodes: gpd.GeoDataFrame,
         hexagon_size: float,
         prefix: str = "",
-        write_output: bool = True,
+        write_output: bool = False,
+        out: Path = Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT,
     ):
         self.cost_surface_graph = cost_surface_graph
         self.gdf_cost_surface_nodes = gdf_cost_surface_nodes
         self.osm_graph = osm_graph
+        self.hexagon_size = hexagon_size
         self.write_output = write_output
         self.prefix = prefix
+        self.out = out
 
         self.line_target_source: shapely.geometry.LineString = shapely.geometry.LineString()
         self.result_route_node_indices: list[rx.NodeIndices] = []
@@ -44,12 +49,7 @@ class MultilayerRouteEngine:
         source = self.gdf_cost_surface_nodes.distance(start).idxmin()
         target = self.gdf_cost_surface_nodes.distance(end).idxmin()
 
-        straight_line = shapely.LineString(
-            [
-                self.cost_surface_graph.get_node_data(source).geometry,
-                self.cost_surface_graph.get_node_data(target).geometry,
-            ]
-        )
+        straight_line = self.get_linestring(source, target)
         # Offset to avoid it being exactly on top of the nodes, causes issues with distance calculations during routing.
         self.line_target_source = shapely.offset_curve(straight_line, Config.HEXAGON_SIZE / 4)
 
@@ -76,25 +76,25 @@ class MultilayerRouteEngine:
 
         if self.write_output:
             write_results_to_geopackage(
-                Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT,
+                self.out,
                 self.result_route_nodes,
                 f"{self.prefix}multilayer_route_nodes",
             )
             write_results_to_geopackage(
-                Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT,
+                self.out,
                 self.result_route_edges,
                 f"{self.prefix}multilayer_route_edges",
             )
             write_results_to_geopackage(
-                Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT, self.line_target_source, f"{self.prefix}straight_line"
+                self.out, self.line_target_source, f"{self.prefix}straight_line"
             )
             write_results_to_geopackage(
-                Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT,
+                self.out,
                 self.result_route_linestring,
                 f"{self.prefix}result_route",
             )
             write_results_to_geopackage(
-                Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT,
+                self.out,
                 self.result_route_smoothed,
                 f"{self.prefix}result_route_smoothed",
             )
@@ -113,16 +113,48 @@ class MultilayerRouteEngine:
         """
         weight = self.cost_surface_graph.get_edge_data_by_index(edge.edge_id).weight
         node_1, node_2 = self.cost_surface_graph.get_edge_endpoints_by_index(edge.edge_id)
-        edge_line = shapely.geometry.LineString(
-            [
-                self.cost_surface_graph.get_node_data(node_1).geometry,
-                self.cost_surface_graph.get_node_data(node_2).geometry,
-            ]
-        )
+        edge_line = self.get_linestring(node_1, node_2)
         distance = edge_line.distance(self.line_target_source) * modifier
         if distance > weight:
             logger.warning("Unexpected situation during routing.")
         return weight + distance
 
+    def get_linestring(self, node_1, node_2):
+        edge_line = shapely.LineString(
+            [
+                self.cost_surface_graph.get_node_data(node_1).geometry,
+                self.cost_surface_graph.get_node_data(node_2).geometry,
+            ]
+        )
+        return edge_line
+
     def smooth_linestring(self, linestring: shapely.LineString):
-        self.result_route_smoothed = linestring.simplify(15)
+        self.result_route_smoothed = linestring.simplify(self.hexagon_size)
+
+        # Thoughts. Loop over the node indices. Check if we can skip a node if we create
+        # a linestring from the next node in line without intersecting with a different
+        # weight in the cost_surface. Keep trying till it is at the end node or continue
+        # trying from the first node which does intersect with a different value.
+        shortcut_order = []
+        n_skip = 1
+        for idx, node in enumerate(self.result_route_node_indices):
+            next_node = self.result_route_node_indices[idx+1]
+            basic_cost = self.cost_surface_graph.get_edge_data(node, next_node).weight
+
+            shortcut_costs = basic_cost
+            while shortcut_costs == basic_cost:
+                n_skip += 1
+                linestring = self.get_linestring(node, self.result_route_node_indices[idx+n_skip])
+                # Note this does not work with height levels, we have to keep track of that
+                shortcut_costs = self.gdf_cost_surface_nodes[self.gdf_cost_surface_nodes.dwithin(linestring, self.hexagon_size * 0.50)].suitability_value.unique().tolist()
+                if len(shortcut_costs) != 1:
+                    # TODO do something here, continue with the previous node and try to skip from there
+                    break
+                else:
+                    shortcut_costs = shortcut_costs[0]
+
+        write_results_to_geopackage(self.out, linestring, "pytest_linestring_skip")
+
+
+
+
