@@ -14,7 +14,6 @@ import structlog
 from settings import Config
 from utility_route_planner.models.multilayer_network.graph_datastructures import (
     HexagonConnectionEdgeInfo,
-    PipeRammingEdgeInfo,
     BaseWeightedEdgeInfo,
     hexagon_edge_info,
 )
@@ -57,7 +56,7 @@ def update_edge_id(
     - When set as part of piperamming or graph composing: id is set as part of the BaseWeightedEdgeInfo dataclass
     """
     match hexagon_edge:
-        case tuple():
+        case hexagon_edge_info():
             return hexagon_edge_info(new_id, hexagon_edge[1])
         case BaseWeightedEdgeInfo():
             hexagon_edge.set_edge_id(new_id)
@@ -70,8 +69,8 @@ def get_hexagon_edge_geometries_for_path(
     graph: rx.PyGraph, path_node_indices: list[int], hexagon_nodes: gpd.GeoDataFrame
 ) -> gpd.GeoDataFrame:
     """
-    Given a list of node indices which resprent a path on the graph, construct a dataframe to
-    represent the path as a list of linestrings (edges).
+    Given a list of node indices which represent a path on the graph, construct a dataframe to represent the path as a
+    list of linestrings (edges).
 
     :param graph: graph for which the path was calculated
     :param path_node_indices: list of node indices that represent the path
@@ -84,11 +83,9 @@ def get_hexagon_edge_geometries_for_path(
         edge_data = graph.get_edge_data(source_node, target_node)
 
         # As "vanilla" hexagon edges do not have dataclasses as edge attribute, the data must
-        # be constructed manually. For PipeRamming edges, the attributes can be simply converted
-        # from the dataclass
-        if isinstance(edge_data, PipeRammingEdgeInfo):
-            edge_meta_data = asdict(edge_data)
-        elif isinstance(edge_data, HexagonConnectionEdgeInfo):
+        # be constructed manually. For all other edges (i.e., piperamming and hexagon connection
+        # edges), the data can be converted from the dataclass.
+        if isinstance(edge_data, BaseWeightedEdgeInfo):
             edge_meta_data = asdict(edge_data)
         else:
             edge_id = graph.edge_indices_from_endpoints(source_node, target_node)[0]
@@ -101,17 +98,17 @@ def get_hexagon_edge_geometries_for_path(
             edge_meta_data = dict(
                 edge_id=edge_id,
                 weight=get_hexagon_edge_weight(edge_data),
-                length=edge_linestring.length,
+                length=round(edge_linestring.length, 2),
+                connects_height_levels=False,
                 geometry=edge_linestring,
             )
 
         edges_list.append(edge_meta_data)
 
     hexagon_path_geometries = gpd.GeoDataFrame(data=edges_list, crs=Config.CRS)
-    if "connects_height_levels" in hexagon_path_geometries.columns:
-        hexagon_path_geometries.loc[:, "connects_height_levels"] = hexagon_path_geometries.loc[
-            :, "connects_height_levels"
-        ].fillna(False)
+    hexagon_path_geometries.loc[:, "connects_height_levels"] = hexagon_path_geometries.loc[
+        :, "connects_height_levels"
+    ].fillna(False)
     return hexagon_path_geometries
 
 
@@ -133,7 +130,6 @@ def convert_hexagon_edges_to_gdf(graph: rx.PyGraph, nodes: gpd.GeoDataFrame) -> 
     target_nodes = [target_node for _, target_node, _ in edge_weight_map.values()]
 
     weights = []
-
     connects_height_levels = []
     for _, _, edge_data in edge_weight_map.values():
         weights.append(get_hexagon_edge_weight(edge_data))

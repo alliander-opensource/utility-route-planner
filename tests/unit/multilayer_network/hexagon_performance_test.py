@@ -7,12 +7,15 @@ import shapely
 import geopandas as gpd
 
 from utility_route_planner.models.mcda.mcda_engine import McdaCostSurfaceEngine
+from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_edge_generator import HexagonEdgeGenerator
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_graph_builder import HexagonGraphBuilder
 from settings import Config
+from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_grid_builder import HexagonGridBuilder
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_utils import convert_hexagon_edges_to_gdf
 from utility_route_planner.util.write import write_results_to_geopackage, reset_geopackage
 
 
+# @pytest.mark.skip(reason="Only used for local development of the HexagonGraphBuilder")
 class TestVectorToGraph:
     @pytest.fixture()
     def small_project_area(self) -> shapely.Polygon:
@@ -68,14 +71,16 @@ class TestVectorToGraph:
         raster_groups = {
             criteria_key: criteria.group for criteria_key, criteria in mcda_engine.raster_preset.criteria.items()
         }
+        grid_constructor = HexagonGridBuilder(hexagon_size=4, block_size=8)
+        hexagon_edge_generator = HexagonEdgeGenerator()
         hexagon_graph_builder = HexagonGraphBuilder(
+            grid_builder=grid_constructor, edge_generator=hexagon_edge_generator
+        )
+        graph, nodes_gdf = hexagon_graph_builder.build_graph(
             mcda_engine.project_area_geometry,
             raster_groups,
             mcda_engine.processed_vectors,
-            hexagon_size=4,
-            block_size=8,
         )
-        graph, nodes_gdf = hexagon_graph_builder.build_graph()
 
         if debug:
             edges = convert_hexagon_edges_to_gdf(graph, nodes_gdf)
