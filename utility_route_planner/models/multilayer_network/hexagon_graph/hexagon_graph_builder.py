@@ -26,10 +26,9 @@ class HexagonGraphBuilder:
     and intersecting vector.
     """
 
-    def __init__(self, hexagon_size: float, grid_builder: HexagonGridBuilder, edge_generator: HexagonEdgeGenerator):
-        # TODO get hexagon size from grid builder
-        self.hexagon_size = hexagon_size
-        self.hexagon_width, self.hexagon_height = get_hexagon_width_and_height(hexagon_size)
+    def __init__(self, grid_builder: HexagonGridBuilder, edge_generator: HexagonEdgeGenerator):
+        self.hexagon_size = grid_builder.hexagon_size
+        self.hexagon_width, self.hexagon_height = get_hexagon_width_and_height(self.hexagon_size)
         self.grid_builder = grid_builder
         self.edge_generator = edge_generator
 

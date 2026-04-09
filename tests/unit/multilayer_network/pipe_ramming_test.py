@@ -56,7 +56,7 @@ class TestPipeRamming:
             grid_builder = HexagonGridBuilder(hexagon_size=Config.HEXAGON_SIZE, block_size=Config.HEXAGON_BLOCK_SIZE)
             hexagon_edge_generator = HexagonEdgeGenerator()
             hexagon_graph_builder = HexagonGraphBuilder(
-                hexagon_size=Config.HEXAGON_SIZE, grid_builder=grid_builder, edge_generator=hexagon_edge_generator
+                grid_builder=grid_builder, edge_generator=hexagon_edge_generator
             )
 
             raster_groups = {
@@ -306,7 +306,7 @@ class TestPipeRammingTheoryExamples:
             grid_builder = HexagonGridBuilder(hexagon_size=Config.HEXAGON_SIZE, block_size=Config.HEXAGON_BLOCK_SIZE)
             hexagon_edge_generator = HexagonEdgeGenerator()
             hexagon_graph_builder = HexagonGraphBuilder(
-                hexagon_size=Config.HEXAGON_SIZE, grid_builder=grid_builder, edge_generator=hexagon_edge_generator
+                grid_builder=grid_builder, edge_generator=hexagon_edge_generator
             )
             cost_surface_graph, cost_surface_nodes = hexagon_graph_builder.build_graph(
                 project_area, raster_criteria_groups, preprocessed_vectors

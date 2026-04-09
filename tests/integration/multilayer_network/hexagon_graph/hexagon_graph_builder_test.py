@@ -28,9 +28,7 @@ def hexagon_graph_builder() -> HexagonGraphBuilder:
     hexagon_size = 1
     grid_constructor = HexagonGridBuilder(hexagon_size=hexagon_size, block_size=Config.HEXAGON_BLOCK_SIZE)
     hexagon_edge_generator = HexagonEdgeGenerator()
-    _hexagon_graph_builder = HexagonGraphBuilder(
-        hexagon_size=hexagon_size, grid_builder=grid_constructor, edge_generator=hexagon_edge_generator
-    )
+    _hexagon_graph_builder = HexagonGraphBuilder(grid_builder=grid_constructor, edge_generator=hexagon_edge_generator)
     return _hexagon_graph_builder
 
 
