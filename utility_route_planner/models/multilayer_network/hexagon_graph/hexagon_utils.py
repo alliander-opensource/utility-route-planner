@@ -15,6 +15,7 @@ from settings import Config
 from utility_route_planner.models.multilayer_network.graph_datastructures import (
     HexagonConnectionEdgeInfo,
     PipeRammingEdgeInfo,
+    BaseWeightedEdgeInfo,
 )
 
 logger = structlog.get_logger(__name__)
@@ -37,19 +38,16 @@ def get_hexagon_width_and_height(hexagon_size: float) -> tuple[float, float]:
     return hexagon_width, hexagon_height
 
 
-# TODO: update this function when every edge has a dataclass again
-def get_hexagon_edge_weight(hexagon_edge: int | HexagonConnectionEdgeInfo) -> int | int:
+def get_hexagon_edge_weight(hexagon_edge: tuple[int, int] | BaseWeightedEdgeInfo) -> int | int:
     """
     When constructing the Hexagon graph, an edge can be set in two ways:
-    - When set in the HexagonGraphBuilder: weight is set as a float directly
-    - When set as part of piperamming: weight is set as part of the HexagonEdgeInfo dataclass
-
-    This function can be used to extract the edge weight when doing a shortest path analysis.
+    - When set in the HexagonGraphBuilder: weight is set as in as part of the edge data
+    - When set as part of piperamming or graph composing: weight is set as part of the BaseWeightedEdgeInfo dataclass
     """
     match hexagon_edge:
-        case int():
-            return hexagon_edge
-        case HexagonConnectionEdgeInfo():
+        case tuple():
+            return hexagon_edge[1]
+        case BaseWeightedEdgeInfo():
             return hexagon_edge.weight
         case _:
             raise ValueError("Encountered invalid edge type")

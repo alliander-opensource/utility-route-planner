@@ -32,13 +32,17 @@ class BaseEdgeInfo:
 
 
 @dataclass
+class BaseWeightedEdgeInfo(BaseEdgeInfo):
+    weight: int
+
+
+@dataclass
 class OSMEdgeInfo(BaseEdgeInfo):
     osm_id: int
 
 
 @dataclass
-class HexagonConnectionEdgeInfo(BaseEdgeInfo):
-    weight: int
+class HexagonConnectionEdgeInfo(BaseWeightedEdgeInfo):
     connects_height_levels: (
         bool  # always True when this type of edge is used, but useful for debugging to make explicit
     )
@@ -53,8 +57,7 @@ class PipeRammingOrigin(enum.StrEnum):
 
 
 @dataclass
-class PipeRammingEdgeInfo(BaseEdgeInfo):
-    weight: float
+class PipeRammingEdgeInfo(BaseWeightedEdgeInfo):
     osm_id_junction: int | None
     segment_group: int
     origin: PipeRammingOrigin
