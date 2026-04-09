@@ -37,7 +37,8 @@ def get_hexagon_width_and_height(hexagon_size: float) -> tuple[float, float]:
     return hexagon_width, hexagon_height
 
 
-def get_hexagon_edge_weight(hexagon_edge: float | HexagonConnectionEdgeInfo) -> int | float:
+# TODO: update this function when every edge has a dataclass again
+def get_hexagon_edge_weight(hexagon_edge: int | HexagonConnectionEdgeInfo) -> int | int:
     """
     When constructing the Hexagon graph, an edge can be set in two ways:
     - When set in the HexagonGraphBuilder: weight is set as a float directly
@@ -46,7 +47,7 @@ def get_hexagon_edge_weight(hexagon_edge: float | HexagonConnectionEdgeInfo) -> 
     This function can be used to extract the edge weight when doing a shortest path analysis.
     """
     match hexagon_edge:
-        case float():
+        case int():
             return hexagon_edge
         case HexagonConnectionEdgeInfo():
             return hexagon_edge.weight

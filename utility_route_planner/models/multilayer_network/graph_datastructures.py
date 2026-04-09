@@ -38,7 +38,7 @@ class OSMEdgeInfo(EdgeInfo):
 
 @dataclass
 class HexagonConnectionEdgeInfo(EdgeInfo):
-    weight: float
+    weight: int
     connects_height_levels: (
         bool  # always True when this type of edge is used, but useful for debugging to make explicit
     )
