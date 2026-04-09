@@ -18,8 +18,8 @@ from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_utils
 )
 from utility_route_planner.util.geo_utilities import (
     get_empty_geodataframe,
-    get_first_last_point_from_linestring,
     get_perpendicular_line,
+    get_endlines_of_multilinestring,
 )
 from utility_route_planner.util.timer import time_function
 from utility_route_planner.util.write import write_results_to_geopackage
@@ -230,28 +230,49 @@ class HexagonGraphComposer:
         Filter the nodes of the component to connect so we do not connect halfway a bridge/tunnel, but only at the
         start and end.
 
-        Note this does not work well when a bridge/tunnel is wider than it is long due to the centerline approach.
+        Some thoughts and notes on improvements:
+            - This does not work well when a bridge/tunnel is wider than it is long due to the centerline approach.
+            - Validation using OSM does not work well as it is not perfectly aligned with the BGT. This is especially
+            apparent for smaller pedestrian or cycling tunnels.
+            - Expand node model so we can retrieve the BGT polygons which can be used for cleaner centerlines. This can
+            also be used for finding the shared boundary of BGT polygons for determining the entrypoints. E.g., finding
+            the road which perfectly connects through height levels.
         """
-        # TODO validate pairs based on osm road (if available)
-        # TODO try to find the counterpart at the other height level through shared boundary
-        #  - expand node model first with bgt id's?
+
         gdf_component_outer_nodes = gdf_component[
             gdf_component.geometry.dwithin(component_area.boundary, self.hexagon_size)
         ]
-        component_area_simplified = component_area.simplify(self.hexagon_size + 0.1)
+        component_area_simplified = component_area.simplify(self.hexagon_size * 1.6)
         component_area_centerline = pygeoops.centerline(component_area_simplified, extend=True)
-        # TODO handle linestring with more than 2 points
         if isinstance(component_area_centerline, shapely.LineString):
-            start, end = get_first_last_point_from_linestring(component_area_centerline)
+            start, end = (
+                shapely.get_point(component_area_centerline, 0),
+                shapely.get_point(component_area_centerline, 1),
+            )
             line_1 = get_perpendicular_line(start, end, 40)
-            line_2 = get_perpendicular_line(end, start, 40)
+            start, end = (
+                shapely.get_point(component_area_centerline, -1),
+                shapely.get_point(component_area_centerline, -2),
+            )
+            line_2 = get_perpendicular_line(start, end, 40)
             entrypoint_lines = shapely.MultiLineString([line_1, line_2])
-            gdf_component_outer_nodes = gdf_component_outer_nodes[
-                gdf_component.dwithin(entrypoint_lines, distance=self.hexagon_size * 2)
-            ]
+        elif isinstance(component_area_centerline, shapely.MultiLineString):
+            lines = get_endlines_of_multilinestring(component_area_centerline)
+            entrypoint_lines = shapely.MultiLineString(
+                [get_perpendicular_line(shapely.get_point(i, 1), shapely.get_point(i, 0), 40) for i in lines]
+            )
         else:
             entrypoint_lines = shapely.MultiLineString()
             logger.warning(f"Unhandled situation: {type(component_area_centerline)}")
+
+        if not entrypoint_lines.is_empty:
+            gdf_component_outer_nodes = gdf_component_outer_nodes[
+                gdf_component_outer_nodes.dwithin(entrypoint_lines, distance=self.hexagon_size * 2)
+            ]
+        else:
+            logger.warning(
+                "Unable to create proper connections between height levels. All outer nodes are now connected"
+            )
 
         if self.debug:
             write_results_to_geopackage(self.out, gdf_component_outer_nodes, "pytest_component_area_outer_nodes")
@@ -259,7 +280,6 @@ class HexagonGraphComposer:
             write_results_to_geopackage(self.out, component_area_simplified, "pytest_component_area_simplified")
             write_results_to_geopackage(self.out, component_area_centerline, "pytest_component_area_centerline")
             write_results_to_geopackage(self.out, component_area.boundary, "pytest_component_area_boundary")
-
             write_results_to_geopackage(self.out, entrypoint_lines, "pytest_component_entrypoint_lines")
         return gdf_component_outer_nodes
 

@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Contributors to the utility-route-project and Alliander N.V.
 #
 # SPDX-License-Identifier: Apache-2.0
-
+from collections import Counter
 from pathlib import Path
 
 import numpy as np
@@ -238,6 +238,55 @@ def split_polygon_by_linestrings(
         )
 
     return split_polygon
+
+
+def get_endlines_of_multilinestring(multilinestring: shapely.MultiLineString) -> list[shapely.LineString]:
+    """
+    Get the endlines (last segments) of a multilinestring, oriented away from the shared center point.
+
+    This function assumes a star-like topology (or set of connected lines) where there is a central
+    "hub" point shared by the linestrings. It returns the outermost segment of each branch,
+    oriented outgoing from the center. This might not work for a multilinestring with multiple "hubs" or loops.
+
+    :param multilinestring: The input MultiLineString geometry.
+    :return: A list of LineString geometries representing the end segments.
+    """
+    if not isinstance(multilinestring, shapely.MultiLineString) or len(multilinestring.geoms) <= 1:
+        raise ValueError("Invalid input received, expected a MultiLineString with at least 2 LineStrings")
+
+    # Flatten all start/end points to find the "hub" (most frequent endpoint)
+    endpoints = []
+    for line in multilinestring.geoms:
+        endpoints.append(line.coords[0])
+        endpoints.append(line.coords[-1])
+
+    # The hub is the point that connects the lines (appears most frequently)
+    counts = Counter(endpoints)
+    hub_coords, _ = counts.most_common(1)[0]
+    hub_point = shapely.Point(hub_coords)
+
+    result_lines = []
+    for line in multilinestring.geoms:
+        coords = list(line.coords)
+
+        # Determine orientation: we want to start from the hub
+        start_dist = shapely.Point(coords[0]).distance(hub_point)
+        end_dist = shapely.Point(coords[-1]).distance(hub_point)
+
+        # Orient away from hub
+        if start_dist <= end_dist:
+            # Already starts at/near hub
+            oriented_coords = coords
+        else:
+            # Ends at hub, so reverse it
+            oriented_coords = coords[::-1]
+
+        # Extract the last segment of the oriented line
+        if len(oriented_coords) >= 2:
+            segment = shapely.LineString([oriented_coords[-2], oriented_coords[-1]])
+            result_lines.append(segment)
+
+    return result_lines
 
 
 def get_perpendicular_line(

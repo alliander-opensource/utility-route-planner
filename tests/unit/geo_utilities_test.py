@@ -3,12 +3,14 @@
 # SPDX-License-Identifier: Apache-2.0
 import pytest
 import shapely
+from shapely.testing import assert_geometries_equal
 
 from utility_route_planner.util.geo_utilities import (
     get_angle_between_points,
     extrapolate_point_to_target,
     extend_linestring_both_ends,
     split_polygon_by_linestrings,
+    get_endlines_of_multilinestring,
 )
 
 
@@ -145,3 +147,29 @@ class TestSplitPolygonByMultiLineString:
             assert polygon.is_valid
             assert polygon.within(polygon)
             assert polygon.area > 0
+
+
+class TestMultiLineStringEndparts:
+    def test_get_lines_star_shape(self):
+        linestring = shapely.MultiLineString(
+            [
+                shapely.LineString([(5, 5), (5, 10)]),
+                shapely.LineString([(5, 10), (5, 5)]),  # swapped version of the above, should not matter
+                shapely.LineString([(5, 5), (10, 0)]),
+                shapely.LineString([(5, 5), (0, 0)]),
+                shapely.LineString([(0, 5), (5, 5)]),
+                shapely.LineString([(5, 5), (1, 0), (0, -1)]),
+            ]
+        )
+        # "hub" point should always be present first.
+        expected_lines = [
+            shapely.LineString([(5, 5), (5, 10)]),
+            shapely.LineString([(5, 5), (5, 10)]),
+            shapely.LineString([(5, 5), (10, 0)]),
+            shapely.LineString([(5, 5), (0, 0)]),
+            shapely.LineString([(5, 5), (0, 5)]),
+            shapely.LineString([(1, 0), (0, -1)]),
+        ]
+
+        lines = get_endlines_of_multilinestring(linestring)
+        assert_geometries_equal(lines, expected_lines)
