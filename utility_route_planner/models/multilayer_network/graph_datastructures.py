@@ -19,25 +19,34 @@ class OSMNodeInfo:
 
 
 @dataclass
-class EdgeInfo:
+class BaseEdgeInfo:
     edge_id: int = field(init=False)
-    length: float = field(init=False)
-    geometry: shapely.LineString
 
     def set_edge_id(self, edge_id: int):
         self.edge_id = edge_id
+
+
+@dataclass
+class HexagonEdgeInfo(BaseEdgeInfo):
+    weight: int
+
+
+@dataclass
+class BaseGeometryEdgeInfo(BaseEdgeInfo):
+    length: float = field(init=False)
+    geometry: shapely.LineString
 
     def __post_init__(self):
         self.length = round(self.geometry.length, 2)
 
 
 @dataclass
-class OSMEdgeInfo(EdgeInfo):
+class OSMEdgeInfo(BaseGeometryEdgeInfo):
     osm_id: int
 
 
 @dataclass
-class HexagonConnectionEdgeInfo(EdgeInfo):
+class HexagonConnectionEdgeInfo(BaseGeometryEdgeInfo):
     weight: int
     connects_height_levels: (
         bool  # always True when this type of edge is used, but useful for debugging to make explicit
@@ -53,7 +62,7 @@ class PipeRammingOrigin(enum.StrEnum):
 
 
 @dataclass
-class PipeRammingEdgeInfo(EdgeInfo):
+class PipeRammingEdgeInfo(BaseGeometryEdgeInfo):
     weight: float
     osm_id_junction: int | None
     segment_group: int
