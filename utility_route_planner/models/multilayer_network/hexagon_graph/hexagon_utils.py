@@ -77,6 +77,8 @@ def get_hexagon_edge_geometries_for_path(
         # from the dataclass
         if isinstance(edge_data, PipeRammingEdgeInfo):
             edge_meta_data = asdict(edge_data)
+        elif isinstance(edge_data, HexagonConnectionEdgeInfo):
+            edge_meta_data = asdict(edge_data)
         else:
             edge_id = graph.edge_indices_from_endpoints(source_node, target_node)[0]
             edge_linestring = shapely.LineString(
@@ -93,7 +95,13 @@ def get_hexagon_edge_geometries_for_path(
             )
 
         edges_list.append(edge_meta_data)
-    return gpd.GeoDataFrame(data=edges_list, crs=Config.CRS)
+
+    hexagon_path_geometries = gpd.GeoDataFrame(data=edges_list, crs=Config.CRS)
+    if "connects_height_levels" in hexagon_path_geometries.columns:
+        hexagon_path_geometries.loc[:, "connects_height_levels"] = hexagon_path_geometries.loc[
+            :, "connects_height_levels"
+        ].fillna(False)
+    return hexagon_path_geometries
 
 
 def convert_hexagon_edges_to_gdf(graph: rx.PyGraph, nodes: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
@@ -112,13 +120,28 @@ def convert_hexagon_edges_to_gdf(graph: rx.PyGraph, nodes: gpd.GeoDataFrame) -> 
     edge_weight_map = graph.edge_index_map()
     source_nodes = [source_node for source_node, _, _ in edge_weight_map.values()]
     target_nodes = [target_node for _, target_node, _ in edge_weight_map.values()]
-    weights = [get_hexagon_edge_weight(weight) for _, _, weight in edge_weight_map.values()]
+
+    weights = []
+
+    connects_height_levels = []
+    for _, _, edge_data in edge_weight_map.values():
+        weights.append(get_hexagon_edge_weight(edge_data))
+        if isinstance(edge_data, HexagonConnectionEdgeInfo):
+            connects_height_levels.append(edge_data.connects_height_levels)
+        else:
+            connects_height_levels.append(False)
 
     source_coordinates = node_to_geom_mapping.loc[source_nodes].get_coordinates().values
     target_coordinates = node_to_geom_mapping.loc[target_nodes].get_coordinates().values
     edge_geometries = shapely.linestrings(np.stack([source_coordinates, target_coordinates], axis=1))
 
     return gpd.GeoDataFrame(
-        {"source_node": source_nodes, "target_node": target_nodes, "weight": weights, "geometry": edge_geometries},
+        {
+            "source_node": source_nodes,
+            "target_node": target_nodes,
+            "weight": weights,
+            "connects_height_levels": connects_height_levels,
+            "geometry": edge_geometries,
+        },
         crs=Config.CRS,
     )
