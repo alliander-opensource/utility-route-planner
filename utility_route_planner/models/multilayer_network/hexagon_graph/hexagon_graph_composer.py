@@ -91,7 +91,6 @@ class HexagonGraphComposer:
                 f"Height level: {height} contains {rx.number_connected_components(height_graph.graph)} subgraph(s) to connect the main graph."
             )
 
-            # TODO put node dataframe in this function and concat to the main df
             height_mapping = self.add_height_graph_to_main_graph(
                 height_graph.graph, height_graph.nodes_gdf, main_height_level
             )
@@ -138,19 +137,16 @@ class HexagonGraphComposer:
         for old_idx, node_data in enumerate(height_graph.nodes()):
             # Always add as new node (even if many map to same "right" node)
             new_idx = self.processed_graphs_and_nodes_per_height_level[main_height_level].graph.add_node(node_data)
-
-            # TODO is updating the nodes_gdf sufficient here? Which one should we update?
-            # TODO concat height level node_df (if not main) to main node df and reassign ids on main level
-            # self.processed_graphs_and_nodes_per_height_level[main_height_level].graph[new_idx].node_id = new_idx
-            # self.gdf_main_nodes.loc[self.gdf_main_nodes["node_id"] == old_idx, "node_id"] = new_idx
-            # self.processed_graphs_and_nodes_per_height_level[main_height_level].nodes_gdf.loc[
-            #     self.processed_graphs_and_nodes_per_height_level[main_height_level].nodes_gdf["node_id"] == old_idx,
-            # "node_id"] = new_idx
             mapping[old_idx] = new_idx
-        height_node_df["node_id"] = height_node_df["node_id"].replace(mapping)
 
+        # Reassign nodes to a copied height node df, as the "original" node ids are required to properly connect height
+        # levels in the next step
+        height_node_df_copy = height_node_df.copy()
+        height_node_df_copy["node_id"] = height_node_df_copy["node_id"].replace(mapping)
         self.processed_graphs_and_nodes_per_height_level[main_height_level].nodes_gdf = gpd.GeoDataFrame(
-            pd.concat([self.processed_graphs_and_nodes_per_height_level[main_height_level].nodes_gdf, height_node_df])
+            pd.concat(
+                [self.processed_graphs_and_nodes_per_height_level[main_height_level].nodes_gdf, height_node_df_copy]
+            )
         )
 
         # Add subgraph edges to the main graph
@@ -159,9 +155,6 @@ class HexagonGraphComposer:
             self.processed_graphs_and_nodes_per_height_level[main_height_level].graph.add_edge(
                 mapping[u], mapping[v], weight
             )
-            # self.processed_graphs_and_nodes_per_height_level[main_height_level].graph.get_edge_data_by_index(new_idx).set_edge_id(
-            #     new_idx
-            # )
 
         return mapping
 
