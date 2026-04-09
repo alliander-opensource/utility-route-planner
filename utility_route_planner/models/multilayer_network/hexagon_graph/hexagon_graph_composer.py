@@ -12,7 +12,10 @@ import structlog
 
 from settings import Config
 from utility_route_planner.models.multilayer_network.graph_datastructures import HexagonConnectionEdgeInfo
-from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_utils import convert_hexagon_edges_to_gdf
+from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_utils import (
+    convert_hexagon_edges_to_gdf,
+    update_edge_id,
+)
 from utility_route_planner.util.geo_utilities import (
     get_empty_geodataframe,
     get_first_last_point_from_linestring,
@@ -156,9 +159,14 @@ class HexagonGraphComposer:
 
         # Add subgraph edges to the main graph
         for u, v, weight in height_graph.weighted_edge_list():
-            # TODO is setting the edge id on the graph required here?
-            self.processed_graphs_and_nodes_per_height_level[main_height_level].graph.add_edge(
+            new_edge_id = self.processed_graphs_and_nodes_per_height_level[main_height_level].graph.add_edge(
                 mapping[u], mapping[v], weight
+            )
+            new_edge_data = self.processed_graphs_and_nodes_per_height_level[
+                main_height_level
+            ].graph.get_edge_data_by_index(new_edge_id)
+            self.processed_graphs_and_nodes_per_height_level[main_height_level].graph.update_edge_by_index(
+                new_edge_id, update_edge_id(new_edge_id, new_edge_data)
             )
 
         return mapping
@@ -194,12 +202,13 @@ class HexagonGraphComposer:
         edge_indices = self.processed_graphs_and_nodes_per_height_level[main_height_level].graph.add_edges_from(
             edges_to_add
         )
-        [
-            self.processed_graphs_and_nodes_per_height_level[main_height_level]
-            .graph.get_edge_data_by_index(i)
-            .set_edge_id(i)
-            for i in edge_indices
-        ]
+        for new_edge_id in edge_indices:
+            new_edge_data = self.processed_graphs_and_nodes_per_height_level[
+                main_height_level
+            ].graph.get_edge_data_by_index(new_edge_id)
+            self.processed_graphs_and_nodes_per_height_level[main_height_level].graph.update_edge_by_index(
+                new_edge_id, update_edge_id(new_edge_id, new_edge_data)
+            )
 
         if self.debug:
             # visualize the pairs / edges to be

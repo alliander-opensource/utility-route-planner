@@ -38,7 +38,7 @@ def get_hexagon_width_and_height(hexagon_size: float) -> tuple[float, float]:
     return hexagon_width, hexagon_height
 
 
-def get_hexagon_edge_weight(hexagon_edge: tuple[int, int] | BaseWeightedEdgeInfo) -> int | int:
+def get_hexagon_edge_weight(hexagon_edge: tuple[int, int] | BaseWeightedEdgeInfo) -> int:
     """
     When constructing the Hexagon graph, an edge can be set in two ways:
     - When set in the HexagonGraphBuilder: weight is set as in as part of the edge data
@@ -49,6 +49,24 @@ def get_hexagon_edge_weight(hexagon_edge: tuple[int, int] | BaseWeightedEdgeInfo
             return hexagon_edge[1]
         case BaseWeightedEdgeInfo():
             return hexagon_edge.weight
+        case _:
+            raise ValueError("Encountered invalid edge type")
+
+
+def update_edge_id(
+    new_id: int, hexagon_edge: tuple[int, int] | BaseWeightedEdgeInfo
+) -> tuple[int, int] | BaseWeightedEdgeInfo:
+    """
+    Set the edge id as property of the edge, based on the type of edge that is encountered
+    - When set in the HexagonGraphBuilder: id is set as in as part of the edge data
+    - When set as part of piperamming or graph composing: id is set as part of the BaseWeightedEdgeInfo dataclass
+    """
+    match hexagon_edge:
+        case tuple():
+            return new_id, hexagon_edge[1]
+        case BaseWeightedEdgeInfo():
+            hexagon_edge.set_edge_id(new_id)
+            return hexagon_edge
         case _:
             raise ValueError("Encountered invalid edge type")
 
