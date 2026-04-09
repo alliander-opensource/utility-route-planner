@@ -1037,9 +1037,6 @@ class TestPipeRammingTheoryExamples:
             expected_crossings_used_in_route,
         )
 
-    def test_theory_scenario_with_bridge(self):
-        pass
-
     def _run_crossing(
         self,
         cost_surface_graph: rx.PyGraph,
