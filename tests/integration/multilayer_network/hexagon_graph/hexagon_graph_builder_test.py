@@ -25,10 +25,11 @@ from utility_route_planner.util.write import reset_geopackage, write_results_to_
 
 @pytest.fixture()
 def hexagon_graph_builder() -> HexagonGraphBuilder:
-    grid_constructor = HexagonGridBuilder(hexagon_size=Config.HEXAGON_SIZE, block_size=Config.HEXAGON_BLOCK_SIZE)
+    hexagon_size = 1
+    grid_constructor = HexagonGridBuilder(hexagon_size=hexagon_size, block_size=Config.HEXAGON_BLOCK_SIZE)
     hexagon_edge_generator = HexagonEdgeGenerator()
     _hexagon_graph_builder = HexagonGraphBuilder(
-        hexagon_size=Config.HEXAGON_SIZE, grid_builder=grid_constructor, edge_generator=hexagon_edge_generator
+        hexagon_size=hexagon_size, grid_builder=grid_constructor, edge_generator=hexagon_edge_generator
     )
     return _hexagon_graph_builder
 
@@ -204,7 +205,6 @@ class TestHexagonGraphBuilder:
 
 class TestHexagonGraphBuilderWithHeightLevels:
     out = Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT
-    hexagon_size = 1.0
     debug: bool = False
 
     @pytest.fixture(autouse=True)
@@ -293,7 +293,7 @@ class TestHexagonGraphBuilderWithHeightLevels:
         assert all(route_engine.result_route_edges.weight < 30)
         # assert the number of connecting edges between height levels
         e = convert_hexagon_edges_to_gdf(merged_graph, merged_nodes_gdf)
-        # assert len(e[e.connects_height_levels]) == 48
+        assert len(e[e.connects_height_levels]) == 48
         # assert we cannot skip halfway the tunnel to the main road.
         assert not all(e[e.connects_height_levels].intersects(main_road))
 
@@ -395,8 +395,8 @@ class TestHexagonGraphBuilderWithHeightLevels:
 
         route_engine = MultilayerRouteEngine(merged_graph, rx.PyGraph(), merged_nodes_gdf, write_output=self.debug)
         assert rx.number_connected_components(merged_graph) == 1
-        # e = convert_hexagon_edges_to_gdf(merged_graph, merged_nodes_gdf)
-        # assert len(e[e.connects_height_levels]) == 100
+        e = convert_hexagon_edges_to_gdf(merged_graph, merged_nodes_gdf)
+        assert len(e[e.connects_height_levels]) == 100
 
         # Find a route under the bridge
         route_engine.find_route(shapely.LineString([(6, 95), (6, 5)]))  # route should go under the bridge here (grass)
@@ -571,7 +571,7 @@ class TestHexagonGraphBuilderWithHeightLevels:
         hexagon_graph_composer = HexagonGraphComposer(
             processed_criteria_per_height_level,
             graphs_per_height,
-            hexagon_size=self.hexagon_size,
+            hexagon_size=hexagon_graph_builder.hexagon_size,
             debug=debug,
         )
         merged_graph = hexagon_graph_composer.compose()
