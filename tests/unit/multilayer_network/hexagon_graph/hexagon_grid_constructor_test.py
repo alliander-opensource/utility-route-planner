@@ -11,34 +11,16 @@ import pytest
 import shapely
 
 from settings import Config
-from utility_route_planner.models.mcda.load_mcda_preset import load_preset
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_grid_builder import (
     HexagonGridBuilder,
 )
 
 
 @pytest.fixture()
-def preprocessed_vectors() -> dict[str, gpd.GeoDataFrame]:
-    return {"test": gpd.GeoDataFrame()}
-
-
-@pytest.fixture()
-def raster_groups() -> dict[str, str]:
-    preset = load_preset(
-        Config.RASTER_PRESET_NAME_BENCHMARK,
-        Config.PYTEST_PATH_GEOPACKAGE_MCDA,
-        gpd.read_file(Config.PYTEST_PATH_GEOPACKAGE_MCDA, layer=Config.PYTEST_LAYER_NAME_PROJECT_AREA).iloc[0].geometry,
-    )
-    return {criteria_key: criteria.group for criteria_key, criteria in preset.criteria.items()}
-
-
-@pytest.fixture()
-def grid_constructor(
-    raster_groups: dict[str, str], preprocessed_vectors: dict[str, gpd.GeoDataFrame]
-) -> HexagonGridBuilder:
+def grid_constructor() -> HexagonGridBuilder:
     hexagon_size = 0.5
     block_size = 512
-    return HexagonGridBuilder(raster_groups, preprocessed_vectors, hexagon_size, block_size)
+    return HexagonGridBuilder(hexagon_size, block_size)
 
 
 class TestConstructHexagonalGridForBoundingBox:
