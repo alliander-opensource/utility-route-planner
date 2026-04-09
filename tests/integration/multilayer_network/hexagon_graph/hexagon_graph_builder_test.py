@@ -304,7 +304,7 @@ class TestHexagonGraphBuilderWithHeightLevels:
         # Find a route which does not use a tunnel but crosses the field above it.
         route_engine.find_route(shapely.LineString([(1, 65), (99, 65)]))
         assert route_engine.get_result_route_length() == pytest.approx(112, 0.5)
-        # assert len(route_engine.result_route_edges[route_engine.result_route_edges.connects_height_levels]) == 0
+        assert len(route_engine.result_route_edges[route_engine.result_route_edges.connects_height_levels]) == 0
         assert all(route_engine.result_route_edges.weight <= 4)
 
     def test_build_graph_with_one_bridge(self, hexagon_graph_builder: HexagonGraphBuilder):
@@ -400,7 +400,7 @@ class TestHexagonGraphBuilderWithHeightLevels:
         route_engine.find_route(shapely.LineString([(6, 95), (6, 5)]))  # route should go under the bridge here (grass)
         assert route_engine.get_result_route_length() == pytest.approx(95, 0.5)
         # assert we can route from north to south through a tunnel
-        # assert len(route_engine.result_route_edges[route_engine.result_route_edges.connects_height_levels]) == 0
+        assert len(route_engine.result_route_edges[route_engine.result_route_edges.connects_height_levels]) == 0
         # assert we did not cross the expensive road or water but used the grass underneath the bridge.
         assert all(route_engine.result_route_edges.weight <= 4)
 
