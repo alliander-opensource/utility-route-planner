@@ -9,7 +9,6 @@ import shapely
 import structlog
 
 from settings import Config
-from utility_route_planner.models.multilayer_network.graph_datastructures import HexagonEdgeInfo
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_edge_generator import HexagonEdgeGenerator
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_grid_builder import (
     HexagonGridBuilder,
@@ -28,6 +27,7 @@ class HexagonGraphBuilder:
     """
 
     def __init__(self, hexagon_size: float, grid_builder: HexagonGridBuilder, edge_generator: HexagonEdgeGenerator):
+        # TODO get hexagon size from grid builder
         self.hexagon_size = hexagon_size
         self.hexagon_width, self.hexagon_height = get_hexagon_width_and_height(hexagon_size)
         self.grid_builder = grid_builder
@@ -94,11 +94,9 @@ class HexagonGraphBuilder:
 
             # Add edges to the graph and set edge id on the dataclass
             edges = self.edge_generator.generate(block_edge_attributes, nodes_to_check)
-            edge_data = list(map(HexagonEdgeInfo, edges["weight"].to_list()))
-            edge_ids = graph.add_edges_from(
-                zip(edges["source_node"].to_list(), edges["target_node"].to_list(), edge_data)
-            )
-            [edge.set_edge_id(edge_id) for edge_id, edge in zip(edge_ids, edge_data)]
+            edge_ids = graph.add_edges_from(edges.rows())
+            for edge_id, (u, v, weight) in zip(edge_ids, edges.rows()):
+                graph.update_edge(u, v, (edge_id, weight))
 
             if last_column:
                 previous_row_edge_coordinates = current_row_edge_coordinates
