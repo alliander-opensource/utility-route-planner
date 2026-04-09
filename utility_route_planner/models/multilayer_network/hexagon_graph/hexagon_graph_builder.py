@@ -9,6 +9,7 @@ import shapely
 import structlog
 
 from settings import Config
+from utility_route_planner.models.multilayer_network.graph_datastructures import hexagon_edge_info
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_edge_generator import HexagonEdgeGenerator
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_grid_builder import (
     HexagonGridBuilder,
@@ -95,7 +96,7 @@ class HexagonGraphBuilder:
             edges = self.edge_generator.generate(block_edge_attributes, nodes_to_check)
             edge_ids = graph.add_edges_from(edges.rows())
             for edge_id, (u, v, weight) in zip(edge_ids, edges.rows()):
-                graph.update_edge(u, v, (edge_id, weight))
+                graph.update_edge(u, v, hexagon_edge_info(edge_id, weight))
 
             if last_column:
                 previous_row_edge_coordinates = current_row_edge_coordinates

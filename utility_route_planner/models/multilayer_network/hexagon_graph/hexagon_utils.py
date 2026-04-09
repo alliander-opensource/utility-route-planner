@@ -16,6 +16,7 @@ from utility_route_planner.models.multilayer_network.graph_datastructures import
     HexagonConnectionEdgeInfo,
     PipeRammingEdgeInfo,
     BaseWeightedEdgeInfo,
+    hexagon_edge_info,
 )
 
 logger = structlog.get_logger(__name__)
@@ -38,24 +39,18 @@ def get_hexagon_width_and_height(hexagon_size: float) -> tuple[float, float]:
     return hexagon_width, hexagon_height
 
 
-def get_hexagon_edge_weight(hexagon_edge: tuple[int, int] | BaseWeightedEdgeInfo) -> int:
+def get_hexagon_edge_weight(hexagon_edge: hexagon_edge_info | BaseWeightedEdgeInfo) -> int:
     """
     When constructing the Hexagon graph, an edge can be set in two ways:
     - When set in the HexagonGraphBuilder: weight is set as in as part of the edge data
     - When set as part of piperamming or graph composing: weight is set as part of the BaseWeightedEdgeInfo dataclass
     """
-    match hexagon_edge:
-        case tuple():
-            return hexagon_edge[1]
-        case BaseWeightedEdgeInfo():
-            return hexagon_edge.weight
-        case _:
-            raise ValueError("Encountered invalid edge type")
+    return hexagon_edge.weight
 
 
 def update_edge_id(
-    new_id: int, hexagon_edge: tuple[int, int] | BaseWeightedEdgeInfo
-) -> tuple[int, int] | BaseWeightedEdgeInfo:
+    new_id: int, hexagon_edge: hexagon_edge_info | BaseWeightedEdgeInfo
+) -> hexagon_edge_info | BaseWeightedEdgeInfo:
     """
     Set the edge id as property of the edge, based on the type of edge that is encountered
     - When set in the HexagonGraphBuilder: id is set as in as part of the edge data
@@ -63,7 +58,7 @@ def update_edge_id(
     """
     match hexagon_edge:
         case tuple():
-            return new_id, hexagon_edge[1]
+            return hexagon_edge_info(new_id, hexagon_edge[1])
         case BaseWeightedEdgeInfo():
             hexagon_edge.set_edge_id(new_id)
             return hexagon_edge

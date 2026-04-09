@@ -2,6 +2,7 @@
 #  #
 #  SPDX-License-Identifier: Apache-2.0
 import enum
+from collections import namedtuple
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -61,3 +62,6 @@ class PipeRammingEdgeInfo(BaseWeightedEdgeInfo):
     osm_id_junction: int | None
     segment_group: int
     origin: PipeRammingOrigin
+
+
+hexagon_edge_info = namedtuple("hexagon_edge_info", "edge_id weight")
