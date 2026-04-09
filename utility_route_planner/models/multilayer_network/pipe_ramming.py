@@ -14,7 +14,6 @@ from settings import Config
 import geopandas as gpd
 
 from utility_route_planner.models.multilayer_network.graph_datastructures import PipeRammingEdgeInfo, PipeRammingOrigin
-from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_utils import get_hexagon_edge_weight
 from utility_route_planner.util.geo_utilities import (
     osm_graph_to_gdfs,
     get_empty_geodataframe,
@@ -628,7 +627,7 @@ class GetPotentialPipeRammingCrossings:
             weight = rx.dijkstra_shortest_path_lengths(
                 self.cost_surface_graph,
                 closest_node_pairs[index].iloc[0],
-                get_hexagon_edge_weight,
+                lambda x: x.weight,
                 closest_node_pairs[index].iloc[1],
             )
             # TODO-discuss: what is the cost of going through the cost surface this way?

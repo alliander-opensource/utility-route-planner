@@ -38,15 +38,6 @@ def get_hexagon_width_and_height(hexagon_size: float) -> tuple[float, float]:
     return hexagon_width, hexagon_height
 
 
-def get_hexagon_edge_weight(hexagon_edge: hexagon_edge_info | BaseWeightedEdgeInfo) -> int:
-    """
-    When constructing the Hexagon graph, an edge can be set in two ways:
-    - When set in the HexagonGraphBuilder: weight is set as in as part of the edge data
-    - When set as part of piperamming or graph composing: weight is set as part of the BaseWeightedEdgeInfo dataclass
-    """
-    return hexagon_edge.weight
-
-
 def update_edge_id(
     new_id: int, hexagon_edge: hexagon_edge_info | BaseWeightedEdgeInfo
 ) -> hexagon_edge_info | BaseWeightedEdgeInfo:
@@ -97,7 +88,7 @@ def get_hexagon_edge_geometries_for_path(
             )
             edge_meta_data = dict(
                 edge_id=edge_id,
-                weight=get_hexagon_edge_weight(edge_data),
+                weight=edge_data.weight,
                 length=round(edge_linestring.length, 2),
                 connects_height_levels=False,
                 geometry=edge_linestring,
@@ -132,7 +123,7 @@ def convert_hexagon_edges_to_gdf(graph: rx.PyGraph, nodes: gpd.GeoDataFrame) -> 
     weights = []
     connects_height_levels = []
     for _, _, edge_data in edge_weight_map.values():
-        weights.append(get_hexagon_edge_weight(edge_data))
+        weights.append(edge_data.weight)
         if isinstance(edge_data, HexagonConnectionEdgeInfo):
             connects_height_levels.append(edge_data.connects_height_levels)
         else:

@@ -9,7 +9,6 @@ import structlog
 from settings import Config
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_utils import (
     get_hexagon_edge_geometries_for_path,
-    get_hexagon_edge_weight,
 )
 from utility_route_planner.util.geo_utilities import get_first_last_point_from_linestring, get_empty_geodataframe
 from utility_route_planner.util.timer import time_function
@@ -44,7 +43,7 @@ class MultilayerRouteEngine:
         target = self.gdf_cost_surface_nodes.loc[self.gdf_cost_surface_nodes.distance(end).idxmin(), "node_id"]
 
         # HexagonEdgeInfo.weight is used as edge weight for dijkstra
-        path_node_indices = rx.dijkstra_shortest_paths(self.cost_surface_graph, source, target, get_hexagon_edge_weight)
+        path_node_indices = rx.dijkstra_shortest_paths(self.cost_surface_graph, source, target, lambda x: x.weight)
         path_node_indices = path_node_indices[target]
         gdf_path_nodes = self.gdf_cost_surface_nodes.loc[self.gdf_cost_surface_nodes["node_id"].isin(path_node_indices)]
 
