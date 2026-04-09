@@ -12,7 +12,9 @@ import structlog
 from settings import Config
 from utility_route_planner.models.benchmark_routes import BenchmarkRouteCollection
 from utility_route_planner.models.mcda.mcda_engine import McdaCostSurfaceEngine
+from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_edge_generator import HexagonEdgeGenerator
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_graph_builder import HexagonGraphBuilder
+from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_grid_builder import HexagonGridBuilder
 from utility_route_planner.models.multilayer_network.multilayer_route_planner import MultilayerRouteEngine
 from utility_route_planner.models.multilayer_network.osm_graph_downloader import OSMGraphDownloader
 from utility_route_planner.models.multilayer_network.osm_graph_preprocessing import OSMGraphPreprocessor
@@ -41,14 +43,14 @@ def run_multilayer_network(
     raster_groups = {
         criteria_key: criteria.group for criteria_key, criteria in mcda_engine.raster_preset.criteria.items()
     }
-    hexagon_graph_builder = HexagonGraphBuilder(
+    grid_constructor = HexagonGridBuilder(hexagon_size=Config.HEXAGON_SIZE, block_size=Config.HEXAGON_BLOCK_SIZE)
+    hexagon_edge_generator = HexagonEdgeGenerator()
+    hexagon_graph_builder = HexagonGraphBuilder(grid_builder=grid_constructor, edge_generator=hexagon_edge_generator)
+    cost_surface_graph, cost_surface_nodes = hexagon_graph_builder.build_graph(
         mcda_engine.project_area_geometry,
         raster_groups,
         mcda_engine.processed_vectors,
-        hexagon_size=Config.HEXAGON_SIZE,
-        block_size=Config.HEXAGON_BLOCK_SIZE,
     )
-    cost_surface_graph, cost_surface_nodes = hexagon_graph_builder.build_graph()
     pipe_ramming = GetPotentialPipeRammingCrossings(osm_graph_preprocessed, cost_surface_graph, cost_surface_nodes)
     _ = pipe_ramming.get_crossings()
 
