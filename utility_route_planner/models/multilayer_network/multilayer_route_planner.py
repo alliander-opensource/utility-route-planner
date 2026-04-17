@@ -180,7 +180,7 @@ class MultilayerRouteEngine:
             costs = intersected.suitability_value.unique().tolist()
         return costs
 
-    def straighten_linestring(self, debug: bool = False) -> tuple[shapely.LineString, list[int]]:
+    def straighten_linestring(self) -> tuple[shapely.LineString, list[int]]:
         """
         The idea is to create shortcuts in the route by skipping nodes if the cost does not change. This is done by
         creating a linestring from the current node to the next node in the route and checking if the suitability values
@@ -198,16 +198,9 @@ class MultilayerRouteEngine:
         This results in a "straightened" linestring.
 
         """
-        # n_skip = 1
-        start_idx = 0
-        # start_node =
-        shortcut_order: list = [self.result_route_node_indices[start_idx]]
-        forwarded_node = self.result_route_node_indices[start_idx + 1]
-        # basic_cost = self.cost_surface_graph.get_edge_data(start_node, forwarded_node).weight
-        # shortcut_costs = basic_cost
-
         # center to center distance from a neighbouring hexagon
         inradius = math.sqrt(3) * self.hexagon_size
+        shortcut_order: list = [self.result_route_node_indices[0]]
 
         # TODO add height
         # create dataframe with: node_order, suit value, height level. use to get segments.
@@ -219,6 +212,7 @@ class MultilayerRouteEngine:
             gdf_crossed_nodes["suitability_value"] != gdf_crossed_nodes["suitability_value"].shift()
         ).cumsum()
 
+        # Note segments do not encapsulate pipe rammings as the costs are not on the node.
         for segment in gdf_crossed_nodes["segment"].unique():
             gdf_active_mask = gdf_crossed_nodes[gdf_crossed_nodes["segment"] == segment]
             start_node = int(gdf_active_mask.iloc[0]["node_id"])
@@ -232,7 +226,7 @@ class MultilayerRouteEngine:
                     continue
 
                 # For each node in the active segment, create a line from start_node and compute shortcut costs.
-                # Pick the last node (most skipped) where costs == [basic_cost].
+                # Pick the last node (most skipped) with still the same suitability costs
                 basic_cost = self.cost_surface_graph.get_edge_data(start_node, forwarded_node).weight
                 start_node_geom = self.cost_surface_graph.get_node_data(start_node).geometry
                 # Create lines from start_node to all nodes in the active segment
@@ -245,7 +239,11 @@ class MultilayerRouteEngine:
 
                 if valid_nodes.empty:
                     # No valid shortcut found for this part of the segment, move to the next node
-                    print("stahp")
+                    shortcut_order.append(forwarded_node)
+                    gdf_active_mask = gdf_active_mask[1:]
+                    start_node = int(gdf_active_mask.iloc[0]["node_id"])
+                    forwarded_node = gdf_active_mask.iloc[1]["node_id"] if len(gdf_active_mask) > 0 else end_node
+
                 else:
                     # Pick the last valid node (most nodes skipped)
                     start_node = int(valid_nodes.iloc[-1]["node_id"])
@@ -253,67 +251,9 @@ class MultilayerRouteEngine:
                     gdf_active_mask = gdf_active_mask[gdf_active_mask.index > valid_nodes.iloc[-1].name]
                     forwarded_node = gdf_active_mask.iloc[0]["node_id"] if len(gdf_active_mask) > 0 else end_node
 
-                if start_node == end_node:
-                    print("stahp")
-
         shortcut_linestring = shapely.LineString(
             gdf_crossed_nodes[gdf_crossed_nodes["node_id"].isin(shortcut_order)].geometry.to_list()
         )
-
-        # while basic_cost == shortcut_costs:
-        #     n_skip += 1
-        #     if start_idx + n_skip >= len(self.result_route_node_indices):
-        #         shortcut_order.append(self.result_route_node_indices[-1])
-        #         break
-        #
-        #     forwarded_node = self.result_route_node_indices[start_idx + n_skip]
-        #     forwarded_linestring = self.get_linestring(start_node, forwarded_node)
-        #     # TODO this does not work with height levels, add after merge
-        #     # TODO we route from hexagon center to center. dwithin might include nodes which are not crossed? Train of thoughts:
-        #     #  If we use a hexagon_size of 0.5. the center-to-center distance == 0.865. If a straightened line is within half of that value, it might cross a different terrain type.
-        #     nearby_nodes = self.gdf_cost_surface_nodes[
-        #         self.gdf_cost_surface_nodes.dwithin(forwarded_linestring, inradius)
-        #     ]
-        #     shortcut_costs = nearby_nodes.suitability_value.unique().tolist()
-        #
-        #     if len(shortcut_costs) != 1:
-        #         # Check if the forwarded linestring actually passes through the inradius of a node with higher cost
-        #         intersected = nearby_nodes[nearby_nodes.buffer(inradius / 2).intersects(forwarded_linestring)]
-        #         shortcut_costs = intersected.suitability_value.unique().tolist()
-        #         # TODO check if we can skip more nodes if one does not fit due to hexagons.
-        #         #   - group by suitability value first, check along this complete segment?
-        #         if debug:
-        #             write_results_to_geopackage(
-        #                 self.out, forwarded_linestring, "pytest_forwarded_linestring", overwrite=True
-        #             )
-        #             write_results_to_geopackage(self.out, intersected, "pytest_intersected_nodes", overwrite=True)
-        #
-        #         if len(shortcut_costs) == 1 and shortcut_costs[0] == basic_cost:
-        #             shortcut_costs = shortcut_costs[0]
-        #             continue
-        #
-        #         shortcut_order.append(self.result_route_node_indices[start_idx + n_skip - 1])
-        #
-        #         # reset from new point
-        #         start_idx = start_idx + n_skip - 1
-        #         start_node = self.result_route_node_indices[start_idx]
-        #         n_skip = 1
-        #
-        #         if start_idx + n_skip >= len(self.result_route_node_indices):
-        #             if start_node != self.result_route_node_indices[-1]:
-        #                 shortcut_order.append(self.result_route_node_indices[-1])
-        #             break
-        #
-        #         forwarded_node = self.result_route_node_indices[start_idx + n_skip]
-        #         basic_cost = self.cost_surface_graph.get_edge_data(start_node, forwarded_node).weight
-        #         shortcut_costs = basic_cost
-        #     else:
-        #         shortcut_costs = shortcut_costs[0]
-        #
-        # # Note we need to preserve order of shortcut nodes to create a valid linestring
-        # gdf_shortcut_nodes = self.gdf_cost_surface_nodes[self.gdf_cost_surface_nodes["node_id"].isin(shortcut_order)]
-        # gdf_shortcut_nodes = gdf_shortcut_nodes.set_index("node_id").loc[shortcut_order].reset_index()
-        # shortcut_linestring = shapely.LineString(gdf_shortcut_nodes.geometry.to_list())
 
         logger.info(
             f"Input LineString: {self.result_route_linestring.length}. Shortcut LineString: {shortcut_linestring.length}."

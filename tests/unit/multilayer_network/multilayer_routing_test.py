@@ -118,7 +118,7 @@ class TestMultiLayerRouting:
         assert len(route_engine.result_route_node_indices) == 24
         assert route_engine.result_route_linestring.length == pytest.approx(99.6, abs=0.1)
         assert route_engine.result_route_straightened.length == pytest.approx(89.6, abs=0.1)
-        assert len(route_engine.result_route_straightened_node_indices) == 4
+        assert len(route_engine.result_route_straightened_node_indices) == 3
 
     def test_straightening_linestring_small_obstacle_circumnavigation(self, setup_grid):
         route_engine = setup_grid(
@@ -133,8 +133,8 @@ class TestMultiLayerRouting:
 
         assert len(route_engine.result_route_node_indices) == 28
         assert route_engine.result_route_linestring.length == pytest.approx(116.9, abs=0.1)
-        assert route_engine.result_route_straightened.length == pytest.approx(106.4, abs=0.1)
-        assert len(route_engine.result_route_straightened_node_indices) == 8
+        assert route_engine.result_route_straightened.length == pytest.approx(107.3, abs=0.1)
+        assert len(route_engine.result_route_straightened_node_indices) == 7
 
     def test_straightening_linestring_large_obstacle(self, setup_grid):
         route_engine = setup_grid(
@@ -146,10 +146,9 @@ class TestMultiLayerRouting:
         # test that it can avoid the large tower
         start_end = shapely.LineString([(7.323, 51.3), (97.51, 51.3)])
         route_engine.find_route(start_end)
-        # TODO i dont get why it does not skip larger segments of the tower?
-        # - it hugs the obstacle on both sides. Depending on the type of obstacle it can happen that the "looking forward" does not work, it should look further than just the first node.
-        assert route_engine.result_route_linestring.length == pytest.approx(134.2, abs=0.1)
-        assert route_engine.result_route_straightened.length == pytest.approx(121.7, abs=0.1)
+
+        assert route_engine.result_route_linestring.length == pytest.approx(142.9, abs=0.1)
+        assert route_engine.result_route_straightened.length == pytest.approx(130.8, abs=0.1)
         assert len(route_engine.result_route_node_indices) == 32
         assert len(route_engine.result_route_straightened_node_indices) == 9
 
