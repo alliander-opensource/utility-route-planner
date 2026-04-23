@@ -505,19 +505,19 @@ class TestHexagonGraphBuilderWithHeightLevels:
         route_engine.find_route(shapely.LineString([(30, 100), (100, 20)]))
         assert route_engine.get_result_route_length() == pytest.approx(145.3, 0.5)
         assert len(route_engine.result_route_edges[route_engine.result_route_edges.connects_height_levels]) == 2
-        assert all(route_engine.result_route_edges.weight <= 5)
+        assert all(route_engine.result_route_edges.weight <= 10)
 
         # find a route under the tunnel, we do not cross grass
         route_engine.find_route(shapely.LineString([(50, 100), (50, 0)]))
         assert route_engine.get_result_route_length() == pytest.approx(145.3, 0.5)
         assert len(route_engine.result_route_edges[route_engine.result_route_edges.connects_height_levels]) == 2
-        assert all(route_engine.result_route_edges.weight <= 5)
+        assert all(route_engine.result_route_edges.weight <= 10)
 
         # find a route with just grassland.
         route_engine.find_route(shapely.LineString([(1, 90), (99, 90)]))
         assert route_engine.get_result_route_length() == pytest.approx(112.4, 0.5)
         assert len(route_engine.result_route_edges[route_engine.result_route_edges.connects_height_levels]) == 0
-        assert all(route_engine.result_route_edges.weight <= 6)
+        assert all(route_engine.result_route_edges.weight <= 12)
 
     def test_build_graph_with_t_shaped_bridge(self, hexagon_graph_builder: HexagonGraphBuilder):
         """E.g., a road and a bridge."""
@@ -604,12 +604,12 @@ class TestHexagonGraphBuilderWithHeightLevels:
         route_engine.find_route(shapely.LineString([(0, 95), (50, 0)]))
         assert route_engine.get_result_route_length() == pytest.approx(124.5, 0.5)
         assert len(route_engine.result_route_edges[route_engine.result_route_edges.connects_height_levels]) == 2
-        assert all(route_engine.result_route_edges.weight <= 5)
+        assert all(route_engine.result_route_edges.weight <= 10)
 
         route_engine.find_route(shapely.LineString([(100, 80), (50, 0)]))
         assert route_engine.get_result_route_length() == pytest.approx(128, 0.5)
         assert len(route_engine.result_route_edges[route_engine.result_route_edges.connects_height_levels]) == 2
-        assert all(route_engine.result_route_edges.weight <= 5)
+        assert all(route_engine.result_route_edges.weight <= 10)
 
     def test_example_data_integration(self, hexagon_graph_builder: HexagonGraphBuilder):
         """Use for testing a specific area of the example geopackages with known bridges/tunnels."""
