@@ -38,7 +38,7 @@ class HexagonGridBuilder:
         y_matrix: np.ndarray,
         preprocessed_vectors: dict[str, gpd.GeoDataFrame],
         raster_groups: dict[str, str],
-    ) -> Generator[tuple[pd.DataFrame, bool], None, None]:
+    ) -> Generator[tuple[pl.DataFrame, bool], None, None]:
         concatenated_vectors = self.concatenate_preprocessed_vectors(preprocessed_vectors, raster_groups)
 
         for block, final_column in self.divide_matrices_into_blocks(x_matrix, y_matrix):

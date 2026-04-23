@@ -9,7 +9,7 @@ import shapely
 import structlog
 
 from settings import Config
-from utility_route_planner.models.multilayer_network.graph_datastructures import hexagon_edge_info
+from utility_route_planner.models.multilayer_network.graph_datastructures import hexagon_edge_info, HexagonNodeInfo
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_edge_generator import HexagonEdgeGenerator
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_grid_builder import (
     HexagonGridBuilder,
@@ -71,7 +71,11 @@ class HexagonGraphBuilder:
         for block, last_column in self.grid_builder.construct_grid_blocks(
             x_matrix, y_matrix, preprocessed_vectors, raster_groups
         ):
-            block_node_ids = graph.add_nodes_from(block["suitability_value"])
+            block_data = [HexagonNodeInfo(weight=weight) for weight in block["suitability_value"].to_list()]
+            block_node_ids = graph.add_nodes_from(block_data)
+
+            # Assign node id to node data objects and the node geodataframe
+            [block_data_object.set_node_id(node_id) for block_data_object, node_id in zip(block_data, block_node_ids)]
             block = block.with_columns(pl.Series("node_id", list(block_node_ids), dtype=pl.Int32))
 
             # Store all block information in the total node array

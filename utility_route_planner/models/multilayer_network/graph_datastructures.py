@@ -2,6 +2,7 @@
 #  #
 #  SPDX-License-Identifier: Apache-2.0
 import enum
+from abc import ABC
 from collections import namedtuple
 from dataclasses import dataclass, field
 from typing import Optional
@@ -9,14 +10,24 @@ from typing import Optional
 import shapely
 
 
+# TODO: do we want to only set the node_id on the node objects and move all other parts to dataframe(s)?
 @dataclass
-class OSMNodeInfo:
+class NodeInfo(ABC):
     node_id: int = field(init=False)
-    osm_id: int
-    geometry: shapely.Point
 
     def set_node_id(self, node_id: int):
         self.node_id = node_id
+
+
+@dataclass
+class HexagonNodeInfo(NodeInfo):
+    weight: int
+
+
+@dataclass
+class OSMNodeInfo(NodeInfo):
+    osm_id: int
+    geometry: shapely.Point
 
 
 @dataclass
