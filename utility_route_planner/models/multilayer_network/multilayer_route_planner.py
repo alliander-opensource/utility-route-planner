@@ -85,18 +85,16 @@ class MultilayerRouteEngine:
         gdf_path_edges = get_hexagon_edge_geometries_for_path(
             self.cost_surface_graph, path_node_indices, gdf_path_nodes
         )
-        # TODO replace with new edge retrieval after merge
-        edges = []
-        for current, next_ in zip(path_node_indices, path_node_indices[1:]):
-            edges.append(self.cost_surface_graph.get_edge_data(current, next_))
-        gdf_path_edges = gpd.GeoDataFrame(data=edges, crs=Config.CRS)
 
         self.result_route_edges = gdf_path_edges
         self.result_route_nodes = gdf_path_nodes
         self.result_route_node_indices = path_node_indices
 
         self.result_route_linestring = shapely.LineString(
-            [self.cost_surface_graph.get_node_data(i).geometry for i in path_node_indices]
+            [
+                self.gdf_cost_surface_nodes.loc[self.gdf_cost_surface_nodes["node_id"] == i].geometry.values[0]
+                for i in path_node_indices
+            ]
         )
         self.result_route_straightened, self.result_route_straightened_node_indices = self.straighten_linestring()
 
@@ -173,11 +171,11 @@ class MultilayerRouteEngine:
         return guideline.length
 
     def get_linestring(self, node_1: int, node_2: int) -> shapely.LineString:
-        # TODO replace after merge
+        nodes = self.gdf_cost_surface_nodes
         edge_line = shapely.LineString(
             [
-                self.cost_surface_graph.get_node_data(node_1).geometry,
-                self.cost_surface_graph.get_node_data(node_2).geometry,
+                nodes.loc[nodes["node_id"] == node_1].geometry.values[0],
+                nodes.loc[nodes["node_id"] == node_2].geometry.values[0],
             ]
         )
         return edge_line
@@ -238,7 +236,9 @@ class MultilayerRouteEngine:
                 # For each node in the active segment, create a line from start_node and compute shortcut costs.
                 # Pick the last node (most skipped) with still the same suitability costs
                 basic_cost = self.cost_surface_graph.get_edge_data(start_node, forwarded_node).weight
-                start_node_geom = self.cost_surface_graph.get_node_data(start_node).geometry
+                start_node_geom = self.gdf_cost_surface_nodes.loc[
+                    self.gdf_cost_surface_nodes["node_id"] == start_node
+                ].geometry.values[0]
                 # Create lines from start_node to all nodes in the active segment
                 series_forwarded = gpd.GeoSeries(shapely.shortest_line(start_node_geom, gdf_active_mask["geometry"]))
                 # Compute shortcut costs for each line

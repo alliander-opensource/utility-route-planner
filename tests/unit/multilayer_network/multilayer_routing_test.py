@@ -10,8 +10,9 @@ import math
 import rustworkx as rx
 
 from settings import Config
+from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_edge_generator import HexagonEdgeGenerator
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_graph_builder import HexagonGraphBuilder
-from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_utils import convert_hexagon_graph_to_gdfs
+from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_grid_builder import HexagonGridBuilder
 from utility_route_planner.models.multilayer_network.multilayer_route_planner import MultilayerRouteEngine
 from utility_route_planner.util.write import write_results_to_geopackage, reset_geopackage
 
@@ -26,7 +27,7 @@ class TestMultiLayerRouting:
     @pytest.fixture
     def setup_grid(self):
         def _setup(buildings: tuple = ()):
-            buildings = gpd.GeoDataFrame(
+            _buildings = gpd.GeoDataFrame(
                 data=buildings,
                 geometry="geometry",
                 crs=Config.CRS,
@@ -35,7 +36,7 @@ class TestMultiLayerRouting:
             grassland = (
                 gpd.GeoDataFrame(
                     data=[
-                        [2, 0, self.project_area.difference(buildings.geometry.union_all())],
+                        [2, 0, self.project_area.difference(_buildings.geometry.union_all())],
                     ],
                     geometry="geometry",
                     crs=Config.CRS,
@@ -47,30 +48,31 @@ class TestMultiLayerRouting:
             raster_groups = {"grassland": "a", "buildings": "a"}
             processed_criteria_vectors = {"grassland": grassland, "buildings": buildings}
 
+            grid_constructor = HexagonGridBuilder(hexagon_size=self.hexagon_size, block_size=Config.HEXAGON_BLOCK_SIZE)
+            hexagon_edge_generator = HexagonEdgeGenerator()
             hexagon_graph_builder = HexagonGraphBuilder(
-                project_area=self.project_area,
-                raster_groups=raster_groups,
-                preprocessed_vectors=processed_criteria_vectors,  # type: ignore
-                hexagon_size=self.hexagon_size,
-                block_size=Config.HEXAGON_BLOCK_SIZE,
+                grid_builder=grid_constructor, edge_generator=hexagon_edge_generator
             )
-            graph = hexagon_graph_builder.build_graph()
-            gdf_nodes = convert_hexagon_graph_to_gdfs(graph, edges=False)
+            graph, nodes_gdf = hexagon_graph_builder.build_graph(
+                self.project_area,
+                raster_groups,
+                processed_criteria_vectors,  # type: ignore
+            )
 
             if self.debug:
                 reset_geopackage(self.out, truncate=False)
                 write_results_to_geopackage(self.out, grassland, "pytest_theory_grassland")
                 write_results_to_geopackage(self.out, buildings, "pytest_theory_buildings")
-                write_results_to_geopackage(self.out, gdf_nodes, "pytest_theory_nodes")
+                write_results_to_geopackage(self.out, nodes_gdf, "pytest_theory_nodes")
 
-                gdf_nodes_copy = copy.deepcopy(gdf_nodes)
-                gdf_nodes_copy["geometry"] = gdf_nodes.buffer(math.sqrt(3) * self.hexagon_size / 2)  # inradius
+                gdf_nodes_copy = copy.deepcopy(nodes_gdf)
+                gdf_nodes_copy["geometry"] = nodes_gdf.buffer(math.sqrt(3) * self.hexagon_size / 2)  # inradius
                 write_results_to_geopackage(self.out, gdf_nodes_copy, "pytest_theory_nodes_inradius")
 
             route_engine = MultilayerRouteEngine(
                 graph,
                 rx.PyGraph(),
-                gdf_nodes,
+                nodes_gdf,
                 hexagon_size=self.hexagon_size,
                 write_output=self.debug,
             )
