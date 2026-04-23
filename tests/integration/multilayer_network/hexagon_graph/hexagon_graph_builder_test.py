@@ -687,7 +687,6 @@ class TestHexagonGraphBuilderWithHeightLevels:
 
             graphs_per_height[height_level] = HeightLevelGraph(graph, nodes_gdf)
         if self.debug:
-            # TODO fix
             self.debug_write_output_graphs(graphs_per_height)
 
         hexagon_graph_composer = HexagonGraphComposer(
