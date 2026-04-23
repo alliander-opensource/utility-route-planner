@@ -145,6 +145,7 @@ class HexagonGraphComposer:
         for old_idx, node_data in enumerate(height_graph.nodes()):
             # Always add as new node (even if many map to same "right" node)
             new_idx = self.processed_graphs_and_nodes_per_height_level[main_height_level].graph.add_node(node_data)
+            self.processed_graphs_and_nodes_per_height_level[main_height_level].graph[new_idx].node_id = new_idx
             mapping[old_idx] = new_idx
 
         # Reassign nodes to a copied height node df, as the "original" node ids are required to properly connect height
