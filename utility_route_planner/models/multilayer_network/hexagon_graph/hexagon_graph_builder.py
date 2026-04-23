@@ -83,6 +83,7 @@ class HexagonGraphBuilder:
             nodes["x"][block_node_ids] = block["x"]
             nodes["y"][block_node_ids] = block["y"]
 
+            # Select all attributes in the current block which are relevant for edge generation
             block_edge_attributes = block.select("node_id", "suitability_value", "q", "r")
             block_edge_coordinates = self.get_block_edge_coordinates(block)
             current_row_edge_coordinates = pl.concat([current_row_edge_coordinates, block_edge_coordinates])
@@ -92,16 +93,24 @@ class HexagonGraphBuilder:
             relevant_previous_row_nodes = previous_row_edge_coordinates.filter(
                 pl.col("q").is_between(block_edge_attributes["q"].min() - 1, block_edge_attributes["q"].max() + 1)
             )
+
+            # For edge determination, the edge generator must consider nodes within the block, boundary nodes from the
+            # previous block and boundary nodes from the previous row to make sure the graph is connected.
             nodes_to_check = pl.concat(
                 [block_edge_attributes, previous_block_edge_coordinates, relevant_previous_row_nodes]
             )
 
             graph = self._add_edges_to_graph(graph, block_edge_attributes, nodes_to_check)
             if last_column:
+                # If the final column of the current row is reached, set all edge coordinates of the current row as
+                # previous row edge coordinates. This way, they can be used to determine connecting upper edges in the
+                # next row. All other dataframes containing previous coordinates are reset
                 previous_row_edge_coordinates = current_row_edge_coordinates
                 current_row_edge_coordinates = self._get_empty_nodes_df()
                 previous_block_edge_coordinates = self._get_empty_nodes_df()
             else:
+                # If the final column of the current row is not yet reached, set the previous block to the current
+                # block. This way, it can be connected to the next block in the current row.
                 previous_block_edge_coordinates = block_edge_coordinates
 
         nodes_gdf = self._convert_nodes_to_gdf(nodes)
@@ -109,6 +118,9 @@ class HexagonGraphBuilder:
 
     @staticmethod
     def _add_nodes_to_graph(graph: rx.PyGraph, block: pl.DataFrame) -> tuple[rx.PyGraph, rx.NodeIndices]:
+        """
+        Add nodes to the graph and set node id on the node payload.
+        """
         node_payloads = [HexagonNodeInfo(weight=weight) for weight in block["suitability_value"].to_list()]
         block_node_ids = graph.add_nodes_from(node_payloads)
 
@@ -121,7 +133,7 @@ class HexagonGraphBuilder:
         self, graph: rx.PyGraph, block_edge_attributes: pl.DataFrame, nodes_to_check: pl.DataFrame
     ) -> rx.PyGraph:
         """
-        Add edges to the graph and set edge id on the dataclass
+        Add edges to the graph and set edge id on the edge payload.
         """
         edges = self.edge_generator.generate(block_edge_attributes, nodes_to_check)
         edge_ids = graph.add_edges_from(edges.rows())
@@ -131,7 +143,7 @@ class HexagonGraphBuilder:
 
     def get_block_edge_coordinates(self, block_coordinates: pl.DataFrame) -> pl.DataFrame:
         """
-        Given the coordinates of a block, get left side and bottom coordinates
+        Given the coordinates of a block, get left side and bottom coordinates.
         """
         min_x_coordinate = block_coordinates["x"].min()
         min_y_coordinate = block_coordinates["y"].min()
