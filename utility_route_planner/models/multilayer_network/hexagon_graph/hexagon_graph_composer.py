@@ -56,7 +56,7 @@ class HexagonGraphComposer:
             logger.info("Only a single height level is present, no merging is required.")
             return self.processed_graphs_and_nodes_per_height_level[
                 next(iter(self.processed_graphs_and_nodes_per_height_level))
-            ].graph
+            ]
         else:
             logger.info(f"Connecting {n_height_levels - 1} height level(s) to the main graph.")
 

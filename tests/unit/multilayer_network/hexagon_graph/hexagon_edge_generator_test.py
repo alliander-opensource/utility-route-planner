@@ -44,8 +44,8 @@ class TestHexagonEdgeGenerator:
                 [14, 76, -29163, 79696],
                 [15, 76, -29163, 79697],
                 [16, 76, -29163, 79695],
-                [17, 19, 76, -29160, 79694],
-                [18, 76, 76, -29160, 79695],
+                [17, 19, -29160, 79694],
+                [18, 76, -29160, 79695],
                 [19, 126, -29162, 79694],
                 [20, 126, -29160, 79693],
                 [21, 76, -29161, 79694],
@@ -215,7 +215,7 @@ class TestHexagonEdgeGenerator:
         if debug:
             self.write_debug(hexagon_points, edges_linestrings, suffix="previous_block_only")
 
-    def tests_generate_edges_with_only_previous_row(
+    def test_generate_edges_with_only_previous_row(
         self,
         hexagonal_grid: pl.DataFrame,
         block: pl.DataFrame,
@@ -371,6 +371,6 @@ class TestHexagonEdgeGenerator:
         write_results_to_geopackage(
             Config.PATH_GEOPACKAGE_VECTOR_GRAPH_OUTPUT,
             edges_linestrings,
-            f"pytest_hexagon_edges_test_nodes_{suffix}",
+            f"pytest_hexagon_edges_test_edges_{suffix}",
             overwrite=True,
         )
