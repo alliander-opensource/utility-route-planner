@@ -36,7 +36,7 @@ class VectorPreprocessorBase(abc.ABC):
     @time_function
     def execute(
         self, general: RasterPresetGeneral, criterion: RasterPresetCriteria
-    ) -> tuple[bool, gpd.GeoDataFrame, pd.DataFrame, pd.DataFrame]:
+    ) -> tuple[bool, gpd.GeoDataFrame, pd.DataFrame, list]:
         """Run all methods in order for a criteria returning the processed geodataframe with suitability values."""
         logger.info(f"Start preprocessing: {self.criterion}.")
 

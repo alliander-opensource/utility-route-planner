@@ -122,11 +122,6 @@ class HexagonGraphComposer:
                 self.add_edges_between_height_levels(
                     gdf_main_nodes_to_outer_component_nodes, height, height_mapping, main_height_level
                 )
-        self.processed_graphs_and_nodes_per_height_level[
-            main_height_level
-        ].nodes_gdf = self.processed_graphs_and_nodes_per_height_level[main_height_level].nodes_gdf.reset_index(
-            drop=True
-        )
 
         if self.debug:
             main_height_level_graph = self.processed_graphs_and_nodes_per_height_level[main_height_level]

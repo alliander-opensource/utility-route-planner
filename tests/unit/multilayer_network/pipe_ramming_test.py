@@ -226,9 +226,10 @@ class TestPipeRamming:
 
         assert len(crossings) == 3
         assert multilayer_route_engine.get_result_route_length() == pytest.approx(25, abs=1)
-        assert len([i for i in crossings if i[0] and i[1] in multilayer_route_engine.result_route_node_indices]) == 1, (
-            "One of the new edges should be in the path."
-        )
+        assert (
+            len([i for i in crossings if i[0] and i[1] in multilayer_route_engine.results.result_route_node_indices])
+            == 1
+        ), "One of the new edges should be in the path."
 
     @pytest.mark.skip(reason="Only for debugging a specific street-segment group.")
     def test_single_street_segment_group(self, setup_pipe_ramming_example_polygon):
@@ -264,9 +265,10 @@ class TestPipeRamming:
 
         assert len(crossings) == 3
         assert multilayer_route_engine.get_result_route_length() == pytest.approx(12, abs=1)
-        assert len([i for i in crossings if i[0] and i[1] in multilayer_route_engine.result_route_node_indices]) == 1, (
-            "One of the new edges should be in the path."
-        )
+        assert (
+            len([i for i in crossings if i[0] and i[1] in multilayer_route_engine.results.result_route_node_indices])
+            == 1
+        ), "One of the new edges should be in the path."
 
     @pytest.mark.skip(reason="Longer test for full example set, enable when big (TM) changes are made to pipe ramming.")
     def test_find_all_rammings_example_set(self, setup_pipe_ramming_example_polygon):
@@ -1141,8 +1143,8 @@ class TestPipeRammingTheoryExamples:
         if expected_crossings_used_in_route:
             assert (
                 len(
-                    multilayer_route_engine.result_route_edges[
-                        ~multilayer_route_engine.result_route_edges["origin"].isnull()
+                    multilayer_route_engine.results.result_route_edges[
+                        ~multilayer_route_engine.results.result_route_edges["origin"].isnull()
                     ]
                 )
                 == expected_crossings_used_in_route
