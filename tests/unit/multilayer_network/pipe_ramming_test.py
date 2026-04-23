@@ -439,6 +439,7 @@ class TestPipeRammingTheoryExamples:
         self._run_crossing(
             cost_surface_graph,
             cost_surface_nodes,
+            preprocessed_vectors,
             edges_to_add,
             expected_route_length,
             hexagon_graph_builder,
