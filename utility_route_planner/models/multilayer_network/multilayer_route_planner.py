@@ -190,7 +190,9 @@ class MultilayerRouteEngine:
 
     def _get_shortcut_costs(self, line: shapely.LineString, inradius: int) -> tuple[float, float]:
         nearby = self.gdf_cost_surface_nodes[self.gdf_cost_surface_nodes.dwithin(line, inradius)]
-        costs = nearby.suitability_value.unique().tolist()
+
+        # Multiply each node suitability value by 2, as edge weights are set as the sum of two node suitability values.
+        costs = (nearby.suitability_value.unique() * 2).tolist()
         if len(costs) != 1:
             intersected = nearby[nearby.buffer(inradius / 2).intersects(line)]
             costs = intersected.suitability_value.unique().tolist()
