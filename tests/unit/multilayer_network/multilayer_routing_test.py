@@ -131,7 +131,7 @@ class TestMultiLayerRouting:
         )
 
         start_end = shapely.LineString([(10, 50), (44.710, 98.006)])
-        route_engine.find_route(start_end, 1)
+        route_engine.find_route(start_end)
 
         assert len(route_engine.results.result_route_node_indices) == 28
         assert route_engine.results.result_route_linestring.length == pytest.approx(116.9, abs=0.1)
