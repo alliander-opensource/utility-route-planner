@@ -15,7 +15,7 @@ from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_utils
 from utility_route_planner.util.write import write_results_to_geopackage, reset_geopackage
 
 
-# @pytest.mark.skip(reason="Only used for local development of the HexagonGraphBuilder")
+@pytest.mark.skip(reason="Only used for local development of the HexagonGraphBuilder")
 class TestVectorToGraph:
     @pytest.fixture()
     def small_project_area(self) -> shapely.Polygon:

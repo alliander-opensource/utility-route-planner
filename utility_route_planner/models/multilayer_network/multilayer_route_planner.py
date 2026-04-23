@@ -11,7 +11,7 @@ import geopandas as gpd
 import structlog
 
 from settings import Config
-from utility_route_planner.models.multilayer_network.graph_datastructures import BaseWeightedEdgeInfo, OSMNodeInfo
+from utility_route_planner.models.multilayer_network.graph_datastructures import BaseWeightedEdgeInfo, NodeInfo
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_utils import (
     get_hexagon_edge_geometries_for_path,
 )
@@ -96,7 +96,7 @@ class MultilayerRouteEngine:
                 for i in path_node_indices
             ]
         )
-        self.result_route_straightened, self.result_route_straightened_node_indices = self.straighten_linestring()
+        # self.result_route_straightened, self.result_route_straightened_node_indices = self.straighten_linestring()
 
         if self.write_output:
             write_results_to_geopackage(
@@ -146,7 +146,6 @@ class MultilayerRouteEngine:
         """
         return self.result_route_edges["weight"].sum() / 2
 
-    # TODO update to work with hexagon edges as well
     def get_weight_dijkstra(self, edge: BaseWeightedEdgeInfo, modifier: float = 0.01) -> float:
         """
         Weight is leading for edges (MCDA), but we want to add a small distance-based cost to prefer routes that are
@@ -164,7 +163,7 @@ class MultilayerRouteEngine:
         return self.cost_surface_graph.get_edge_data_by_index(edge.edge_id).weight
 
     # TODO update to work with node df
-    def get_estimate_astar(self, node: OSMNodeInfo) -> float:
+    def get_estimate_astar(self, node: NodeInfo) -> float:
         node_point = self.cost_surface_graph.get_node_data(node.node_id).geometry
         guideline = shapely.LineString([node_point, shapely.get_point(self.result_route_guideline, 1)])
 
