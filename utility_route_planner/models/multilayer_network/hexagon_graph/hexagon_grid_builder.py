@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 import math
 from typing import Generator
+from tqdm import tqdm
 import geopandas as gpd
 import numpy as np
 import pandas as pd
@@ -106,24 +107,23 @@ class HexagonGridBuilder:
         row_splits = np.linspace(0, x_matrix.shape[0], n_rows_blocks + 1, dtype=int)
         column_splits = np.linspace(0, y_matrix.shape[1], n_columns_blocks + 1, dtype=int)
 
-        # Iterate over the split indexes to extract the blocks from the matrices. Convert each block
-        # to a GeoDataFrame. Return whether this is the last column of the current row, this is used
-        # for edge determination later on.
-        counter = 0
-        for row_start, row_end in zip(row_splits[:-1], row_splits[1:]):
-            for column_start, column_end in zip(column_splits[:-1], column_splits[1:]):
-                counter += 1
-                logger.info(f"Processing block: {counter}/{total_nr_of_blocks}")
-                x_block = x_matrix[row_start:row_end, column_start:column_end]
-                y_block = y_matrix[row_start:row_end, column_start:column_end]
+        # Iterate over the split indexes to extract the blocks from the matrices. Each block is yielded as a polars
+        # dataframe. In addition, it is yielded whether the final column of the current row is reached. This is required
+        # for edge construction later on.
+        with tqdm(total=total_nr_of_blocks, desc="Processing hexagon blocks") as pbar:
+            for row_start, row_end in zip(row_splits[:-1], row_splits[1:]):
+                for column_start, column_end in zip(column_splits[:-1], column_splits[1:]):
+                    x_block = x_matrix[row_start:row_end, column_start:column_end]
+                    y_block = y_matrix[row_start:row_end, column_start:column_end]
 
-                block_grid = gpd.GeoDataFrame(
-                    geometry=gpd.points_from_xy(x_block.ravel(), y_block.ravel()), crs=Config.CRS
-                )
-                block_grid = block_grid.reset_index(names="node_id")
+                    block_grid = gpd.GeoDataFrame(
+                        geometry=gpd.points_from_xy(x_block.ravel(), y_block.ravel()), crs=Config.CRS
+                    )
+                    block_grid = block_grid.reset_index(names="node_id")
 
-                final_column = column_end == column_splits[-1]
-                yield block_grid, final_column
+                    final_column = column_end == column_splits[-1]
+                    pbar.update()
+                    yield block_grid, final_column
 
     @staticmethod
     def concatenate_preprocessed_vectors(

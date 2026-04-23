@@ -31,6 +31,7 @@ dependencies = [
     "polars (>=1.37.1,<2.0.0)",
     "pyarrow (>=23.0.1,<24.0.0)",
     "pygeoops (>=0.6.0,<0.7.0)",
+    "tqdm (>=4.67.3,<5.0.0)",
 ]
 
 [tool.poetry]
