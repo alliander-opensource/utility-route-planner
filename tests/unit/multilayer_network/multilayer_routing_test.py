@@ -87,7 +87,7 @@ class TestMultiLayerRouting:
         route_engine.find_route(start_end)
         assert len(route_engine.result_route_node_indices) == 20
         assert len(route_engine.result_route_straightened_node_indices) == 2
-        # Due to the pointy top orientation, this is almost the same as the straightened line
+        # Due to the flat top orientation, this is almost the same as the straightened line
         assert route_engine.result_route_linestring.length == pytest.approx(82.2, abs=0.1)
         assert route_engine.result_route_straightened.length == pytest.approx(82.2, abs=0.1)
 
