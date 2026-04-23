@@ -162,9 +162,10 @@ class MultilayerRouteEngine:
     def get_weight_astar(self, edge: BaseWeightedEdgeInfo) -> float:
         return self.cost_surface_graph.get_edge_data_by_index(edge.edge_id).weight
 
-    # TODO update to work with node df
     def get_estimate_astar(self, node: NodeInfo) -> float:
-        node_point = self.cost_surface_graph.get_node_data(node.node_id).geometry
+        node_point = self.gdf_cost_surface_nodes.loc[
+            self.gdf_cost_surface_nodes["node_id"] == node.node_id
+        ].geometry.values[0]
         guideline = shapely.LineString([node_point, shapely.get_point(self.result_route_guideline, 1)])
 
         return guideline.length
