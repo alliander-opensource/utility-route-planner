@@ -56,6 +56,10 @@ def update_edge_id(
             raise ValueError("Encountered invalid edge type")
 
 
+def get_hexagon_node_geometry(nodes: gpd.GeoDataFrame, node_id: int) -> shapely.Point:
+    return nodes.loc[nodes["node_id"] == node_id].geometry.values[0]
+
+
 def get_hexagon_edge_geometries_for_path(
     graph: rx.PyGraph, path_node_indices: list[int], hexagon_nodes: gpd.GeoDataFrame
 ) -> gpd.GeoDataFrame:
@@ -82,8 +86,8 @@ def get_hexagon_edge_geometries_for_path(
             edge_id = graph.edge_indices_from_endpoints(source_node, target_node)[0]
             edge_linestring = shapely.LineString(
                 [
-                    hexagon_nodes.loc[hexagon_nodes["node_id"] == source_node, "geometry"].values[0],
-                    hexagon_nodes.loc[hexagon_nodes["node_id"] == target_node, "geometry"].values[0],
+                    get_hexagon_node_geometry(hexagon_nodes, node_id=source_node),
+                    get_hexagon_node_geometry(hexagon_nodes, node_id=target_node),
                 ]
             )
             edge_meta_data = dict(

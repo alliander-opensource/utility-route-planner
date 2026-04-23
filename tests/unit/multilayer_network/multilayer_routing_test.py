@@ -46,7 +46,7 @@ class TestMultiLayerRouting:
                 .reset_index(drop=True)
             )
             raster_groups = {"grassland": "a", "buildings": "a"}
-            processed_criteria_vectors = {"grassland": grassland, "buildings": buildings}
+            processed_criteria_vectors = {"grassland": grassland, "buildings": _buildings}
 
             grid_constructor = HexagonGridBuilder(hexagon_size=self.hexagon_size, block_size=Config.HEXAGON_BLOCK_SIZE)
             hexagon_edge_generator = HexagonEdgeGenerator()
@@ -62,7 +62,7 @@ class TestMultiLayerRouting:
             if self.debug:
                 reset_geopackage(self.out, truncate=False)
                 write_results_to_geopackage(self.out, grassland, "pytest_theory_grassland")
-                write_results_to_geopackage(self.out, buildings, "pytest_theory_buildings")
+                write_results_to_geopackage(self.out, _buildings, "pytest_theory_buildings")
                 write_results_to_geopackage(self.out, nodes_gdf, "pytest_theory_nodes")
 
                 gdf_nodes_copy = copy.deepcopy(nodes_gdf)

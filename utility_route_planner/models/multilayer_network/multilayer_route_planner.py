@@ -14,6 +14,7 @@ from settings import Config
 from utility_route_planner.models.multilayer_network.graph_datastructures import BaseWeightedEdgeInfo, NodeInfo
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_utils import (
     get_hexagon_edge_geometries_for_path,
+    get_hexagon_node_geometry,
 )
 from utility_route_planner.util.geo_utilities import get_first_last_point_from_linestring, get_empty_geodataframe
 from utility_route_planner.util.timer import time_function
@@ -91,10 +92,7 @@ class MultilayerRouteEngine:
         self.result_route_node_indices = path_node_indices
 
         self.result_route_linestring = shapely.LineString(
-            [
-                self.gdf_cost_surface_nodes.loc[self.gdf_cost_surface_nodes["node_id"] == i].geometry.values[0]
-                for i in path_node_indices
-            ]
+            [get_hexagon_node_geometry(self.gdf_cost_surface_nodes, node_id=i) for i in path_node_indices]
         )
         # self.result_route_straightened, self.result_route_straightened_node_indices = self.straighten_linestring()
 
@@ -163,9 +161,7 @@ class MultilayerRouteEngine:
         return self.cost_surface_graph.get_edge_data_by_index(edge.edge_id).weight
 
     def get_estimate_astar(self, node: NodeInfo) -> float:
-        node_point = self.gdf_cost_surface_nodes.loc[
-            self.gdf_cost_surface_nodes["node_id"] == node.node_id
-        ].geometry.values[0]
+        node_point = get_hexagon_node_geometry(self.gdf_cost_surface_nodes, node.node_id)
         guideline = shapely.LineString([node_point, shapely.get_point(self.result_route_guideline, 1)])
 
         return guideline.length
@@ -174,8 +170,8 @@ class MultilayerRouteEngine:
         nodes = self.gdf_cost_surface_nodes
         edge_line = shapely.LineString(
             [
-                nodes.loc[nodes["node_id"] == node_1].geometry.values[0],
-                nodes.loc[nodes["node_id"] == node_2].geometry.values[0],
+                get_hexagon_node_geometry(nodes, node_1),
+                get_hexagon_node_geometry(nodes, node_2),
             ]
         )
         return edge_line
@@ -236,9 +232,7 @@ class MultilayerRouteEngine:
                 # For each node in the active segment, create a line from start_node and compute shortcut costs.
                 # Pick the last node (most skipped) with still the same suitability costs
                 basic_cost = self.cost_surface_graph.get_edge_data(start_node, forwarded_node).weight
-                start_node_geom = self.gdf_cost_surface_nodes.loc[
-                    self.gdf_cost_surface_nodes["node_id"] == start_node
-                ].geometry.values[0]
+                start_node_geom = get_hexagon_node_geometry(self.gdf_cost_surface_nodes, node_id=start_node)
                 # Create lines from start_node to all nodes in the active segment
                 series_forwarded = gpd.GeoSeries(shapely.shortest_line(start_node_geom, gdf_active_mask["geometry"]))
                 # Compute shortcut costs for each line
