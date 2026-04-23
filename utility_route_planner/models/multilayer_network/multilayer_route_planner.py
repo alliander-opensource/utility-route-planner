@@ -82,7 +82,7 @@ class MultilayerRouteEngine:
             case _:
                 raise ValueError("Unsupported algorithm type.")
 
-        gdf_path_nodes = self.gdf_cost_surface_nodes.loc[self.gdf_cost_surface_nodes["node_id"].isin(path_node_indices)]
+        gdf_path_nodes = self.gdf_cost_surface_nodes.loc[path_node_indices].copy()
         gdf_path_edges = get_hexagon_edge_geometries_for_path(
             self.cost_surface_graph, path_node_indices, gdf_path_nodes
         )
@@ -94,7 +94,7 @@ class MultilayerRouteEngine:
         self.result_route_linestring = shapely.LineString(
             [get_hexagon_node_geometry(self.gdf_cost_surface_nodes, node_id=i) for i in path_node_indices]
         )
-        # self.result_route_straightened, self.result_route_straightened_node_indices = self.straighten_linestring()
+        self.result_route_straightened, self.result_route_straightened_node_indices = self.straighten_linestring()
 
         if self.write_output:
             write_results_to_geopackage(
@@ -120,16 +120,14 @@ class MultilayerRouteEngine:
             )
             write_results_to_geopackage(
                 self.out,
-                self.gdf_cost_surface_nodes[
-                    self.gdf_cost_surface_nodes["node_id"].isin(self.result_route_straightened_node_indices)
-                ],
+                self.gdf_cost_surface_nodes.loc[self.result_route_straightened_node_indices],
                 f"{self.prefix}result_route_shortcut_nodes",
             )
 
     def get_source_and_target_nodes(self, start_end: shapely.LineString) -> tuple[int, int]:
         start, end = get_first_last_point_from_linestring(start_end)
-        source = self.gdf_cost_surface_nodes.loc[self.gdf_cost_surface_nodes.distance(start).idxmin(), "node_id"]
-        target = self.gdf_cost_surface_nodes.loc[self.gdf_cost_surface_nodes.distance(end).idxmin(), "node_id"]
+        source = self.gdf_cost_surface_nodes.iloc[self.gdf_cost_surface_nodes.distance(start).idxmin()].name
+        target = self.gdf_cost_surface_nodes.iloc[self.gdf_cost_surface_nodes.distance(end).idxmin()].name
         if source == target:
             raise ValueError("Source and target node are the same. Provide a linestring with points further apart.")
         return source, target
@@ -208,10 +206,7 @@ class MultilayerRouteEngine:
 
         # TODO add height
         # create dataframe with: node_order, suit value, height level. use to get segments.
-        gdf_crossed_nodes = self.gdf_cost_surface_nodes[
-            self.gdf_cost_surface_nodes["node_id"].isin(self.result_route_node_indices)
-        ]
-        gdf_crossed_nodes = gdf_crossed_nodes.set_index("node_id").loc[self.result_route_node_indices].reset_index()
+        gdf_crossed_nodes = self.gdf_cost_surface_nodes.loc[self.result_route_node_indices].reset_index()
         gdf_crossed_nodes["segment"] = (
             gdf_crossed_nodes["suitability_value"] != gdf_crossed_nodes["suitability_value"].shift()
         ).cumsum()

@@ -57,7 +57,7 @@ def update_edge_id(
 
 
 def get_hexagon_node_geometry(nodes: gpd.GeoDataFrame, node_id: int) -> shapely.Point:
-    return nodes.loc[nodes["node_id"] == node_id].geometry.values[0]
+    return nodes.loc[node_id].geometry
 
 
 def get_hexagon_edge_geometries_for_path(
@@ -118,7 +118,6 @@ def convert_hexagon_edges_to_gdf(graph: rx.PyGraph, nodes: gpd.GeoDataFrame) -> 
     :param nodes: all nodes in the graph as a geodataframe containing the source and target geometries
     :return: geodataframe with all edges, edge weights and geometries from the input graph
     """
-    node_to_geom_mapping = nodes.set_index("node_id")["geometry"]
 
     edge_weight_map = graph.edge_index_map()
     source_nodes = [source_node for source_node, _, _ in edge_weight_map.values()]
@@ -133,8 +132,8 @@ def convert_hexagon_edges_to_gdf(graph: rx.PyGraph, nodes: gpd.GeoDataFrame) -> 
         else:
             connects_height_levels.append(False)
 
-    source_coordinates = node_to_geom_mapping.loc[source_nodes].get_coordinates().values
-    target_coordinates = node_to_geom_mapping.loc[target_nodes].get_coordinates().values
+    source_coordinates = nodes.loc[source_nodes].get_coordinates().values
+    target_coordinates = nodes.loc[target_nodes].get_coordinates().values
     edge_geometries = shapely.linestrings(np.stack([source_coordinates, target_coordinates], axis=1))
 
     return gpd.GeoDataFrame(

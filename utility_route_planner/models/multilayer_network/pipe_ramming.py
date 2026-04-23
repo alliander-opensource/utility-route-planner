@@ -14,6 +14,7 @@ from settings import Config
 import geopandas as gpd
 
 from utility_route_planner.models.multilayer_network.graph_datastructures import PipeRammingEdgeInfo, PipeRammingOrigin
+from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_utils import get_hexagon_node_geometry
 from utility_route_planner.util.geo_utilities import (
     osm_graph_to_gdfs,
     get_empty_geodataframe,
@@ -561,7 +562,7 @@ class GetPotentialPipeRammingCrossings:
         # Create the linestrings between the selected node pairs
         closest_node_pairs = closest_node_pairs.reset_index()
         closest_node_pairs = closest_node_pairs.merge(
-            grid_with_cost_surface.drop_duplicates(subset="node_id")[["geometry"]],
+            grid_with_cost_surface.loc[~grid_with_cost_surface.index.duplicated()][["geometry"]],
             left_on="idx_node",
             right_index=True,
             how="left",
@@ -658,12 +659,8 @@ class GetPotentialPipeRammingCrossings:
                     [
                         shapely.LineString(
                             [
-                                self.cost_surface_nodes.loc[self.cost_surface_nodes["node_id"] == i[0]].geometry.iloc[
-                                    0
-                                ],
-                                self.cost_surface_nodes.loc[self.cost_surface_nodes["node_id"] == i[1]].geometry.iloc[
-                                    0
-                                ],
+                                get_hexagon_node_geometry(self.cost_surface_nodes, i[0]),
+                                get_hexagon_node_geometry(self.cost_surface_nodes, i[1]),
                             ]
                         )
                         for i in crossings

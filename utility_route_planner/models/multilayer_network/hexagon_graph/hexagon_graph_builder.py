@@ -164,7 +164,9 @@ class HexagonGraphBuilder:
         Only include filled rows for node geodataframe conversion (placeholder rows can be identified with node_id==-1)
         """
         nodes = np.extract(nodes["node_id"] >= 0, nodes)
-        return gpd.GeoDataFrame(
+        node_gdf = gpd.GeoDataFrame(
             data={"node_id": nodes["node_id"], "suitability_value": nodes["suitability_value"]},
             geometry=gpd.points_from_xy(x=nodes["x"], y=nodes["y"], crs=Config.CRS),
         )
+        node_gdf = node_gdf.set_index("node_id")
+        return node_gdf

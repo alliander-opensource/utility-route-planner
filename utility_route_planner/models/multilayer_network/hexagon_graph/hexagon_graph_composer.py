@@ -15,6 +15,7 @@ from utility_route_planner.models.multilayer_network.graph_datastructures import
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_utils import (
     convert_hexagon_edges_to_gdf,
     update_edge_id,
+    get_hexagon_node_geometry,
 )
 from utility_route_planner.util.geo_utilities import (
     get_empty_geodataframe,
@@ -100,7 +101,7 @@ class HexagonGraphComposer:
 
             # Determine which nodes to connect to each other
             for component in rx.connected_components(height_graph.graph):
-                gdf_component_nodes = height_graph.nodes_gdf[height_graph.nodes_gdf["node_id"].isin(component)]
+                gdf_component_nodes = height_graph.nodes_gdf.loc[list(component)]
                 # Get the outer nodes (nodes to join to the main graph) of the component.
                 component_area = gdf_component_nodes.buffer(self.hexagon_size).union_all(grid_size=0.1)
                 if not isinstance(component_area, shapely.Polygon):
@@ -114,7 +115,7 @@ class HexagonGraphComposer:
                     distance=self.hexagon_size * 2,
                     how="left",
                     predicate="dwithin",
-                )
+                ).reset_index(drop=False)
                 gdf_main_nodes_to_outer_component_nodes = self.validate_main_to_subgraph_pairs(
                     gdf_main_nodes_to_outer_component_nodes
                 )
@@ -151,7 +152,7 @@ class HexagonGraphComposer:
         # Reassign nodes to a copied height node df, as the "original" node ids are required to properly connect height
         # levels in the next step
         height_node_df_copy = height_node_df.copy()
-        height_node_df_copy["node_id"] = height_node_df_copy["node_id"].replace(mapping)
+        height_node_df_copy.index = height_node_df_copy.index.map(mapping)
         self.processed_graphs_and_nodes_per_height_level[main_height_level].nodes_gdf = gpd.GeoDataFrame(
             pd.concat(
                 [self.processed_graphs_and_nodes_per_height_level[main_height_level].nodes_gdf, height_node_df_copy]
@@ -191,9 +192,7 @@ class HexagonGraphComposer:
                     geometry=shapely.LineString(
                         [
                             node_pair.geometry,
-                            self.gdf_main_nodes.loc[
-                                self.gdf_main_nodes["node_id"] == node_pair.node_id_right, "geometry"
-                            ].iloc[0],
+                            get_hexagon_node_geometry(self.gdf_main_nodes, node_pair.node_id_right),
                         ]
                     ),
                 ),
@@ -217,7 +216,7 @@ class HexagonGraphComposer:
                 lambda x: shapely.LineString(
                     [
                         x.geometry,
-                        self.gdf_main_nodes.loc[self.gdf_main_nodes["node_id"] == x.node_id_right, "geometry"].iloc[0],
+                        get_hexagon_node_geometry(self.gdf_main_nodes, x.node_id_right),
                     ]
                 ),
                 axis=1,
