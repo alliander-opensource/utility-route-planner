@@ -17,6 +17,7 @@ from utility_route_planner.models.mcda.mcda_engine import McdaCostSurfaceEngine
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_edge_generator import HexagonEdgeGenerator
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_graph_builder import HexagonGraphBuilder
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_grid_builder import HexagonGridBuilder
+from utility_route_planner.models.multilayer_network.k_shortest_path_route_planner import KShortestPathRoutePlanner
 from utility_route_planner.models.multilayer_network.multilayer_route_planner import MultilayerRouteEngine
 from utility_route_planner.models.multilayer_network.osm_graph_downloader import OSMGraphDownloader
 from utility_route_planner.models.multilayer_network.osm_graph_preprocessing import OSMGraphPreprocessor
@@ -41,6 +42,9 @@ def run_multilayer_network(
 
     raw_graph = OSMGraphDownloader(project_area_geometry).download_graph()
     osm_graph_preprocessed = OSMGraphPreprocessor(raw_graph).preprocess_graph()
+
+    k_paths_route_planner = KShortestPathRoutePlanner()
+    k_paths_route_planner.find_k_routes(osm_graph_preprocessed, source=0, target=1, k=3)
 
     mcda_engine = McdaCostSurfaceEngine(preset, path_geopackage_mcda_input, project_area_geometry)
     mcda_engine.preprocess_vectors()
