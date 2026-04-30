@@ -53,17 +53,15 @@ class HexagonGraphComposer:
 
     def compose(self) -> HeightLevelGraph:
         n_height_levels = len(self.processed_graphs_and_nodes_per_height_level)
-        if n_height_levels == 1:
-            logger.info("Only a single height level is present, no merging is required.")
-            return self.processed_graphs_and_nodes_per_height_level[
-                next(iter(self.processed_graphs_and_nodes_per_height_level))
-            ]
-        else:
-            logger.info(f"Connecting {n_height_levels - 1} height level(s) to the main graph.")
-
         main_height_level = self.get_main_height_level()
         self.gdf_main_nodes = self.processed_graphs_and_nodes_per_height_level[main_height_level].nodes_gdf
-        self.merge_graphs(main_height_level)
+        self.gdf_main_nodes["height_level"] = main_height_level
+
+        if n_height_levels == 1:
+            logger.info("Only a single height level is present, no merging is required.")
+        else:
+            logger.info(f"Connecting {n_height_levels - 1} height level(s) to the main graph.")
+            self.merge_graphs(main_height_level)
 
         return self.processed_graphs_and_nodes_per_height_level[main_height_level]
 
@@ -98,6 +96,9 @@ class HexagonGraphComposer:
             height_mapping = self.add_height_graph_to_main_graph(
                 height_graph.graph, height_graph.nodes_gdf, main_height_level
             )
+            self.processed_graphs_and_nodes_per_height_level[main_height_level].nodes_gdf.loc[
+                list(height_mapping.values()), "height_level"
+            ] = height
 
             # Determine which nodes to connect to each other
             for component in rx.connected_components(height_graph.graph):
