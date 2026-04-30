@@ -65,21 +65,28 @@ if __name__ == "__main__":
     reset_geopackage(Config.PATH_GEOPACKAGE_LCPA_OUTPUT, truncate=True)
     route_collection = BenchmarkRouteCollection()
 
-    cases_to_run = [1, 2, 3, 4, 5]  # 1 to 5, or [] for all
-    for case in route_collection.get_routes(cases_to_run):
+    cases_to_run = [1, 2, 3, 4, 5]
+    for case_id in cases_to_run:
+        benchmark_route = route_collection.get_benchmark_route(case_id)
         human_designed_route = (
-            gpd.read_file(case.path_geopackage, layer=case.layer_name_human_designed_route).iloc[0].geometry
+            gpd.read_file(benchmark_route.path_geopackage, layer=benchmark_route.layer_name_human_designed_route)
+            .iloc[0]
+            .geometry
         )
         route_stops = get_first_last_point_from_linestring(human_designed_route)
-        if case.stops:
-            route_stops = list(route_stops)[:1] + [shapely.Point(i) for i in case.stops] + list(route_stops)[1:]  # type: ignore
+        if benchmark_route.stops:
+            route_stops = (
+                list(route_stops)[:1] + [shapely.Point(i) for i in benchmark_route.stops] + list(route_stops)[1:]  # type: ignore
+            )
 
         run_mcda_lcpa(
             "preset_benchmark_raw",
-            case.path_geopackage,
-            gpd.read_file(case.path_geopackage, layer=case.layer_name_project_area).iloc[0].geometry,
+            benchmark_route.path_geopackage,
+            gpd.read_file(benchmark_route.path_geopackage, layer=benchmark_route.layer_name_project_area)
+            .iloc[0]
+            .geometry,
             route_stops,
             human_designed_route,
-            case.raster_name_prefix,
+            benchmark_route.raster_name_prefix,
             compute_rasters_in_parallel=True,
         )
