@@ -110,7 +110,7 @@ class HexagonGridBuilder:
         # Iterate over the split indexes to extract the blocks from the matrices. Each block is yielded as a polars
         # dataframe. In addition, it is yielded whether the final column of the current row is reached. This is required
         # for edge construction later on.
-        with tqdm(total=total_nr_of_blocks, desc="Processing hexagon blocks") as pbar:
+        with tqdm(total=total_nr_of_blocks, desc="Constructing hexagonal suitability grid") as pbar:
             for row_start, row_end in zip(row_splits[:-1], row_splits[1:]):
                 for column_start, column_end in zip(column_splits[:-1], column_splits[1:]):
                     x_block = x_matrix[row_start:row_end, column_start:column_end]
