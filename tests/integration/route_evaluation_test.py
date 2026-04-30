@@ -19,7 +19,7 @@ class TestRouteEvaluationMetrics:
         route_evaluation_metrics = RouteEvaluationMetrics(route, path_raster, project_area=route.buffer(50))
         route_evaluation_metrics.get_route_evaluation_metrics()
 
-        assert round(route_evaluation_metrics.route_relative_cost_sota) == 9969
+        assert round(route_evaluation_metrics.route_relative_cost_sota) == 8998
         assert route_evaluation_metrics.route_sota.length == route.length
 
     def test_route_costs_two_inputs(self):
@@ -32,8 +32,8 @@ class TestRouteEvaluationMetrics:
         )
         route_evaluation_metrics.get_route_evaluation_metrics()
 
-        assert round(route_evaluation_metrics.route_relative_cost_sota) == 9969
-        assert round(route_evaluation_metrics.route_relative_cost_human) == 30991
+        assert round(route_evaluation_metrics.route_relative_cost_sota) == 8998
+        assert round(route_evaluation_metrics.route_relative_cost_human) == 27325
         assert route_evaluation_metrics.route_sota.length == route_sota.length
         assert route_evaluation_metrics.route_human.length == route_human.length
         assert route_evaluation_metrics.route_similarity_sota == 0
@@ -78,7 +78,7 @@ class TestRouteEvaluationMetrics:
         route_evaluation_metrics = RouteEvaluationMetrics(route, path_raster)
         route_evaluation_metrics.get_route_evaluation_metrics()
 
-        cost_of_single_cell = 126  # As viewed in QGIS.
+        cost_of_single_cell = 86  # As viewed in QGIS.
 
         assert round(route_evaluation_metrics.route_relative_cost_sota) == round(cost_of_single_cell * route.length)
 
@@ -94,8 +94,8 @@ class TestRouteEvaluationMetrics:
         route_evaluation_metrics = RouteEvaluationMetrics(route, path_raster)
         nodes, edges = route_evaluation_metrics.get_number_of_nodes_edges(path_raster, project_area)
         assert edges / nodes <= 8
-        assert nodes == 2182753
-        assert edges == 17435116
+        assert nodes == 2182557
+        assert edges == 17433560
 
     def test_get_number_of_nodes_edges_small_array(self):
         pytest_array = np.array(

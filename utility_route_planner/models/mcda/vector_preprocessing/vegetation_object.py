@@ -56,4 +56,9 @@ class VegetationObject(VectorPreprocessorBase):
                 input_gdf["plus-type"].eq(key), input_gdf["geometry"].buffer(value), input_gdf["geometry"]
             )
 
+        # Do not double-count suitability values for the same type of vegetation object when they overlap.
+        input_gdf = (
+            input_gdf.dissolve(by=["plus-type", "suitability_value", "relatieveHoogteligging"]).explode().reset_index()
+        )
+
         return input_gdf

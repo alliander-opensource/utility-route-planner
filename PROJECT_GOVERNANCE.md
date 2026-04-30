@@ -1,5 +1,5 @@
 <!--
-SPDX-FileCopyrightText: 'Copyright Contributors to the Utility-route-planner project' 
+SPDX-FileCopyrightText: 'Copyright Contributors to the Utility-route-planner project'
 
 SPDX-License-Identifier: Apache-2.0
 -->

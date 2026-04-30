@@ -43,7 +43,8 @@ class McdaCostSurfaceEngine:
         raster_name_prefix: str = "",
     ):
         self.raster_preset = load_preset(preset_to_load, path_geopackage_mcda_input, project_area_geometry)
-        self.processed_vectors: dict = {}
+        self.processed_vectors: dict[str, gpd.GeoDataFrame] = {}
+        self.processed_criteria_per_height_level: dict[int, list[str]] = {}
         self.unprocessed_criteria_names: set = set()
         self.processed_criteria_names: set = set()
         self.raster_name_prefix: str = raster_name_prefix
@@ -68,12 +69,17 @@ class McdaCostSurfaceEngine:
         dfs_present_weight = []
         for idx, criterion in enumerate(self.raster_preset.criteria):
             logger.info(f"Processing criteria number {idx + 1} of {self.number_of_criteria}.")
-            is_processed, gdf_processed, df_present_weights = self.raster_preset.criteria[
+            is_processed, gdf_processed, df_present_weights, height_levels = self.raster_preset.criteria[
                 criterion
             ].preprocessing_function.execute(self.raster_preset.general, self.raster_preset.criteria[criterion])
             if is_processed:
                 self.processed_vectors[criterion] = gdf_processed
                 dfs_present_weight.append(df_present_weights)
+                for height_level in height_levels:
+                    if height_level not in self.processed_criteria_per_height_level:
+                        self.processed_criteria_per_height_level[height_level] = [criterion]
+                    else:
+                        self.processed_criteria_per_height_level[height_level].append(criterion)
             else:
                 if not gdf_processed.empty:
                     raise ValueError(f"Criterion {criterion} was not processed but returned a non-empty geodataframe.")

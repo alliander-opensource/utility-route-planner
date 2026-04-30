@@ -7,7 +7,6 @@ from __future__ import annotations
 import abc
 import typing
 
-import fiona
 import pandas
 import pandas as pd
 import shapely
@@ -37,22 +36,32 @@ class VectorPreprocessorBase(abc.ABC):
     @time_function
     def execute(
         self, general: RasterPresetGeneral, criterion: RasterPresetCriteria
-    ) -> tuple[bool, gpd.GeoDataFrame, pd.DataFrame]:
+    ) -> tuple[bool, gpd.GeoDataFrame, pd.DataFrame, list]:
         """Run all methods in order for a criteria returning the processed geodataframe with suitability values."""
         logger.info(f"Start preprocessing: {self.criterion}.")
 
         gdf_prepared = self.prepare_input_data(general.project_area_geometry, criterion, general.path_input_geopackage)
         if len(gdf_prepared) == 1 and gdf_prepared[0].empty:
-            return False, get_empty_geodataframe(), pd.DataFrame()
+            return (
+                False,
+                get_empty_geodataframe(),
+                pd.DataFrame(),
+                [],
+            )  # Nothing to process when there is no data available, return.
         gdf_processed = self.specific_preprocess(gdf_prepared, criterion)
         if not self.is_valid_result(gdf_processed):
-            return False, get_empty_geodataframe(), pd.DataFrame()
+            return (
+                False,
+                get_empty_geodataframe(),
+                pd.DataFrame(),
+                [],
+            )
 
         df_present_weights = self.get_statistics(criterion, gdf_processed)
-
+        height_levels = self.get_height_levels(gdf_processed)
         self.write_to_file(general.prefix, gdf_processed)
 
-        return True, gdf_processed, df_present_weights
+        return True, gdf_processed, df_present_weights, height_levels
 
     @staticmethod
     def prepare_input_data(
@@ -60,7 +69,7 @@ class VectorPreprocessorBase(abc.ABC):
     ) -> list[gpd.GeoDataFrame]:
         """Check existing layers in geopackage / clip data / check if gdf is empty / filter historic BGT data"""
         prepared_input = []
-        available_layers = fiona.listlayers(path_geopackage_mcda_input)
+        available_layers = gpd.list_layers(path_geopackage_mcda_input)["name"].to_list()
         for layer_name in criterion.layer_names:
             if layer_name not in available_layers:
                 logger.warning(f"Layer name: {layer_name} is not available in geopackage, skipping.")
@@ -101,6 +110,16 @@ class VectorPreprocessorBase(abc.ABC):
             raise InvalidSuitabilityValue
         return True
 
+    def get_height_levels(self, processed_gdf: gpd.GeoDataFrame, default_height: int = 0) -> list:
+        """Get unique height levels from the processed geodataframe, if available."""
+        if "relatieveHoogteligging" not in processed_gdf.columns:
+            logger.info(f"No height levels found for criterion: {self.criterion}. Defaulting to: {default_height}.")
+            processed_gdf["relatieveHoogteligging"] = default_height
+            return [default_height]
+        height_levels = processed_gdf["relatieveHoogteligging"].unique().tolist()
+        logger.info(f"Found height levels: {height_levels} for criterion: {self.criterion}.")
+        return height_levels
+
     def write_to_file(self, prefix, gdf_validated: gpd.GeoDataFrame) -> None:
         """Write to the geopackage for debugging and rasterizing."""
         write_results_to_geopackage(Config.PATH_GEOPACKAGE_MCDA_OUTPUT, gdf_validated, prefix + self.criterion)
@@ -119,6 +138,9 @@ class VectorPreprocessorBase(abc.ABC):
                         f"Columns to reclassify: {column} not in processed gdf columns in criterion {self.criterion}."
                         f"Check the preprocessing function if the column is created/retained correctly."
                     )
+                # Some columns might be empty (e.g., SmallAboveGroundObstacles), ignore these.
+                if gdf_processed[column].isna().all():
+                    columns_to_reclassify.pop(columns_to_reclassify.index(column))
 
         weights_per_m2 = gdf_processed.dissolve(by=columns_to_reclassify).area
 

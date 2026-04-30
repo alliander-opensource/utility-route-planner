@@ -29,15 +29,34 @@ class Config:
     FINAL_RASTER_VALUE_LIMIT_LOWER = 1
     FINAL_RASTER_VALUE_LIMIT_UPPER = 126
 
+    # Multilayer network
+    OSM_API_TIMEOUT_IN_SECONDS = 20
+    MIN_NODE_SUITABILITY_VALUE = 1
+    MAX_NODE_SUITABILITY_VALUE = 126
+    HEXAGON_SIZE = 0.5
+    HEXAGON_BLOCK_SIZE = 512
+    THRESHOLD_EDGE_LENGTH_CROSSING_M: float = 30
+    MAX_PIPE_RAMMING_LENGTH_M: float = 15
+    MIN_PIPE_RAMMING_LENGTH_M: float = 3
+    SUITABILITY_VALUE_CROSSING_THRESHOLD: float = 10
+    SUITABILITY_VALUE_OBSTACLES_THRESHOLD: float = 76
+    # References:
+    # - e.g. Low voltage https://www.waskoenig.de/nl/producten/v-vmvksas#variants
+    # - e.g. mid voltage https://www.waskoenig.de/nl/producten/ymekrvaslqwd-10kv#variants
+    MINIMUM_BENDING_RADIUS: float = 0.75  # this might give problems if < cell size
+
     # input/output paths.
     PATH_RESULTS = BASEDIR / "data/processed"
     PATH_GEOPACKAGE_MCDA_OUTPUT = BASEDIR / "data/processed/mcda_output.gpkg"
     PATH_GEOPACKAGE_LCPA_OUTPUT = BASEDIR / "data/processed/lcpa_results.gpkg"
+    PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT = BASEDIR / "data/processed/multilayer_network.gpkg"
+    PATH_GEOPACKAGE_VECTOR_GRAPH_OUTPUT = BASEDIR / "data/processed/hexagon_graph.gpkg"
 
     # Testing paths.
     PATH_EXAMPLE_RASTER = BASEDIR / "data/examples/pytest_example_suitability_raster.tif"
     PYTEST_PATH_GEOPACKAGE_MCDA = BASEDIR / "data/examples/pytest_data.gpkg"
     PYTEST_LAYER_NAME_PROJECT_AREA = "project_area_ede"
+    PYTEST_OSM_GRAPH_PICKLE = BASEDIR / "data/examples/pytest_osm_graph.pkl"
 
     # Research question 1 data paths.
     PATH_GEOPACKAGE_CASE_01 = BASEDIR / "data/examples/case_01.gpkg"
