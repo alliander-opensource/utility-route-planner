@@ -87,7 +87,6 @@ class MultilayerRouteEngine:
 
         self.results = MultiLayerRouteResults()
 
-    @time_function
     def find_route(self, start_end: shapely.LineString):
         source, target = self.get_source_and_target_nodes(start_end)
 
@@ -95,22 +94,7 @@ class MultilayerRouteEngine:
         # Offset to avoid it being exactly on top of the nodes, causes issues with distance calculations during routing.
         self.results.result_route_guideline = shapely.offset_curve(straight_line, self.hexagon_size / 4)
 
-        match self.algorithm:
-            case Algorithm.dijkstra:
-                path_node_indices = rx.dijkstra_shortest_paths(
-                    self.cost_surface_graph, source, target, self.get_weight_dijkstra
-                )
-                path_node_indices = path_node_indices[target]
-            case Algorithm.astar:
-                path_node_indices = rx.astar_shortest_path(
-                    self.cost_surface_graph,
-                    node=source,
-                    goal_fn=lambda x: x.node_id == target,
-                    edge_cost_fn=self.get_weight_astar,
-                    estimate_cost_fn=self.get_estimate_astar,
-                )
-            case _:
-                raise ValueError("Unsupported algorithm type.")
+        path_node_indices = self.find_path_node_indices(source, target)
 
         gdf_path_nodes = self.gdf_cost_surface_nodes.loc[path_node_indices].copy()
         gdf_path_edges = get_hexagon_edge_geometries_for_path(
@@ -188,6 +172,27 @@ class MultilayerRouteEngine:
         )
         return edge_line
 
+    @time_function
+    def find_path_node_indices(self, source, target):
+        logger.info("Starting route finding.")
+        match self.algorithm:
+            case Algorithm.dijkstra:
+                path_node_indices = rx.dijkstra_shortest_paths(
+                    self.cost_surface_graph, source, target, self.get_weight_dijkstra
+                )
+                path_node_indices = path_node_indices[target]
+            case Algorithm.astar:
+                path_node_indices = rx.astar_shortest_path(
+                    self.cost_surface_graph,
+                    node=source,
+                    goal_fn=lambda x: x.node_id == target,
+                    edge_cost_fn=self.get_weight_astar,
+                    estimate_cost_fn=self.get_estimate_astar,
+                )
+            case _:
+                raise ValueError(f"Unsupported algorithm type. Expected one of: {[a for a in Algorithm]}")
+        return path_node_indices
+
     def _get_shortcut_costs(self, line: shapely.LineString, inradius: int) -> list[float]:
         # Multiply each node suitability value by 2, as edge weights are set as the sum of two node suitability values.
         nearby = self.gdf_cost_surface_nodes[self.gdf_cost_surface_nodes.dwithin(line, inradius)]
@@ -198,6 +203,7 @@ class MultilayerRouteEngine:
             costs = intersected.suitability_value.unique()
         return (costs * 2).tolist()
 
+    @time_function
     def straighten_linestring(self) -> tuple[shapely.LineString, list[int]]:
         """
         The idea is to create shortcuts in the route by skipping nodes if the cost does not change. This is done by
@@ -216,6 +222,7 @@ class MultilayerRouteEngine:
         This results in a "straightened" linestring.
 
         """
+        logger.info("Starting straightening of the found route.")
         # center to center distance from a neighbouring hexagon
         inradius = get_inradius(self.hexagon_size)
         shortcut_order: list = [self.results.result_route_node_indices[0]]
@@ -273,6 +280,7 @@ class MultilayerRouteEngine:
 
         return shortcut_linestring, shortcut_order
 
+    @time_function
     def apply_bezier_curves(
         self,
         min_bend_radius: float,
@@ -294,6 +302,7 @@ class MultilayerRouteEngine:
              from the cells covered by the two legs being joined.
         Adjacent corners share legs, so each corner can use at most half of a leg's length.
         """
+        logger.info("Starting route smoothing through application of bezier curves.")
         # TODO split and cleanup
         coords = list(self.results.result_route_straightened.coords)
         if len(coords) < 3:

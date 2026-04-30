@@ -10,6 +10,8 @@ import structlog
 import rustworkx as rx
 import itertools
 
+from tqdm import tqdm
+
 from settings import Config
 import geopandas as gpd
 
@@ -90,7 +92,7 @@ class GetPotentialPipeRammingCrossings:
         Start by checking junctions (nodes with more than 2 edges).
         After this, check the remaining street segments and split them if they are long enough.
         """
-        logger.info("Finding road crossings.")
+        logger.info("Start finding potential pipe ramming crossings.")
 
         # Group the edges into street segments between junctions (node degree > 2).
         self.create_street_segment_groups()
@@ -98,30 +100,34 @@ class GetPotentialPipeRammingCrossings:
         crossing_collection = []
         # Finds crossings (parallel to the edge!) for junctions.
         self.prepare_junction_crossings()
-        for idx, (node_id, junction) in enumerate(self.junctions_of_interests.iterrows(), 1):
-            if idx % 10 == 0 or idx == 1:
-                logger.info(f"Processing junction {idx}/{len(self.junctions_of_interests)}: node_id={node_id}")
-            crossing = self.get_crossing_for_junction(node_id, junction.osm_id, junction.geometry, junction.degree)
-            if len(crossing):
-                crossing_collection.extend(crossing)
-            else:
-                logger.warning(f"No crossings found for junction {node_id}.")
-
-        # Find crossings (perpendicular to the edge!) for larger street segments.
-        merged_segments_of_interest = self.prepare_segment_crossings()
-        for idx, (segment_group, segment) in enumerate(merged_segments_of_interest.iterrows(), 1):
-            if idx % 10 == 0 or idx == 1:
-                logger.info(
-                    f"Processing segment {idx}/{len(merged_segments_of_interest)}: segment group={segment_group}"
-                )
-            try:
-                crossing = self.get_crossings_per_segment(segment_group, segment.geometry)
+        with tqdm(total=len(self.junctions_of_interests), desc="Processing junctions") as pbar:
+            invalid_junctions = []
+            for node_id, junction in self.junctions_of_interests.iterrows():
+                crossing = self.get_crossing_for_junction(node_id, junction.osm_id, junction.geometry, junction.degree)
                 if len(crossing):
                     crossing_collection.extend(crossing)
                 else:
-                    logger.warning(f"No crossings found for segment group {segment_group}.")
-            except Exception as e:
-                logger.error(f"An error occurred for segment group {segment_group}: {e}")
+                    invalid_junctions.append(node_id)
+                pbar.update()
+            if invalid_junctions:
+                logger.warning(f"No crossings found for junction(s): {invalid_junctions}.")
+
+        # Find crossings (perpendicular to the edge!) for larger street segments.
+        merged_segments_of_interest = self.prepare_segment_crossings()
+        with tqdm(total=len(merged_segments_of_interest), desc="Processing large street segments") as pbar:
+            invalid_segments = []
+            for segment_group, segment in merged_segments_of_interest.iterrows():
+                try:
+                    crossing = self.get_crossings_per_segment(segment_group, segment.geometry)
+                    if len(crossing):
+                        crossing_collection.extend(crossing)
+                    else:
+                        invalid_segments.append(segment_group)
+                except Exception as e:
+                    logger.error(f"An error occurred for segment group {segment_group}: {e}")
+                pbar.update()
+            if invalid_segments:
+                logger.warning(f"No crossings found for segment group(s): {invalid_segments}.")
 
         self.add_crossings_to_graph(crossing_collection)
 
@@ -401,8 +407,6 @@ class GetPotentialPipeRammingCrossings:
         """
         Create perpendicular crossings for long street segments when there are no obstacles in the way.
         """
-        logger.info(f"Finding crossings in street segment: {segment_group}.")
-
         # Determine points per segment where crossings can be added. Skip the first and last meters as this is near a
         # junction and handled separately.
         crossing_intervals = np.linspace(
