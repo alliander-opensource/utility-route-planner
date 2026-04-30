@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-name: CI
+name: Quality checks
 on:
   pull_request:
     types: [opened, reopened, synchronize, closed]
@@ -16,8 +16,12 @@ jobs:
           python-version: 3.12
       - name: Install Poetry
         uses: snok/install-poetry@v1
+      - name: Install project
+        shell: bash
+        run: poetry install
       - name: Run pre-commit
         shell: bash
-        run: |
-          poetry install
-          poetry run pre-commit run --all-files
+        run: poetry run pre-commit run --all-files
+      - name: Run unit and integration tests
+        shell: bash
+        run: poetry run pytest tests
