@@ -84,7 +84,7 @@ requests to us.
 # License
 This project is licensed under the Apache-2.0 - see [LICENSE](https://github.com/alliander-opensource/utility-route-planner/blob/main/LICENSE) for details.
 
-## Licenses data 
+## Licenses data
 This project is largely dependent on data. Data is incorporated in the example folder and is licensed under their own respective Open-Source licenses:
 
 - BGT: [CC PDM 1.0](https://creativecommons.org/publicdomain/mark/1.0/deed.en) downloaded from [PDOK](https://www.nationaalgeoregister.nl/geonetwork/srv/dut/catalog.search#/metadata/e01e63cd-6b3d-4c58-b34e-8d343a3c264b)
