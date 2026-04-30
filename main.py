@@ -67,7 +67,7 @@ if __name__ == "__main__":
 
     cases_to_run = [1, 2, 3, 4, 5]
     for case_id in cases_to_run:
-        benchmark_route = route_collection.get_benchmark_route(case_id)
+        benchmark_route = route_collection.get_case(case_id)
         human_designed_route = (
             gpd.read_file(benchmark_route.path_geopackage, layer=benchmark_route.layer_name_human_designed_route)
             .iloc[0]

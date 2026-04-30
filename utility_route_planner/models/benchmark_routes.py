@@ -56,7 +56,7 @@ class BenchmarkRouteCollection:
         ),
     }
 
-    def get_benchmark_route(self, benchmark_id: int):
+    def get_case(self, benchmark_id: int):
         if benchmark_id not in self.benchmark_routes.keys():
             raise ValueError(f"No benchmark route found for id: {benchmark_id}")
         return self.benchmark_routes[benchmark_id]

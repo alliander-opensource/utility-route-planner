@@ -12,6 +12,7 @@ import typer
 from structlog.contextvars import bound_contextvars
 
 from settings import Config
+from utility_route_planner.models.benchmark_routes import BenchmarkRouteCollection
 from utility_route_planner.models.mcda.mcda_engine import McdaCostSurfaceEngine
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_edge_generator import HexagonEdgeGenerator
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_graph_builder import HexagonGraphBuilder
@@ -71,6 +72,7 @@ def run_multilayer_network(
     logger.info(f"Multilayer route CPU time: {(time.process_time_ns() - start_cpu_time) / 1e9:.2f} seconds.")
 
 
+@app.command()
 def run_debug_case(write_routing_output: bool = False):
     with bound_contextvars(project_area="Componistenbuurt"):
         logger.info("Running multilayer routing engine for debug project area")
@@ -85,35 +87,23 @@ def run_debug_case(write_routing_output: bool = False):
         )
 
 
-def run_benchmark_case():
-    pass
-
-
-app.command(name="run_debug_case")(run_debug_case)
-app.command(name="run_benchmark_case")(run_benchmark_case)
+@app.command()
+def run_benchmark_case(benchmark_case_id: int, write_routing_output: bool = False):
+    benchmark_routes = BenchmarkRouteCollection()
+    with bound_contextvars(benchmark_id=benchmark_case_id):
+        benchmark_route = benchmark_routes.get_case(benchmark_case_id)
+        run_multilayer_network(
+            Config.RASTER_PRESET_NAME_BENCHMARK,
+            benchmark_route.path_geopackage,
+            gpd.read_file(benchmark_route.path_geopackage, layer=benchmark_route.layer_name_human_designed_route)
+            .iloc[0]
+            .geometry,
+            gpd.read_file(benchmark_route.path_geopackage, layer=benchmark_route.layer_name_project_area)
+            .iloc[0]
+            .geometry,
+            write_routing_output,
+        )
 
 
 if __name__ == "__main__":
     app()
-
-# if __name__ == "__main__":
-#     reset_geopackage(Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT, truncate=False)
-#
-#     # Small area
-#     # run_multilayer_network(
-#     #     Config.RASTER_PRESET_NAME_BENCHMARK,
-#     #     Config.PYTEST_PATH_GEOPACKAGE_MCDA,
-#     #     shapely.LineString([(174847.18,451178.43), (175746.347,450435.534)]),
-#     #     gpd.read_file(Config.PYTEST_PATH_GEOPACKAGE_MCDA, layer=Config.PYTEST_LAYER_NAME_PROJECT_AREA).iloc[0].geometry
-#     # )
-#
-#     benchmark_routes = BenchmarkRouteCollection()
-#     benchmark_route = benchmark_routes.route_2
-#     run_multilayer_network(
-#         Config.RASTER_PRESET_NAME_BENCHMARK,
-#         benchmark_route.path_geopackage,
-#         gpd.read_file(benchmark_route.path_geopackage, layer=benchmark_route.layer_name_human_designed_route)
-#         .iloc[0]
-#         .geometry,
-#         gpd.read_file(benchmark_route.path_geopackage, layer=benchmark_route.layer_name_project_area).iloc[0].geometry,
-#     )
