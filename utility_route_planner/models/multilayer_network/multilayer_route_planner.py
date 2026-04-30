@@ -13,7 +13,11 @@ import geopandas as gpd
 import structlog
 
 from settings import Config
-from utility_route_planner.models.multilayer_network.graph_datastructures import EdgeInfo, NodeInfo
+from utility_route_planner.models.multilayer_network.graph_datastructures import BaseWeightedEdgeInfo, NodeInfo
+from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_utils import (
+    get_hexagon_edge_geometries_for_path,
+    get_hexagon_node_geometry,
+)
 from utility_route_planner.models.multilayer_network.multilayer_route_helpers import (
     _angle_between,
     _point_along,
@@ -108,21 +112,17 @@ class MultilayerRouteEngine:
             case _:
                 raise ValueError("Unsupported algorithm type.")
 
-        gdf_path_nodes = gpd.GeoDataFrame(
-            data=[self.cost_surface_graph.get_node_data(i) for i in path_node_indices], crs=Config.CRS
+        gdf_path_nodes = self.gdf_cost_surface_nodes.loc[path_node_indices].copy()
+        gdf_path_edges = get_hexagon_edge_geometries_for_path(
+            self.cost_surface_graph, path_node_indices, gdf_path_nodes
         )
-        # TODO replace with new edge retrieval after merge
-        edges = []
-        for current, next_ in zip(path_node_indices, path_node_indices[1:]):
-            edges.append(self.cost_surface_graph.get_edge_data(current, next_))
-        gdf_path_edges = gpd.GeoDataFrame(data=edges, crs=Config.CRS)
 
         self.results.result_route_edges = gdf_path_edges
         self.results.result_route_nodes = gdf_path_nodes
         self.results.result_route_node_indices = path_node_indices
 
         self.results.result_route_linestring = shapely.LineString(
-            [self.cost_surface_graph.get_node_data(i).geometry for i in path_node_indices]
+            [get_hexagon_node_geometry(self.gdf_cost_surface_nodes, node_id=i) for i in path_node_indices]
         )
         self.results.result_route_straightened, self.results.result_route_straightened_node_indices = (
             self.straighten_linestring()
@@ -134,27 +134,29 @@ class MultilayerRouteEngine:
             self.results.write_to_geopackage(self.out, self.prefix)
             write_results_to_geopackage(
                 self.out,
-                self.gdf_cost_surface_nodes[
-                    self.gdf_cost_surface_nodes["node_id"].isin(self.results.result_route_straightened_node_indices)
-                ],
-                f"{self.prefix}result_route_straightened_node_indices",
+                self.gdf_cost_surface_nodes.loc[self.results.result_route_straightened_node_indices],
+                f"{self.prefix}result_route_shortcut_nodes",
             )
 
     def get_source_and_target_nodes(self, start_end: shapely.LineString) -> tuple[int, int]:
         start, end = get_first_last_point_from_linestring(start_end)
-        source = self.gdf_cost_surface_nodes.distance(start).idxmin()
-        target = self.gdf_cost_surface_nodes.distance(end).idxmin()
+        source = self.gdf_cost_surface_nodes.iloc[self.gdf_cost_surface_nodes.distance(start).idxmin()].name
+        target = self.gdf_cost_surface_nodes.iloc[self.gdf_cost_surface_nodes.distance(end).idxmin()].name
         if source == target:
             raise ValueError("Source and target node are the same. Provide a linestring with points further apart.")
         return source, target
 
     def get_result_route_length(self) -> float:
-        return self.results.result_route_edges["length"].sum()
+        return self.results.result_route_edges.geometry.length.sum()
 
     def get_result_route_cost(self) -> float:
-        return self.results.result_route_edges["weight"].sum()
+        """
+        For now, divide total route cost by 2 as the edge weight is now computed as the sum of the weights of the source
+        and target nodes.
+        """
+        return self.results.result_route_edges["weight"].sum() / 2
 
-    def get_weight_dijkstra(self, edge: EdgeInfo, modifier: float = 0.01) -> float:
+    def get_weight_dijkstra(self, edge: BaseWeightedEdgeInfo, modifier: float = 0.01) -> float:
         """
         Weight is leading for edges (MCDA), but we want to add a small distance-based cost to prefer routes that are
         closer to the straight line between start and end.
@@ -167,32 +169,34 @@ class MultilayerRouteEngine:
             logger.warning("Unexpected situation during routing.")
         return weight + distance
 
-    def get_weight_astar(self, edge: EdgeInfo) -> float:
+    def get_weight_astar(self, edge: BaseWeightedEdgeInfo) -> float:
         return self.cost_surface_graph.get_edge_data_by_index(edge.edge_id).weight
 
     def get_estimate_astar(self, node: NodeInfo) -> float:
-        node_point = self.cost_surface_graph.get_node_data(node.node_id).geometry
+        node_point = get_hexagon_node_geometry(self.gdf_cost_surface_nodes, node.node_id)
         guideline = shapely.LineString([node_point, shapely.get_point(self.results.result_route_guideline, 1)])
 
         return guideline.length
 
     def get_linestring(self, node_1: int, node_2: int) -> shapely.LineString:
-        # TODO replace after merge
+        nodes = self.gdf_cost_surface_nodes
         edge_line = shapely.LineString(
             [
-                self.cost_surface_graph.get_node_data(node_1).geometry,
-                self.cost_surface_graph.get_node_data(node_2).geometry,
+                get_hexagon_node_geometry(nodes, node_1),
+                get_hexagon_node_geometry(nodes, node_2),
             ]
         )
         return edge_line
 
-    def _get_shortcut_costs(self, line: shapely.LineString, inradius: int) -> tuple[float, float]:
+    def _get_shortcut_costs(self, line: shapely.LineString, inradius: int) -> list[float]:
+        # Multiply each node suitability value by 2, as edge weights are set as the sum of two node suitability values.
         nearby = self.gdf_cost_surface_nodes[self.gdf_cost_surface_nodes.dwithin(line, inradius)]
-        costs = nearby.suitability_value.unique().tolist()
+        costs = nearby.suitability_value.unique()
+        # Only look at the intersection when necessary to save resources
         if len(costs) != 1:
             intersected = nearby[nearby.buffer(inradius / 2).intersects(line)]
-            costs = intersected.suitability_value.unique().tolist()
-        return costs
+            costs = intersected.suitability_value.unique()
+        return (costs * 2).tolist()
 
     def straighten_linestring(self) -> tuple[shapely.LineString, list[int]]:
         """
@@ -218,12 +222,7 @@ class MultilayerRouteEngine:
 
         # TODO add height
         # create dataframe with: node_order, suit value, height level. use to get segments.
-        gdf_crossed_nodes = self.gdf_cost_surface_nodes[
-            self.gdf_cost_surface_nodes["node_id"].isin(self.results.result_route_node_indices)
-        ]
-        gdf_crossed_nodes = (
-            gdf_crossed_nodes.set_index("node_id").loc[self.results.result_route_node_indices].reset_index()
-        )
+        gdf_crossed_nodes = self.gdf_cost_surface_nodes.loc[self.results.result_route_node_indices].reset_index()
         gdf_crossed_nodes["segment"] = (
             gdf_crossed_nodes["suitability_value"] != gdf_crossed_nodes["suitability_value"].shift()
         ).cumsum()
@@ -241,7 +240,7 @@ class MultilayerRouteEngine:
                 # For each node in the active segment, create a line from start_node and compute shortcut costs.
                 # Pick the last node (most skipped) with still the same suitability costs
                 basic_cost = self.cost_surface_graph.get_edge_data(start_node, forwarded_node).weight
-                start_node_geom = self.cost_surface_graph.get_node_data(start_node).geometry
+                start_node_geom = get_hexagon_node_geometry(self.gdf_cost_surface_nodes, node_id=start_node)
                 # Create lines from start_node to all nodes in the active segment
                 series_forwarded = gpd.GeoSeries(shapely.shortest_line(start_node_geom, gdf_active_mask["geometry"]))
                 # Compute shortcut costs for each line

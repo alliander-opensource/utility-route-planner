@@ -4,40 +4,23 @@
 
 import math
 import geopandas as gpd
-import geopandas.testing
 import numpy as np
+import polars as pl
+from polars.testing import assert_frame_equal
 import pytest
 import shapely
 
 from settings import Config
-from utility_route_planner.models.mcda.load_mcda_preset import load_preset
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_grid_builder import (
     HexagonGridBuilder,
 )
 
 
 @pytest.fixture()
-def preprocessed_vectors() -> dict[str, gpd.GeoDataFrame]:
-    return {"test": gpd.GeoDataFrame()}
-
-
-@pytest.fixture()
-def raster_groups() -> dict[str, str]:
-    preset = load_preset(
-        Config.RASTER_PRESET_NAME_BENCHMARK,
-        Config.PYTEST_PATH_GEOPACKAGE_MCDA,
-        gpd.read_file(Config.PYTEST_PATH_GEOPACKAGE_MCDA, layer=Config.PYTEST_LAYER_NAME_PROJECT_AREA).iloc[0].geometry,
-    )
-    return {criteria_key: criteria.group for criteria_key, criteria in preset.criteria.items()}
-
-
-@pytest.fixture()
-def grid_constructor(
-    raster_groups: dict[str, str], preprocessed_vectors: dict[str, gpd.GeoDataFrame]
-) -> HexagonGridBuilder:
+def grid_constructor() -> HexagonGridBuilder:
     hexagon_size = 0.5
     block_size = 512
-    return HexagonGridBuilder(raster_groups, preprocessed_vectors, hexagon_size, block_size)
+    return HexagonGridBuilder(hexagon_size, block_size)
 
 
 class TestConstructHexagonalGridForBoundingBox:
@@ -65,11 +48,7 @@ class TestConstructHexagonalGridForBoundingBox:
         )
 
     def test_square_project_area(self, grid_constructor: HexagonGridBuilder, square_project_area: shapely.Polygon):
-        result = grid_constructor.construct_hexagonal_grid_for_bounding_box(square_project_area)
-
-        coordinates = result.geometry.get_coordinates()
-        x_coordinates = coordinates["x"].values.reshape(6, 7)
-        y_coordinates = coordinates["y"].values.reshape(6, 7)
+        x_coordinates, y_coordinates = grid_constructor.construct_hexagonal_grid_for_bounding_box(square_project_area)
 
         hexagon_size = grid_constructor.hexagon_size
         self.check_grid_bounding_box(hexagon_size, square_project_area, x_coordinates, y_coordinates)
@@ -78,10 +57,9 @@ class TestConstructHexagonalGridForBoundingBox:
     def test_triangular_project_area(
         self, grid_constructor: HexagonGridBuilder, triangular_project_area: shapely.Polygon
     ):
-        result = grid_constructor.construct_hexagonal_grid_for_bounding_box(triangular_project_area)
-        coordinates = result.geometry.get_coordinates()
-        x_coordinates = coordinates["x"].values.reshape(5, 6)
-        y_coordinates = coordinates["y"].values.reshape(5, 6)
+        x_coordinates, y_coordinates = grid_constructor.construct_hexagonal_grid_for_bounding_box(
+            triangular_project_area
+        )
 
         self.check_grid_spacing(grid_constructor.hexagon_size, x_coordinates, y_coordinates)
 
@@ -152,32 +130,20 @@ class TestAssignSuitabilityValuesToGrid:
         ).set_index("node_id")
 
         result = grid_constructor.assign_suitability_values_to_block(points_on_grid)
-        expected_suitability_values = (
-            gpd.GeoDataFrame(
-                data=[
-                    [1, 20],
-                    [2, 30],
-                    [3, Config.MAX_NODE_SUITABILITY_VALUE],
-                    [4, 50],
-                    [5, 60],
-                    [6, Config.MAX_NODE_SUITABILITY_VALUE],
-                ],
-                columns=["node_id", "suitability_value"],
-                geometry=[
-                    shapely.Point(0, 0),
-                    shapely.Point(1, 1),
-                    shapely.Point(2, 2),
-                    shapely.Point(3, 3),
-                    shapely.Point(4, 4),
-                    shapely.Point(5, 5),
-                ],
-                crs=Config.CRS,
-            )
-            .set_index("node_id")
-            .astype({"suitability_value": np.int16})
-        )
 
-        gpd.testing.assert_geodataframe_equal(expected_suitability_values, result.sort_index())
+        expected_suitability_values = pl.DataFrame(
+            data=[
+                [1, 20, 0.0, 0.0],
+                [2, 30, 1.0, 1.0],
+                [3, Config.MAX_NODE_SUITABILITY_VALUE, 2.0, 2.0],
+                [4, 50, 3.0, 3.0],
+                [5, 60, 4.0, 4.0],
+                [6, Config.MAX_NODE_SUITABILITY_VALUE, 5.0, 5.0],
+            ],
+            schema={"node_id": pl.Int32, "suitability_value": pl.Int16, "x": pl.Float32, "y": pl.Float32},
+        )
+        # Sort result by node_id as suitability query does not take node order into account
+        assert_frame_equal(expected_suitability_values, result.sort("node_id"))
 
     def test_overlapping_points_group_a(self, grid_constructor: HexagonGridBuilder):
         """
@@ -193,18 +159,11 @@ class TestAssignSuitabilityValuesToGrid:
 
         result = grid_constructor.assign_suitability_values_to_block(points_on_grid)
 
-        expected_suitability_values = (
-            gpd.GeoDataFrame(
-                data=[[1, 30.0]],
-                columns=["node_id", "suitability_value"],
-                geometry=[shapely.Point(0, 0)],
-                crs=Config.CRS,
-            )
-            .set_index("node_id")
-            .astype({"suitability_value": np.int16})
+        expected_suitability_values = pl.DataFrame(
+            data=[[1, 30.0, 0.0, 0.0]],
+            schema={"node_id": pl.Int32, "suitability_value": pl.Int16, "x": pl.Float32, "y": pl.Float32},
         )
-
-        gpd.testing.assert_geodataframe_equal(expected_suitability_values, result)
+        assert_frame_equal(expected_suitability_values, result)
 
     def test_overlapping_points_group_b(self, grid_constructor: HexagonGridBuilder):
         """
@@ -220,15 +179,11 @@ class TestAssignSuitabilityValuesToGrid:
 
         result = grid_constructor.assign_suitability_values_to_block(points_on_grid)
 
-        expected_suitability_values = (
-            gpd.GeoDataFrame(
-                data=[[1, 90]], columns=["node_id", "suitability_value"], geometry=[shapely.Point(0, 0)], crs=Config.CRS
-            )
-            .set_index("node_id")
-            .astype({"suitability_value": np.int16})
+        expected_suitability_values = pl.DataFrame(
+            data=[[1, 90, 0.0, 0.0]],
+            schema={"node_id": pl.Int32, "suitability_value": pl.Int16, "x": pl.Float32, "y": pl.Float32},
         )
-
-        gpd.testing.assert_geodataframe_equal(expected_suitability_values, result)
+        assert_frame_equal(expected_suitability_values, result)
 
     def test_overlapping_points_group_c(self, grid_constructor: HexagonGridBuilder):
         """
@@ -244,18 +199,11 @@ class TestAssignSuitabilityValuesToGrid:
 
         result = grid_constructor.assign_suitability_values_to_block(points_on_grid)
 
-        expected_suitability_values = (
-            gpd.GeoDataFrame(
-                data=[[1, Config.MAX_NODE_SUITABILITY_VALUE]],
-                columns=["node_id", "suitability_value"],
-                geometry=[shapely.Point(0, 0)],
-                crs=Config.CRS,
-            )
-            .set_index("node_id")
-            .astype({"suitability_value": np.int16})
+        expected_suitability_values = pl.DataFrame(
+            data=[[1, Config.MAX_NODE_SUITABILITY_VALUE, 0.0, 0.0]],
+            schema={"node_id": pl.Int32, "suitability_value": pl.Int16, "x": pl.Float32, "y": pl.Float32},
         )
-
-        gpd.testing.assert_geodataframe_equal(expected_suitability_values, result)
+        assert_frame_equal(expected_suitability_values, result)
 
     def test_sum_overlapping_group_a_and_b(self, grid_constructor: HexagonGridBuilder):
         """
@@ -278,18 +226,12 @@ class TestAssignSuitabilityValuesToGrid:
 
         result = grid_constructor.assign_suitability_values_to_block(points_on_grid)
 
-        expected_suitability_values = (
-            gpd.GeoDataFrame(
-                data=[[1, 50], [2, 40], [3, 50]],
-                columns=["node_id", "suitability_value"],
-                geometry=[shapely.Point(0, 0), shapely.Point(1, 1), shapely.Point(2, 2)],
-                crs=Config.CRS,
-            )
-            .set_index("node_id")
-            .astype({"suitability_value": np.int16})
+        expected_suitability_values = pl.DataFrame(
+            data=[[1, 50, 0.0, 0.0], [2, 40, 1.0, 1.0], [3, 50, 2.0, 2.0]],
+            schema={"node_id": pl.Int32, "suitability_value": pl.Int16, "x": pl.Float32, "y": pl.Float32},
         )
-
-        gpd.testing.assert_geodataframe_equal(expected_suitability_values, result.sort_index())
+        # Sort result by node_id as suitability query does not take node order into account
+        assert_frame_equal(expected_suitability_values, result.sort("node_id"))
 
     @pytest.mark.parametrize("group", ["a", "b"])
     def test_group_a_or_b_filled_while_other_empty(self, group: str, grid_constructor: HexagonGridBuilder):
@@ -306,41 +248,54 @@ class TestAssignSuitabilityValuesToGrid:
 
         result = grid_constructor.assign_suitability_values_to_block(points_on_grid)
 
-        expected_suitability_values = (
-            gpd.GeoDataFrame(
-                data=[[1, 20], [2, 40]],
-                columns=["node_id", "suitability_value"],
-                geometry=[shapely.Point(0, 0), shapely.Point(1, 1)],
-                crs=Config.CRS,
-            )
-            .set_index("node_id")
-            .astype({"suitability_value": np.int16})
+        expected_suitability_values = pl.DataFrame(
+            data=[[1, 20, 0.0, 0.0], [2, 40, 1.0, 1.0]],
+            schema={"node_id": pl.Int32, "suitability_value": pl.Int16, "x": pl.Float32, "y": pl.Float32},
         )
+        # Sort result by node_id as suitability query does not take node order into account
+        assert_frame_equal(expected_suitability_values, result.sort("node_id"))
 
-        gpd.testing.assert_geodataframe_equal(expected_suitability_values, result.sort_index())
 
-
-@pytest.mark.skip(reason="TODO: Add new coordinates after bug fix")
 class TestCartesianToAxialConversion:
     def test_conversion(self, grid_constructor: HexagonGridBuilder):
-        center_points = gpd.GeoDataFrame(
-            geometry=[
-                shapely.Point(174966.804, 451064.681),
-                shapely.Point(174967.554, 451065.114),
-                shapely.Point(174968.304, 451064.681),
-                shapely.Point(174967.554, 451064.248),
-                shapely.Point(174966.804, 451063.815),
-                shapely.Point(174967.554, 451063.382),
-                shapely.Point(174968.304, 451063.815),
-            ]
+        """
+        Verifies that all cartesian coordinates in an hexagon are converted succesfully to axial coordinates.
+        All coordinates should follow this format: https://www.redblobgames.com/grids/hexagons/#neighbors-axial
+
+        Note: the coordinates are upside down compared to the examples shown in the referenced link. This is due
+        to numpy creating coordinates from top to bottom.
+        """
+
+        center_points = pl.DataFrame(
+            data=[
+                # Upper neighbours of center
+                [22.490, 19.109],
+                [23.240, 19.542],
+                [23.990, 19.109],
+                # Center of hexagon
+                [23.240, 18.676],
+                # Lower neighbours of center
+                [22.490, 18.243],
+                [23.240, 17.810],
+                [23.990, 18.243],
+            ],
+            schema={"x": pl.Float32, "y": pl.Float32},
         )
-        xgrid_result, ygrid_result = grid_constructor.convert_cartesian_coordinates_to_axial(center_points)
+        result = grid_constructor.convert_cartesian_coordinates_to_axial(center_points)
 
-        #                           -1         0         +1          center(0)  -1         0         +1
-        expected_xgrid = np.array([[-233289], [-233290], [-233291], [-233290], [-233289], [-233290], [-233291]])
-
-        #                           0        +1        +1        center(0) -1        -1        0
-        expected_ygrid = np.array([[637489], [637490], [637490], [637489], [637488], [637488], [637489]])
-
-        assert all(expected_xgrid == xgrid_result)
-        assert all(expected_ygrid == ygrid_result)
+        expected_axial_coordinates = pl.DataFrame(
+            data=[
+                # Upper neighbours of center
+                [22.490, 19.109, -30, 37],  # +1, 0
+                [23.240, 19.542, -31, 38],  # 0, +1
+                [23.990, 19.109, -32, 38],  # -1, +1
+                # Center of hexagon
+                [23.240, 18.676, -31, 37],  # 0, 0 -> center point
+                # Lower neighbours of center
+                [22.490, 18.243, -30, 36],  # +1, -1
+                [23.240, 17.810, -31, 36],  # 0, -1
+                [23.990, 18.243, -32, 37],  # -1, 0
+            ],
+            schema={"x": pl.Float32, "y": pl.Float32, "q": pl.Int32, "r": pl.Int32},
+        )
+        assert_frame_equal(expected_axial_coordinates, result)

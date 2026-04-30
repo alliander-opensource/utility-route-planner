@@ -14,7 +14,7 @@ from settings import Config
 import geopandas as gpd
 
 from utility_route_planner.models.multilayer_network.graph_datastructures import PipeRammingEdgeInfo, PipeRammingOrigin
-from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_utils import convert_hexagon_graph_to_gdfs
+from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_utils import get_hexagon_node_geometry
 from utility_route_planner.util.geo_utilities import (
     osm_graph_to_gdfs,
     get_empty_geodataframe,
@@ -34,6 +34,7 @@ class GetPotentialPipeRammingCrossings:
         self,
         osm_graph: rx.PyGraph,
         cost_surface_graph: rx.PyGraph,
+        cost_surface_nodes: gpd.GeoDataFrame,
         threshold_edge_length_crossing_m: float = Config.THRESHOLD_EDGE_LENGTH_CROSSING_M,
         max_pipe_ramming_length_m: float = Config.MAX_PIPE_RAMMING_LENGTH_M,
         min_pipe_ramming_length_m: float = Config.MIN_PIPE_RAMMING_LENGTH_M,
@@ -47,7 +48,7 @@ class GetPotentialPipeRammingCrossings:
         self.osm_nodes, self.osm_edges = osm_graph_to_gdfs(osm_graph)
         self.cost_surface_graph = cost_surface_graph
         # TODO discuss adding the properties (BGT elements) to the hexagon nodes. That way you can force it to only include sidewalks, ignoring the suitability value.
-        self.cost_surface_nodes = convert_hexagon_graph_to_gdfs(self.cost_surface_graph, edges=False)
+        self.cost_surface_nodes = cost_surface_nodes
         self.junctions_of_interests = get_empty_geodataframe()
         # Minimum length of a street segment to be considered for adding pipe ramming crossings.
         self.threshold_edge_length_crossing_m = threshold_edge_length_crossing_m
@@ -561,7 +562,7 @@ class GetPotentialPipeRammingCrossings:
         # Create the linestrings between the selected node pairs
         closest_node_pairs = closest_node_pairs.reset_index()
         closest_node_pairs = closest_node_pairs.merge(
-            grid_with_cost_surface.drop_duplicates(subset="node_id")[["geometry"]],
+            grid_with_cost_surface.loc[~grid_with_cost_surface.index.duplicated()][["geometry"]],
             left_on="idx_node",
             right_index=True,
             how="left",
@@ -631,7 +632,7 @@ class GetPotentialPipeRammingCrossings:
                 closest_node_pairs[index].iloc[1],
             )
             # TODO-discuss: what is the cost of going through the cost surface this way?
-            crossing_weight = int(weight[closest_node_pairs[index].iloc[1]] / 3)
+            crossing_weight = round(weight[closest_node_pairs[index].iloc[1]] / 3)
             if crossing_weight <= 0:
                 logger.warning(
                     f"Calculated crossing weight for segment group {segment_group} is {crossing_weight}, setting to 1."
@@ -658,8 +659,8 @@ class GetPotentialPipeRammingCrossings:
                     [
                         shapely.LineString(
                             [
-                                self.cost_surface_graph.get_node_data(i[0]).geometry,
-                                self.cost_surface_graph.get_node_data(i[1]).geometry,
+                                get_hexagon_node_geometry(self.cost_surface_nodes, i[0]),
+                                get_hexagon_node_geometry(self.cost_surface_nodes, i[1]),
                             ]
                         )
                         for i in crossings
