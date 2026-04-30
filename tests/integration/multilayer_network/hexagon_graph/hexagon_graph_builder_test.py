@@ -652,7 +652,7 @@ class TestHexagonGraphBuilderWithHeightLevels:
 
         mcda_engine = McdaCostSurfaceEngine(
             Config.RASTER_PRESET_NAME_BENCHMARK,
-            BenchmarkRouteCollection.route_4.path_geopackage,
+            BenchmarkRouteCollection().get_case(4).path_geopackage,
             project_area,
             raster_name_prefix="pytest_",
         )

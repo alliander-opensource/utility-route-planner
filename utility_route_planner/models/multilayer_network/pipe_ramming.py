@@ -262,9 +262,11 @@ class GetPotentialPipeRammingCrossings:
         adjacent_edges["point_b"] = adjacent_edges["geometry"].apply(lambda line: shapely.Point(line.coords[1]))
         adjacent_edges["point_inner"] = self.osm_graph.get_node_data(node_id).geometry
         adjacent_edges["point_outer"] = adjacent_edges["geometry"].apply(
-            lambda line: shapely.Point(line.coords[1])
-            if shapely.Point(line.coords[0]).equals(self.osm_graph.get_node_data(node_id).geometry)
-            else shapely.Point(line.coords[0])
+            lambda line: (
+                shapely.Point(line.coords[1])
+                if shapely.Point(line.coords[0]).equals(self.osm_graph.get_node_data(node_id).geometry)
+                else shapely.Point(line.coords[0])
+            )
         )
         adjacent_edges["group"] = range(len(adjacent_edges))
         # Get angle to the center point of the junction.
