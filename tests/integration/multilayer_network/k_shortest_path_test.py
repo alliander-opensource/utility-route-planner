@@ -7,7 +7,10 @@ import rustworkx as rx
 from shapely import Polygon, Point
 
 from settings import Config
-from utility_route_planner.models.multilayer_network.k_shortest_path_route_planner import KShortestPathRoutePlanner
+from utility_route_planner.models.multilayer_network.k_shortests_paths.k_shortest_path_route_planner import (
+    KShortestPathRoutePlanner,
+)
+from utility_route_planner.models.multilayer_network.k_shortests_paths.onepass import OnePassPlanner
 from utility_route_planner.models.multilayer_network.osm_graph_preprocessing import OSMGraphPreprocessor
 from utility_route_planner.util.geo_utilities import osm_graph_to_gdfs
 from utility_route_planner.util.write import write_results_to_geopackage
@@ -15,7 +18,7 @@ from utility_route_planner.util.write import write_results_to_geopackage
 
 class TestKShortestPaths:
     out = Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT
-    debug: bool = True
+    debug: bool = False
 
     @pytest.fixture()
     def project_area(self) -> Polygon:
@@ -30,19 +33,20 @@ class TestKShortestPaths:
         )
 
     @pytest.fixture
-    def route_planner(self) -> KShortestPathRoutePlanner:
-        return KShortestPathRoutePlanner(similarity_threshold=0.5)
+    def one_pass_route_planner(self) -> KShortestPathRoutePlanner:
+        one_pass_planner = OnePassPlanner(similarity_threshold=0.5)
+        return KShortestPathRoutePlanner(shortest_path_algorithm=one_pass_planner)
 
     @pytest.fixture()
     def preprocessed_graph(self, load_osm_graph_pickle: nx.MultiDiGraph, project_area: Polygon) -> rx.PyGraph:
         osm_graph_preprocessor = OSMGraphPreprocessor(load_osm_graph_pickle, project_area)
         return osm_graph_preprocessor.preprocess_graph()
 
-    def test_shortest_paths(self, route_planner: KShortestPathRoutePlanner, preprocessed_graph: rx.PyGraph):
+    def test_shortest_paths(self, one_pass_route_planner: KShortestPathRoutePlanner, preprocessed_graph: rx.PyGraph):
         k = 3
         source_node, target_node = 29, 0
 
-        routes = route_planner.find_k_routes(preprocessed_graph, source=source_node, target=target_node, k=k)
+        routes = one_pass_route_planner.find_k_routes(preprocessed_graph, source=source_node, target=target_node, k=k)
 
         if self.debug:
             nodes, edges = osm_graph_to_gdfs(preprocessed_graph)
