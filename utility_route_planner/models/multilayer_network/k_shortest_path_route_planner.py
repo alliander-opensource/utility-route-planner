@@ -15,44 +15,55 @@ class KShortestPathRoutePlanner:
     The VLDB Journal 29, 1023–1047 (2020). https://doi.org/10.1007/s00778-020-00604-x
     """
 
+    def __init__(self, similarity_threshold: float):
+        self.similarity_threshold = similarity_threshold
+
     def find_k_routes(self, graph: rx.PyGraph, source: int, target: int, k: int):
         self.onepass(graph, source, target, k)
 
     def onepass(self, graph: rx.PyGraph, source: int, target: int, k: int):
-        start_route = rx.dijkstra_shortest_paths(graph, source, target, weight_fn=lambda x: x.length)
-        start_route_nodes = start_route[target]
+        initial_route = rx.dijkstra_shortest_paths(graph, source, target, weight_fn=lambda x: x.length)[target]
+        result_routes = [list(initial_route)]
 
-        self._compute_candidate_routes(graph, start_route_nodes, target)
+        # Init candidate queue from starting node
+        candidate_route_queue: list = []
+        heapq.heappush(candidate_route_queue, (0.0, source, [source]))
 
-    def _compute_candidate_routes(self, graph: rx.PyGraph, start_route_nodes: rx.NodeIndices, target: int) -> list:
-        """
-        Compute candidate routes given the initial shortest path from source to target. Each candidate route is computed
-        by iterating over all edges u-v in the shortest path and:
-        1: Remove the edge temporarily from the graph.
-        2. Starting from u, compute the shortest branch path from u to the target node. As u-v is temporarily removed
-        from the graph, this forces the candidate_route to be different from the initial shortest path.
-        3. The candidate route is constructed by concatenating shortest_path_start_node-u to u-target_node.
-        4. The candidate route and length are stored in the min_priority queue which is sorted on route length. This
-           guarantees the evaluation of shortest paths first when computing route similarity.
-        5. The removed edge is readded to the graph.
+        while candidate_route_queue and len(result_routes) < k:
+            cost, node_n, candidate_path = heapq.heappop(candidate_route_queue)
 
-        This process is repeated for all nodes on the initial shortest path, except for the target node (node_-1)
-        """
+            # Target node is reached. As similarity is already checked when adding the path to the queue, this serves
+            # as a valid path and can therefore be added to the results
+            if node_n == target:
+                result_routes.append(candidate_path)
 
-        min_length_queue: list = []
-        for i, u in enumerate(start_route_nodes[:-1]):
-            v = start_route_nodes[i + 1]
-            removed_edge_data = graph.get_edge_data(u, v)
-            graph.remove_edge(u, v)
+                # Prune queue by removing candidate paths that do not pass the sim check
+                pruned_queue = []
+                for queue_path_cost, queue_node, queue_path in candidate_route_queue:
+                    if not self.path_is_similar(queue_path, result_routes):
+                        pruned_queue.append((queue_path_cost, queue_node, queue_path))
+                # Update queue with pruned queue
+                heapq.heapify(pruned_queue)
+                candidate_route_queue = pruned_queue
 
-            branch_path_nodes = rx.dijkstra_shortest_paths(graph, u, target, weight_fn=lambda x: x.length)[target]
-            candidate_path_nodes = list(start_route_nodes[:i]) + list(branch_path_nodes)
-            candidate_linestring = self._convert_osm_route_to_linestring(graph, candidate_path_nodes)
-            heapq.heappush(min_length_queue, (candidate_linestring.length, candidate_path_nodes))
+            else:
+                for neighbour_node in graph.neighbors(node_n):
+                    # Skip neighbours already in the path as this would lead to the same paths flooding the queue
+                    if neighbour_node in candidate_path:
+                        continue
 
-            graph.add_edge(u, v, removed_edge_data)
+                    neighbour_edge_data = graph.get_edge_data(node_n, neighbour_node)
+                    potential_candidate_path = candidate_path + [neighbour_node]
+                    potential_candidate_path_cost = neighbour_edge_data.geometry.length
 
-        return min_length_queue
+                    if not self.path_is_similar(potential_candidate_path, result_routes):
+                        heapq.heappush(
+                            candidate_route_queue,
+                            (potential_candidate_path_cost, neighbour_node, potential_candidate_path),
+                        )
+
+    def path_is_similar(self, queue_path: list[int], result_routes: list[list[int]]) -> bool:
+        return True
 
     @staticmethod
     def _convert_osm_route_to_linestring(graph: rx.PyGraph, route: rx.NodeIndices | list[int]) -> LineString:
