@@ -15,7 +15,7 @@ from utility_route_planner.util.write import write_results_to_geopackage
 
 class TestKShortestPaths:
     out = Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT
-    debug: bool = True
+    debug: bool = False
 
     @pytest.fixture
     def route_planner(self) -> KShortestPathRoutePlanner:
