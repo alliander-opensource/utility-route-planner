@@ -4,26 +4,17 @@
 import heapq
 
 import rustworkx as rx
-from shapely import LineString
-from shapely.ops import linemerge
+
+from utility_route_planner.models.multilayer_network.k_shortests_paths.k_shortest_path_route_planner import (
+    KShortestPathAlgorithm,
+)
 
 
-class KShortestPathRoutePlanner:
-    """
-    Compute k-shortest paths on an OSM spatial graph using methods as proposed in:
-    Chondrogiannis, T., Bouros, P., Gamper, J. et al. Finding k-shortest paths with limited overlap.
-    The VLDB Journal 29, 1023–1047 (2020). https://doi.org/10.1007/s00778-020-00604-x
-    """
-
+class OnePassPlanner(KShortestPathAlgorithm):
     def __init__(self, similarity_threshold: float):
-        self.similarity_threshold = similarity_threshold
+        super().__init__(similarity_threshold)
 
-    def find_k_routes(self, graph: rx.PyGraph, source: int, target: int, k: int) -> list[LineString]:
-        result_routes = self.onepass(graph, source, target, k)
-        result_linestrings = [self._convert_osm_route_to_linestring(graph, route) for route in result_routes]
-        return result_linestrings
-
-    def onepass(self, graph: rx.PyGraph, source: int, target: int, k: int):
+    def find_k_routes(self, graph: rx.PyGraph, source: int, target: int, k: int):
         initial_route = rx.dijkstra_shortest_paths(graph, source, target, weight_fn=lambda x: x.length)[target]
         result_routes = [list(initial_route)]
 
@@ -86,11 +77,3 @@ class KShortestPathRoutePlanner:
         result_edge_cost = sum([graph.get_edge_data_by_index(edge_id).length for edge_id in result_edge_ids])
 
         return shared_edge_cost / result_edge_cost <= self.similarity_threshold
-
-    @staticmethod
-    def _convert_osm_route_to_linestring(graph: rx.PyGraph, route: rx.NodeIndices | list[int]) -> LineString:
-        linestrings = []
-        for u, v in zip(route[1:], route[:-1]):
-            linestrings.append(graph.get_edge_data(u, v).geometry)
-        route_linestring = linemerge(linestrings)
-        return route_linestring
