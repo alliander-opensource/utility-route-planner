@@ -13,7 +13,7 @@ class KShortestPathAlgorithm(ABC):
         self.similarity_threshold = similarity_threshold
 
     @abstractmethod
-    def find_k_routes(self, graph: rx.PyGraph, source: int, target: int, k: int) -> list[int]:
+    def find_k_routes(self, graph: rx.PyGraph, source: int, target: int, k: int) -> list[list[int]]:
         pass
 
 
