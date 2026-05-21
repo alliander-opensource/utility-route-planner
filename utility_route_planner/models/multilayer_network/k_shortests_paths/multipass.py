@@ -43,7 +43,7 @@ class MultiPassPlanner(KShortestPathAlgorithm):
                         potential_candidate_path_cost = candidate_path_cost + neighbour_edge_data.length
 
                         if any(
-                            self.lemma_2_similarity(graph, potential_candidate_path, result_route)
+                            self.one_way_path_similarity(graph, potential_candidate_path, result_route)
                             >= self.similarity_threshold
                             for result_route in result_routes
                         ):
@@ -70,20 +70,31 @@ class MultiPassPlanner(KShortestPathAlgorithm):
                             )
         return result_routes
 
-    def lemma_2_similarity(self, graph: rx.PyGraph, candidate_route: list[int], result_route: list[int]) -> float:
+    @staticmethod
+    def one_way_path_similarity(graph: rx.PyGraph, candidate_route: list[int], accepted_route: list[int]) -> float:
+        """
+        Computes similarity between a candidate route and an accepted route based on traversed edges and edge lengths.
+        This follows from equation 2 in the paper.
+
+        :param graph: graph on which routes are computed. Used to retrieve edge length data.
+        :param candidate_route: candidate route to evaluate.
+        :param accepted_route: accepted_route to compare candidate to.
+
+        :return: path similarity
+        """
         # TODO: move everything to edge ids?
         # TODO: candidate edge do only have to be retrieved once? Result route can also be stored as edge ids already?
-        candidate_edge_ids = {
+        candidate_route_edge_ids = {
             graph.edge_indices_from_endpoints(u, v)[0] for u, v in zip(candidate_route[1:], candidate_route[:-1])
         }
-        result_edge_ids = {
-            graph.edge_indices_from_endpoints(u, v)[0] for u, v in zip(result_route[1:], result_route[:-1])
+        accepted_route_edge_ids = {
+            graph.edge_indices_from_endpoints(u, v)[0] for u, v in zip(accepted_route[1:], accepted_route[:-1])
         }
 
-        shared_edges = candidate_edge_ids.intersection(result_edge_ids)
+        shared_edges = candidate_route_edge_ids.intersection(accepted_route_edge_ids)
 
         shared_edge_cost = sum([graph.get_edge_data_by_index(edge_id).length for edge_id in shared_edges])
-        result_edge_cost = sum([graph.get_edge_data_by_index(edge_id).length for edge_id in result_edge_ids])
+        result_edge_cost = sum([graph.get_edge_data_by_index(edge_id).length for edge_id in accepted_route_edge_ids])
 
         return shared_edge_cost / result_edge_cost
 
@@ -120,7 +131,7 @@ class MultiPassPlanner(KShortestPathAlgorithm):
         # If the previous route has less similarity with any of the result routes compared to the candidate route, this
         # means that the candidate route is dominated by the previous route
         for result_route in result_routes:
-            if self.lemma_2_similarity(graph, previous_route, result_route) <= self.lemma_2_similarity(
+            if self.one_way_path_similarity(graph, previous_route, result_route) <= self.one_way_path_similarity(
                 graph, candidate_route, result_route
             ):
                 return True
