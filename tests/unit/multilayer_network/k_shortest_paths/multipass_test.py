@@ -5,13 +5,14 @@ import pytest
 import rustworkx as rx
 from shapely import LineString, Point
 
+from settings import Config
 from utility_route_planner.models.multilayer_network.graph_datastructures import OSMEdgeInfo
 from utility_route_planner.models.multilayer_network.k_shortests_paths.multipass import MultiPassPlanner
 
 
 @pytest.fixture
 def multipass_planner() -> MultiPassPlanner:
-    return MultiPassPlanner(similarity_threshold=0.5)
+    return MultiPassPlanner(similarity_threshold=Config.K_SHORTEST_PATH_SIMILARITY_THRESHOLD)
 
 
 class TestOneWaySimilarity:
@@ -47,7 +48,7 @@ class TestOneWaySimilarity:
         """
         candidate_partial_route = [0, 2, 4]
         result_similarity = multipass_planner.one_way_path_similarity(graph, candidate_partial_route, accepted_route)
-        assert result_similarity > 0.5
+        assert result_similarity > Config.K_SHORTEST_PATH_SIMILARITY_THRESHOLD
 
     def test_partial_route_with_overlap_does_not_exceed_threshold(
         self, multipass_planner: MultiPassPlanner, graph: rx.PyGraph, accepted_route: list[int]
@@ -61,7 +62,7 @@ class TestOneWaySimilarity:
 
         candidate_partial_route = [0, 2]
         result_similarity = multipass_planner.one_way_path_similarity(graph, candidate_partial_route, accepted_route)
-        assert result_similarity < 0.5
+        assert result_similarity < Config.K_SHORTEST_PATH_SIMILARITY_THRESHOLD
 
     def test_similar_length_different_edges_does_not_exceed_threshold(
         self, multipass_planner: MultiPassPlanner, graph: rx.PyGraph, accepted_route: list[int]
@@ -72,7 +73,7 @@ class TestOneWaySimilarity:
         """
         candidate_route = [0, 1, 3, 5]
         result_similarity = multipass_planner.one_way_path_similarity(graph, candidate_route, accepted_route)
-        assert result_similarity < 0.5
+        assert result_similarity < Config.K_SHORTEST_PATH_SIMILARITY_THRESHOLD
 
     def test_longer_length_but_dissimilar_edges_does_not_exceed_threshold(
         self, multipass_planner: MultiPassPlanner, graph: rx.PyGraph, accepted_route: list[int]
@@ -83,4 +84,4 @@ class TestOneWaySimilarity:
         """
         candidate_route = [0, 2, 1, 3, 5]
         result_similarity = multipass_planner.one_way_path_similarity(graph, candidate_route, accepted_route)
-        assert result_similarity < 0.5
+        assert result_similarity < Config.K_SHORTEST_PATH_SIMILARITY_THRESHOLD

@@ -44,6 +44,7 @@ class Config:
     # - e.g. Low voltage https://www.waskoenig.de/nl/producten/v-vmvksas#variants
     # - e.g. mid voltage https://www.waskoenig.de/nl/producten/ymekrvaslqwd-10kv#variants
     MINIMUM_BENDING_RADIUS: float = 0.75  # this might give problems if < cell size
+    K_SHORTEST_PATH_SIMILARITY_THRESHOLD = 0.5
 
     # input/output paths.
     PATH_RESULTS = BASEDIR / "data/processed"
