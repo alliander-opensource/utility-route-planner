@@ -48,7 +48,7 @@ class MultiPassPlanner(KShortestPathAlgorithm):
                             for result_route in result_routes
                         ):
                             continue
-                        elif self.lemma_3_similarity(
+                        elif self.check_label_dominance(
                             neighbour_node,
                             potential_candidate_path,
                             potential_candidate_path_cost,
@@ -98,7 +98,7 @@ class MultiPassPlanner(KShortestPathAlgorithm):
 
         return shared_edge_cost / result_edge_cost
 
-    def lemma_3_similarity(
+    def check_label_dominance(
         self,
         neighbour_node: int,
         candidate_route: list[int],
@@ -136,32 +136,3 @@ class MultiPassPlanner(KShortestPathAlgorithm):
             ):
                 return True
         return False
-
-    def remove_dominated_routes(
-        self,
-        neighbour_node: int,
-        new_route: list[int],
-        new_route_cost: float,
-        node_labels: dict[int, list[tuple[float, list[int]]]],
-        queue: list,
-        result_routes: list,
-        graph: rx.PyGraph,
-    ):
-        # Remove all paths which are dominated by the new result route for this neighbour node
-        if neighbour_node in node_labels:
-            node_labels[neighbour_node] = [
-                (cost, path)
-                for cost, path in node_labels[neighbour_node]
-                if not self.dominates(new_route, new_route_cost, path, cost, result_routes, graph)
-            ]
-
-        # Remove dominated routes from the queue as well
-        queue[:] = [
-            entry
-            for entry in queue
-            if not (
-                entry[1] == neighbour_node
-                and self.dominates(new_route, new_route_cost, entry[2], entry[0], result_routes, graph)
-            )
-        ]
-        heapq.heapify(queue)
