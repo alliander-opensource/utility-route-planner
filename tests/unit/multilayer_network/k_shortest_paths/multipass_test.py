@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 import pytest
 import rustworkx as rx
-import shapely
+from shapely import LineString, Point
 
 from utility_route_planner.models.multilayer_network.graph_datastructures import OSMEdgeInfo
 from utility_route_planner.models.multilayer_network.k_shortests_paths.multipass import MultiPassPlanner
@@ -21,41 +21,13 @@ class TestOneWaySimilarity:
         graph.add_nodes_from(list(range(6)))
         edge_ids = graph.add_edges_from(
             [
-                (
-                    0,
-                    1,
-                    OSMEdgeInfo(osm_id=0, geometry=shapely.LineString([shapely.Point(0, 0), shapely.Point(1, -0.5)])),
-                ),
-                (
-                    0,
-                    2,
-                    OSMEdgeInfo(osm_id=1, geometry=shapely.LineString([shapely.Point(0, 0), shapely.Point(1, 0.5)])),
-                ),
-                (
-                    2,
-                    1,
-                    OSMEdgeInfo(osm_id=2, geometry=shapely.LineString([shapely.Point(1, 0.5), shapely.Point(1, -0.5)])),
-                ),
-                (
-                    1,
-                    3,
-                    OSMEdgeInfo(osm_id=3, geometry=shapely.LineString([shapely.Point(1, -0.5), shapely.Point(2, 0.5)])),
-                ),
-                (
-                    3,
-                    5,
-                    OSMEdgeInfo(osm_id=4, geometry=shapely.LineString([shapely.Point(2, 0.5), shapely.Point(3, 0)])),
-                ),
-                (
-                    2,
-                    4,
-                    OSMEdgeInfo(osm_id=5, geometry=shapely.LineString([shapely.Point(1, 0.5), shapely.Point(2, -0.5)])),
-                ),
-                (
-                    4,
-                    5,
-                    OSMEdgeInfo(osm_id=6, geometry=shapely.LineString([shapely.Point(2, -0.5), shapely.Point(3, 0)])),
-                ),
+                (0, 1, OSMEdgeInfo(osm_id=0, geometry=LineString([Point(0, 0), Point(1, -0.5)]))),
+                (0, 2, OSMEdgeInfo(osm_id=1, geometry=LineString([Point(0, 0), Point(1, 0.5)]))),
+                (2, 1, OSMEdgeInfo(osm_id=2, geometry=LineString([Point(1, 0.5), Point(1, -0.5)]))),
+                (1, 3, OSMEdgeInfo(osm_id=3, geometry=LineString([Point(1, -0.5), Point(2, 0.5)]))),
+                (3, 5, OSMEdgeInfo(osm_id=4, geometry=LineString([Point(2, 0.5), Point(3, 0)]))),
+                (2, 4, OSMEdgeInfo(osm_id=5, geometry=LineString([Point(1, 0.5), Point(2, -0.5)]))),
+                (4, 5, OSMEdgeInfo(osm_id=6, geometry=LineString([Point(2, -0.5), Point(3, 0)]))),
             ]
         )
         [edge.set_edge_id(edge_id) for edge, edge_id in zip(graph.edges(), edge_ids)]
