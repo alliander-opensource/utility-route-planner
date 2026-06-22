@@ -29,10 +29,10 @@ Remaining challenges solve are:
 
 # Installation
 
-To install the utility-route-designer package, use Python 3.12 with [Poetry](https://python-poetry.org/):
+To install the utility-route-designer package, use Python 3.12 with [uv](https://docs.astral.sh/uv/) package manager:
 
 ```bash
-poetry install
+uv sync
 ```
 
 # Usage
@@ -40,7 +40,7 @@ poetry install
 Running the main file will create utility routes for the five included cases in the `data/examples` folder. Optionally edit the configuration file `mcda_presets.py` to change the weights of the environmental criteria.
 
 ```bash
-poetry run python main.py
+uv run python main.py
 ```
 
 The results are placed in the `data/processed` folder:
@@ -55,7 +55,7 @@ View them in QGIS or similar GIS GUI:
 Run tests using pytest:
 
 ```bash
-poetry run python -m pytest tests/
+uv run python pytest
 ```
 For quick experimentation, weights of existing criteria can be changed. This can be done by editing the `mcda_presets.py` file.
 
