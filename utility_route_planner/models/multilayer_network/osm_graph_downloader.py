@@ -1,6 +1,8 @@
 # SPDX-FileCopyrightText: Contributors to the utility-route-project and Alliander N.V.
 #
 # SPDX-License-Identifier: Apache-2.0
+from datetime import datetime
+
 from shapely.geometry import MultiPolygon, Polygon
 import structlog
 from settings import Config
@@ -15,13 +17,28 @@ logger = structlog.get_logger(__name__)
 
 
 class OSMGraphDownloader:
-    def __init__(self, project_area_geometry: Polygon | MultiPolygon):
+    def __init__(
+        self,
+        project_area_geometry: Polygon | MultiPolygon,
+        graph_date: datetime | None = None,
+    ):
         self.project_area_geometry = project_area_geometry
+        self.graph_date = graph_date
 
         ox.settings.log_console = False
         ox.settings.overpass_rate_limit = True
         ox.settings.requests_timeout = Config.OSM_API_TIMEOUT_IN_SECONDS
         ox.settings.use_cache = False
+
+    def build_overpass_settings(self) -> str:
+        default = ox.settings.overpass_settings
+        if self.graph_date is None:
+            settings = default
+        else:
+            logger.info("Downloading historical OSM snapshot", construction_date=self.graph_date.date().isoformat())
+            overpass_date = self.graph_date.strftime("%Y-%m-%dT00:00:00Z")
+            settings = f'{default}[date:"{overpass_date}"]'
+        return settings
 
     @retry(
         stop=stop_after_attempt(3),
@@ -32,6 +49,7 @@ class OSMGraphDownloader:
         logger.info("Start downloading graph from OSM")
         reprojected_project_area = gpd.GeoSeries(self.project_area_geometry, crs=Config.CRS).to_crs(4326).iloc[0]
 
+        ox.settings.overpass_settings = self.build_overpass_settings()
         try:
             graph_wgs84 = ox.graph_from_polygon(reprojected_project_area, network_type="all", simplify=False)
         except ValueError as e:

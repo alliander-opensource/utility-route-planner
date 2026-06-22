@@ -1,14 +1,14 @@
 # SPDX-FileCopyrightText: Contributors to the utility-route-project and Alliander N.V.
 #
 # SPDX-License-Identifier: Apache-2.0
-
+import pathlib
 from typing import Callable
 import pytest
 import geopandas as gpd
 import shapely
 
 from settings import Config
-from utility_route_planner.util.write import reset_geopackage
+from utility_route_planner.util.write import reset_geopackage, write_results_to_geopackage
 
 
 @pytest.fixture
@@ -158,3 +158,20 @@ def multi_criteria_vectors() -> Callable:
         ]
 
     return __vectors
+
+
+def write_criteria_vectors(
+    project_area: shapely.MultiPolygon | shapely.Polygon,
+    criteria_vectors: dict[str, gpd.GeoDataFrame],
+    out: pathlib.Path = Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT,
+):
+    """Extracted so the names of the layers are the same across tests. This makes is easier for debugging in QGIS."""
+    write_results_to_geopackage(out, project_area, "pytest_project_area", overwrite=True)
+
+    for name, gdf in criteria_vectors.items():
+        write_results_to_geopackage(
+            out,
+            gdf,
+            f"pytest_{name}",
+            overwrite=True,
+        )

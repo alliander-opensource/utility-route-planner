@@ -7,15 +7,15 @@ import geopandas as gpd
 import pytest
 import shapely
 import rustworkx as rx
+from geopandas import GeoDataFrame
+from shapely import Polygon
 
 from settings import Config
-from utility_route_planner.models.benchmark_routes import BenchmarkRouteCollection
-from utility_route_planner.models.mcda.mcda_engine import McdaCostSurfaceEngine
+from tests.integration.conftest import write_criteria_vectors
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_edge_generator import HexagonEdgeGenerator
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_graph_builder import HexagonGraphBuilder
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_graph_composer import (
-    HexagonGraphComposer,
-    HeightLevelGraph,
+    build_and_compose_graph,
 )
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_grid_builder import HexagonGridBuilder
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_utils import convert_hexagon_edges_to_gdf
@@ -23,13 +23,9 @@ from utility_route_planner.models.multilayer_network.multilayer_route_planner im
 from utility_route_planner.util.write import reset_geopackage, write_results_to_geopackage
 
 
-@pytest.fixture()
-def hexagon_graph_builder() -> HexagonGraphBuilder:
-    hexagon_size = 1
-    grid_constructor = HexagonGridBuilder(hexagon_size=hexagon_size, block_size=Config.HEXAGON_BLOCK_SIZE)
-    hexagon_edge_generator = HexagonEdgeGenerator()
-    _hexagon_graph_builder = HexagonGraphBuilder(grid_builder=grid_constructor, edge_generator=hexagon_edge_generator)
-    return _hexagon_graph_builder
+HEXAGON_SIZE = 1
+DEBUG = False
+PREFIX = "pytest_"
 
 
 class TestHexagonGraphBuilder:
@@ -38,6 +34,15 @@ class TestHexagonGraphBuilder:
     in the hexagonal grid. First, the hexagonal grid for a single criterion is tested. Next, multiple criteria are used
     as input which enables more advanced testing with overlapping criteria.
     """
+
+    @pytest.fixture()
+    def hexagon_graph_builder(self) -> HexagonGraphBuilder:
+        grid_constructor = HexagonGridBuilder(hexagon_size=HEXAGON_SIZE, block_size=Config.HEXAGON_BLOCK_SIZE)
+        hexagon_edge_generator = HexagonEdgeGenerator()
+        _hexagon_graph_builder = HexagonGraphBuilder(
+            grid_builder=grid_constructor, edge_generator=hexagon_edge_generator
+        )
+        return _hexagon_graph_builder
 
     @pytest.fixture()
     def ede_project_area(self) -> shapely.Polygon:
@@ -53,7 +58,7 @@ class TestHexagonGraphBuilder:
         single_criterion_vectors: Callable,
         ede_project_area: shapely.Polygon,
         hexagon_graph_builder: HexagonGraphBuilder,
-        debug: bool = False,
+        debug: bool = DEBUG,
     ):
         max_value = Config.MAX_NODE_SUITABILITY_VALUE
         min_value = Config.MIN_NODE_SUITABILITY_VALUE
@@ -100,7 +105,7 @@ class TestHexagonGraphBuilder:
         multi_criteria_vectors: Callable,
         ede_project_area: shapely.MultiPolygon,
         hexagon_graph_builder: HexagonGraphBuilder,
-        debug: bool = False,
+        debug: bool = DEBUG,
     ):
         max_value = Config.MAX_NODE_SUITABILITY_VALUE
         min_value = Config.MIN_NODE_SUITABILITY_VALUE
@@ -163,7 +168,7 @@ class TestHexagonGraphBuilder:
 
     @staticmethod
     def write_debug_output(
-        project_area: shapely.MultiPolygon,
+        project_area: shapely.Polygon | shapely.MultiPolygon,
         criteria_vectors: dict[str, gpd.GeoDataFrame],
         nodes_gdf: gpd.GeoDataFrame,
         edges_gdf: gpd.GeoDataFrame,
@@ -174,14 +179,7 @@ class TestHexagonGraphBuilder:
         write_results_to_geopackage(
             Config.PATH_GEOPACKAGE_VECTOR_GRAPH_OUTPUT, project_area, "pytest_project_area", overwrite=True
         )
-        for name, gdf in criteria_vectors.items():
-            write_results_to_geopackage(
-                Config.PATH_GEOPACKAGE_VECTOR_GRAPH_OUTPUT,
-                gdf,
-                f"pytest_vector_{name}",
-                overwrite=True,
-            )
-
+        write_criteria_vectors(project_area, criteria_vectors, Config.PATH_GEOPACKAGE_VECTOR_GRAPH_OUTPUT)
         write_results_to_geopackage(
             Config.PATH_GEOPACKAGE_VECTOR_GRAPH_OUTPUT,
             nodes_gdf,
@@ -204,14 +202,13 @@ class TestHexagonGraphBuilder:
 
 class TestHexagonGraphBuilderWithHeightLevels:
     out = Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT
-    debug: bool = False
 
     @pytest.fixture(autouse=True)
     def clean_start(self):
-        if self.debug:
+        if DEBUG:
             reset_geopackage(self.out, truncate=False)
 
-    def test_build_graph_with_two_tunnels(self, hexagon_graph_builder: HexagonGraphBuilder):
+    def test_build_graph_with_two_tunnels(self):
         """E.g., a road and a bicycle tunnel crossing each other."""
         project_area = shapely.Polygon([(0, 0), (0, 100), (100, 100), (100, 0)])
         # Large road without sidewalks
@@ -258,8 +255,8 @@ class TestHexagonGraphBuilderWithHeightLevels:
             "road": road,
             "grassland": grassland,
         }
-        if self.debug:
-            self.debug_write_output_vectors(project_area, processed_criteria_vectors)
+        if DEBUG:
+            write_criteria_vectors(project_area, processed_criteria_vectors)
 
         processed_criteria_per_height_level = {
             0: ["road", "grassland"],  # ground level
@@ -270,59 +267,52 @@ class TestHexagonGraphBuilderWithHeightLevels:
             "grassland": "a",
         }
 
-        merged_graph, merged_nodes_gdf = self._build_and_merge_graphs(
-            hexagon_graph_builder,
-            processed_criteria_per_height_level,
-            processed_criteria_vectors,
-            project_area,
-            raster_groups,
-        )
-        route_engine = MultilayerRouteEngine(
-            merged_graph,
-            rx.PyGraph(),
-            merged_nodes_gdf,
-            hexagon_size=hexagon_graph_builder.hexagon_size,
-            write_output=self.debug,
+        route_engine = self._initialize_multilayer_route_engine(
+            processed_criteria_per_height_level, processed_criteria_vectors, project_area, raster_groups
         )
 
         # assert that we have a fully connected graph and no dangling parts.
-        assert rx.number_connected_components(merged_graph) == 1
+        assert rx.number_connected_components(route_engine.cost_surface_graph) == 1
 
         # Find a route through the western tunnel
         route_engine.find_route(shapely.LineString([(6, 95), (6, 5)]))
-        assert route_engine.get_result_route_length() == pytest.approx(109, 0.5)
+        assert route_engine.get_result_route_length_unprocessed() == pytest.approx(109, 0.5)
         # assert we can route from north to south through a tunnel
         assert (
-            len(route_engine.results.result_route_edges[route_engine.results.result_route_edges.connects_height_levels])
+            len(route_engine.results.unprocessed_edges[route_engine.results.unprocessed_edges.connects_height_levels])
             == 2
         )
         # assert we did not cross the expensive road but used the tunnel
-        assert all(route_engine.results.result_route_edges.weight < 30)
+        assert all(route_engine.results.unprocessed_edges.weight < 30)
         # assert the number of connecting edges between height levels
-        e = convert_hexagon_edges_to_gdf(merged_graph, merged_nodes_gdf)
+        e = convert_hexagon_edges_to_gdf(route_engine.cost_surface_graph, route_engine.gdf_cost_surface_nodes)
         assert len(e[e.connects_height_levels]) == 48
         # assert we cannot skip halfway the tunnel to the main road.
         assert not all(e[e.connects_height_levels].intersects(main_road))
+        # Because of route being on the western edge of the tunnel, it cannot shortcut as much as the eastern side.
+        assert len(route_engine.results.collapsed_node_indices) == 6
 
         # Check that the other tunnel is working
         route_engine.find_route(shapely.LineString([(80, 95), (80, 5)]))
-        assert route_engine.get_result_route_length() == pytest.approx(91, 0.5)
+        assert route_engine.get_result_route_length_unprocessed() == pytest.approx(91, 0.5)
         assert not all(e[e.connects_height_levels].intersects(main_road))
         assert (
-            len(route_engine.results.result_route_edges[route_engine.results.result_route_edges.connects_height_levels])
+            len(route_engine.results.unprocessed_edges[route_engine.results.unprocessed_edges.connects_height_levels])
             == 2
         )
+        assert len(route_engine.results.collapsed_node_indices) == 6
 
         # Find a route which does not use a tunnel but crosses the field above it.
         route_engine.find_route(shapely.LineString([(1, 65), (99, 65)]))
-        assert route_engine.get_result_route_length() == pytest.approx(112, 0.5)
+        assert route_engine.get_result_route_length_unprocessed() == pytest.approx(112, 0.5)
         assert (
-            len(route_engine.results.result_route_edges[route_engine.results.result_route_edges.connects_height_levels])
+            len(route_engine.results.unprocessed_edges[route_engine.results.unprocessed_edges.connects_height_levels])
             == 0
         )
-        assert all(route_engine.results.result_route_edges.weight <= 4)
+        assert all(route_engine.results.unprocessed_edges.weight <= 4)
+        assert len(route_engine.results.collapsed_node_indices) == 2
 
-    def test_build_graph_with_one_bridge(self, hexagon_graph_builder: HexagonGraphBuilder):
+    def test_build_graph_with_one_bridge(self):
         """E.g., a road on a bridge crossing water. Could also be an ecoduct crossing a motorway."""
         project_area = shapely.Polygon([(0, 0), (0, 100), (100, 100), (100, 0)])
         # Road on a bridge with sidewalks
@@ -383,8 +373,9 @@ class TestHexagonGraphBuilderWithHeightLevels:
             "water": water,
             "grassland": grassland,
         }
-        if self.debug:
-            self.debug_write_output_vectors(project_area, processed_criteria_vectors)
+        if DEBUG:
+            # self.debug_write_output_vectors(project_area, processed_criteria_vectors)
+            write_criteria_vectors(project_area, processed_criteria_vectors)
 
         # Expected output from mcda engine after changes
         processed_criteria_per_height_level = {
@@ -397,47 +388,57 @@ class TestHexagonGraphBuilderWithHeightLevels:
             "grassland": "a",
         }
 
-        merged_graph, merged_nodes_gdf = self._build_and_merge_graphs(
-            hexagon_graph_builder,
-            processed_criteria_per_height_level,
-            processed_criteria_vectors,
-            project_area,
-            raster_groups,
+        route_engine = self._initialize_multilayer_route_engine(
+            processed_criteria_per_height_level, processed_criteria_vectors, project_area, raster_groups
         )
 
-        route_engine = MultilayerRouteEngine(
-            merged_graph,
-            rx.PyGraph(),
-            merged_nodes_gdf,
-            hexagon_size=hexagon_graph_builder.hexagon_size,
-            write_output=self.debug,
-        )
-        assert rx.number_connected_components(merged_graph) == 1
-        e = convert_hexagon_edges_to_gdf(merged_graph, merged_nodes_gdf)
+        assert rx.number_connected_components(route_engine.cost_surface_graph) == 1
+        e = convert_hexagon_edges_to_gdf(route_engine.cost_surface_graph, route_engine.gdf_cost_surface_nodes)
         assert len(e[e.connects_height_levels]) == 72
 
         # Find a route under the bridge
         route_engine.find_route(shapely.LineString([(6, 95), (6, 5)]))  # route should go under the bridge here (grass)
-        assert route_engine.get_result_route_length() == pytest.approx(95, 0.5)
+        assert route_engine.get_result_route_length_unprocessed() == pytest.approx(95, 0.5)
         # assert we can route from north to south through a tunnel
         assert (
-            len(route_engine.results.result_route_edges[route_engine.results.result_route_edges.connects_height_levels])
+            len(route_engine.results.unprocessed_edges[route_engine.results.unprocessed_edges.connects_height_levels])
             == 0
         )
         # assert we did not cross the expensive road or water but used the grass underneath the bridge.
-        assert all(route_engine.results.result_route_edges.weight <= 4)
+        assert all(route_engine.results.unprocessed_edges.weight <= 4)
 
         # Find a route over the bridge
         route_engine.find_route(shapely.LineString([(1, 75), (99, 25)]))
-        assert route_engine.get_result_route_length() == pytest.approx(147, 0.5)
+        assert route_engine.get_result_route_length_unprocessed() == pytest.approx(147, 0.5)
         assert (
-            len(route_engine.results.result_route_edges[route_engine.results.result_route_edges.connects_height_levels])
+            len(route_engine.results.unprocessed_edges[route_engine.results.unprocessed_edges.connects_height_levels])
             == 2
         )
         # it should not cross water
-        assert all(route_engine.results.result_route_edges.weight < 100)
+        assert all(route_engine.results.unprocessed_edges.weight < 100)
 
-    def test_build_graph_with_s_shaped_bridge_and_tunnel(self, hexagon_graph_builder: HexagonGraphBuilder):
+    @staticmethod
+    def _initialize_multilayer_route_engine(
+        processed_criteria_per_height_level: dict[int, list[str]],
+        processed_criteria_vectors: dict[str, GeoDataFrame],
+        project_area: Polygon,
+        raster_groups: dict[str, str],
+    ) -> MultilayerRouteEngine:
+        merged_graph, merged_nodes_gdf, _ = build_and_compose_graph(
+            processed_criteria_per_height_level=processed_criteria_per_height_level,
+            processed_criteria_vectors=processed_criteria_vectors,
+            raster_groups=raster_groups,
+            project_area=project_area,
+            debug=DEBUG,
+            hexagon_size=HEXAGON_SIZE,
+            apply_pipe_ramming=False,
+        )
+        route_engine = MultilayerRouteEngine(
+            merged_graph, rx.PyGraph(), merged_nodes_gdf, hexagon_size=HEXAGON_SIZE, write_output=DEBUG, prefix=PREFIX
+        )
+        return route_engine
+
+    def test_build_graph_with_s_shaped_bridge_and_tunnel(self):
         """E.g., a road tunnel, a road and a bicycle bridge crossing each other."""
         project_area = shapely.Polygon([(0, 0), (0, 100), (100, 100), (100, 0)])
         # Large road without sidewalks
@@ -484,8 +485,9 @@ class TestHexagonGraphBuilderWithHeightLevels:
             "road": road,
             "grassland": grassland,
         }
-        if self.debug:
-            self.debug_write_output_vectors(project_area, processed_criteria_vectors)
+        if DEBUG:
+            write_criteria_vectors(project_area, processed_criteria_vectors)
+            # self.debug_write_output_vectors(project_area, processed_criteria_vectors)
 
         processed_criteria_per_height_level = {
             0: ["road", "grassland"],  # ground level
@@ -496,54 +498,42 @@ class TestHexagonGraphBuilderWithHeightLevels:
             "road": "a",
             "grassland": "a",
         }
-        merged_graph, merged_nodes_gdf = self._build_and_merge_graphs(
-            hexagon_graph_builder,
-            processed_criteria_per_height_level,
-            processed_criteria_vectors,
-            project_area,
-            raster_groups,
+        route_engine = self._initialize_multilayer_route_engine(
+            processed_criteria_per_height_level, processed_criteria_vectors, project_area, raster_groups
         )
 
-        route_engine = MultilayerRouteEngine(
-            merged_graph,
-            rx.PyGraph(),
-            merged_nodes_gdf,
-            hexagon_size=hexagon_graph_builder.hexagon_size,
-            write_output=self.debug,
-        )
-
-        assert rx.number_connected_components(merged_graph) == 1
-        e = convert_hexagon_edges_to_gdf(merged_graph, merged_nodes_gdf)
+        assert rx.number_connected_components(route_engine.cost_surface_graph) == 1
+        e = convert_hexagon_edges_to_gdf(route_engine.cost_surface_graph, route_engine.gdf_cost_surface_nodes)
         assert len(e[e.connects_height_levels]) == 51
 
         # find a route over the bridge, we do not cross grass
         route_engine.find_route(shapely.LineString([(30, 100), (100, 20)]))
-        assert route_engine.get_result_route_length() == pytest.approx(145.3, 0.5)
+        assert route_engine.get_result_route_length_unprocessed() == pytest.approx(145.3, 0.5)
         assert (
-            len(route_engine.results.result_route_edges[route_engine.results.result_route_edges.connects_height_levels])
+            len(route_engine.results.unprocessed_edges[route_engine.results.unprocessed_edges.connects_height_levels])
             == 2
         )
-        assert all(route_engine.results.result_route_edges.weight <= 10)
+        assert all(route_engine.results.unprocessed_edges.weight <= 10)
 
         # find a route under the tunnel, we do not cross grass
         route_engine.find_route(shapely.LineString([(50, 100), (50, 0)]))
-        assert route_engine.get_result_route_length() == pytest.approx(145.3, 0.5)
+        assert route_engine.get_result_route_length_unprocessed() == pytest.approx(145.3, 0.5)
         assert (
-            len(route_engine.results.result_route_edges[route_engine.results.result_route_edges.connects_height_levels])
+            len(route_engine.results.unprocessed_edges[route_engine.results.unprocessed_edges.connects_height_levels])
             == 2
         )
-        assert all(route_engine.results.result_route_edges.weight <= 10)
+        assert all(route_engine.results.unprocessed_edges.weight <= 10)
 
         # find a route with just grassland.
         route_engine.find_route(shapely.LineString([(1, 90), (99, 90)]))
-        assert route_engine.get_result_route_length() == pytest.approx(112.4, 0.5)
+        assert route_engine.get_result_route_length_unprocessed() == pytest.approx(112.4, 0.5)
         assert (
-            len(route_engine.results.result_route_edges[route_engine.results.result_route_edges.connects_height_levels])
+            len(route_engine.results.unprocessed_edges[route_engine.results.unprocessed_edges.connects_height_levels])
             == 0
         )
-        assert all(route_engine.results.result_route_edges.weight <= 12)
+        assert all(route_engine.results.unprocessed_edges.weight <= 12)
 
-    def test_build_graph_with_t_shaped_bridge(self, hexagon_graph_builder: HexagonGraphBuilder):
+    def test_build_graph_with_t_shaped_bridge(self):
         """E.g., a road and a bridge."""
         project_area = shapely.Polygon([(0, 0), (0, 100), (100, 100), (100, 0)])
         # Road for cars
@@ -592,8 +582,9 @@ class TestHexagonGraphBuilderWithHeightLevels:
             "road": road,
             "grassland": grassland,
         }
-        if self.debug:
-            self.debug_write_output_vectors(project_area, processed_criteria_vectors)
+        if DEBUG:
+            write_criteria_vectors(project_area, processed_criteria_vectors)
+            # self.debug_write_output_vectors(project_area, processed_criteria_vectors)
 
         # Expected output from mcda engine after changes
         processed_criteria_per_height_level = {
@@ -605,139 +596,27 @@ class TestHexagonGraphBuilderWithHeightLevels:
             "grassland": "a",
         }
 
-        merged_graph, merged_nodes_gdf = self._build_and_merge_graphs(
-            hexagon_graph_builder,
-            processed_criteria_per_height_level,
-            processed_criteria_vectors,
-            project_area,
-            raster_groups,
+        route_engine = self._initialize_multilayer_route_engine(
+            processed_criteria_per_height_level, processed_criteria_vectors, project_area, raster_groups
         )
 
-        route_engine = MultilayerRouteEngine(
-            merged_graph,
-            rx.PyGraph(),
-            merged_nodes_gdf,
-            hexagon_size=hexagon_graph_builder.hexagon_size,
-            write_output=self.debug,
-        )
-        assert rx.number_connected_components(merged_graph) == 1
-        e = convert_hexagon_edges_to_gdf(merged_graph, merged_nodes_gdf)
+        assert rx.number_connected_components(route_engine.cost_surface_graph) == 1
+        e = convert_hexagon_edges_to_gdf(route_engine.cost_surface_graph, route_engine.gdf_cost_surface_nodes)
         assert len(e[e.connects_height_levels]) == 47
 
         # Find a route over the bridge, both ways
         route_engine.find_route(shapely.LineString([(0, 95), (50, 0)]))
-        assert route_engine.get_result_route_length() == pytest.approx(124.5, 0.5)
+        assert route_engine.get_result_route_length_unprocessed() == pytest.approx(124.5, 0.5)
         assert (
-            len(route_engine.results.result_route_edges[route_engine.results.result_route_edges.connects_height_levels])
+            len(route_engine.results.unprocessed_edges[route_engine.results.unprocessed_edges.connects_height_levels])
             == 2
         )
-        assert all(route_engine.results.result_route_edges.weight <= 10)
+        assert all(route_engine.results.unprocessed_edges.weight <= 10)
 
         route_engine.find_route(shapely.LineString([(100, 80), (50, 0)]))
-        assert route_engine.get_result_route_length() == pytest.approx(128, 0.5)
+        assert route_engine.get_result_route_length_unprocessed() == pytest.approx(128, 0.5)
         assert (
-            len(route_engine.results.result_route_edges[route_engine.results.result_route_edges.connects_height_levels])
+            len(route_engine.results.unprocessed_edges[route_engine.results.unprocessed_edges.connects_height_levels])
             == 2
         )
-        assert all(route_engine.results.result_route_edges.weight <= 10)
-
-    def test_example_data_integration(self, hexagon_graph_builder: HexagonGraphBuilder):
-        """Use for testing a specific area of the example geopackages with known bridges/tunnels."""
-        reset_geopackage(Config.PATH_GEOPACKAGE_MCDA_OUTPUT, truncate=False)
-        # Case 4 situation with bridge
-        project_area = shapely.Point(187224.708, 429010.295).buffer(200)
-
-        # Case 2 situation with narrow bridges
-        # project_area = shapely.Point(174247.66, 441869.33).buffer(200)
-
-        mcda_engine = McdaCostSurfaceEngine(
-            Config.RASTER_PRESET_NAME_BENCHMARK,
-            BenchmarkRouteCollection().get_case(4).path_geopackage,
-            project_area,
-            raster_name_prefix="pytest_",
-        )
-        mcda_engine.preprocess_vectors()
-
-        raster_groups = {
-            criteria_key: criteria.group for criteria_key, criteria in mcda_engine.raster_preset.criteria.items()
-        }
-        merged_graph, merged_nodes_gdf = self._build_and_merge_graphs(
-            hexagon_graph_builder,
-            mcda_engine.processed_criteria_per_height_level,
-            mcda_engine.processed_vectors,
-            project_area,
-            raster_groups,
-        )
-
-        route_engine = MultilayerRouteEngine(
-            merged_graph,
-            rx.PyGraph(),
-            merged_nodes_gdf,
-            hexagon_size=hexagon_graph_builder.hexagon_size,
-            write_output=self.debug,
-        )
-        route_engine.find_route(shapely.LineString([(187139.16, 429004.25), (187324.59, 428983.47)]))
-
-    def debug_write_output_vectors(
-        self,
-        project_area: shapely.MultiPolygon | shapely.Polygon,
-        criteria_vectors: dict[str, gpd.GeoDataFrame],
-    ):
-        write_results_to_geopackage(self.out, project_area, "pytest_project_area", overwrite=True)
-        for name, gdf in criteria_vectors.items():
-            write_results_to_geopackage(
-                self.out,
-                gdf,
-                f"pytest_vector_{name}",
-                overwrite=True,
-            )
-
-    def _build_and_merge_graphs(
-        self,
-        hexagon_graph_builder,
-        processed_criteria_per_height_level,
-        processed_criteria_vectors,
-        project_area,
-        raster_groups,
-    ) -> tuple[rx.PyGraph, gpd.GeoDataFrame]:
-        # TODO extract to hex builder? Cache the project area node grid so it is not recomputed each time
-        # Build hexagon graphs per height level
-        graphs_per_height: dict[int, HeightLevelGraph] = {}
-        for height_level, criteria in processed_criteria_per_height_level.items():
-            criteria_for_height_level = {}
-            for criterion in criteria:
-                gdf = processed_criteria_vectors[criterion][
-                    processed_criteria_vectors[criterion]["relatieveHoogteligging"] == height_level
-                ]
-                criteria_for_height_level[criterion] = gdf  # type: ignore
-
-            graph, nodes_gdf = hexagon_graph_builder.build_graph(
-                project_area.buffer(0.01), raster_groups, criteria_for_height_level
-            )
-
-            graphs_per_height[height_level] = HeightLevelGraph(graph, nodes_gdf)
-        if self.debug:
-            self.debug_write_output_graphs(graphs_per_height)
-
-        hexagon_graph_composer = HexagonGraphComposer(
-            processed_criteria_per_height_level,
-            graphs_per_height,
-            hexagon_size=hexagon_graph_builder.hexagon_size,
-            debug=self.debug,
-        )
-        merged_graph = hexagon_graph_composer.compose()
-
-        return merged_graph.graph, merged_graph.nodes_gdf
-
-    def debug_write_output_graphs(self, graphs: dict[int, HeightLevelGraph]):
-        for height_level, height_level_graph in graphs.items():
-            edges_gdf = convert_hexagon_edges_to_gdf(height_level_graph.graph, height_level_graph.nodes_gdf)
-            write_results_to_geopackage(
-                self.out,
-                height_level_graph.nodes_gdf,
-                f"pytest_graph_nodes_height_level_{height_level}",
-                overwrite=True,
-            )
-            write_results_to_geopackage(
-                self.out, edges_gdf, f"pytest_graph_edges_height_level_{height_level}", overwrite=True
-            )
+        assert all(route_engine.results.unprocessed_edges.weight <= 10)

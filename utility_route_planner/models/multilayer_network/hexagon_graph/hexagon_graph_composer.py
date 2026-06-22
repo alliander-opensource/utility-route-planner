@@ -12,10 +12,17 @@ import structlog
 
 from settings import Config
 from utility_route_planner.models.multilayer_network.graph_datastructures import HexagonConnectionEdgeInfo
+from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_edge_generator import HexagonEdgeGenerator
+from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_graph_builder import HexagonGraphBuilder
+from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_grid_builder import HexagonGridBuilder
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_utils import (
     convert_hexagon_edges_to_gdf,
     update_edge_id,
     get_hexagon_node_geometry,
+)
+from utility_route_planner.models.multilayer_network.pipe_ramming import (
+    GetPotentialPipeRammingCrossings,
+    PipeRammingSettings,
 )
 from utility_route_planner.util.geo_utilities import (
     get_empty_geodataframe,
@@ -51,11 +58,14 @@ class HexagonGraphComposer:
         self.debug = debug
         self.out = out
 
-    def compose(self) -> HeightLevelGraph:
+    def compose(self) -> tuple[rx.PyGraph, gpd.GeoDataFrame]:
         n_height_levels = len(self.processed_graphs_and_nodes_per_height_level)
         main_height_level = self.get_main_height_level()
         self.gdf_main_nodes = self.processed_graphs_and_nodes_per_height_level[main_height_level].nodes_gdf
         self.gdf_main_nodes["height_level"] = main_height_level
+
+        if self.debug:
+            self.write_graph_per_height_level()
 
         if n_height_levels == 1:
             logger.info("Only a single height level is present, no merging is required.")
@@ -63,7 +73,10 @@ class HexagonGraphComposer:
             logger.info(f"Connecting {n_height_levels - 1} height level(s) to the main graph.")
             self.merge_graphs(main_height_level)
 
-        return self.processed_graphs_and_nodes_per_height_level[main_height_level]
+        return (
+            self.processed_graphs_and_nodes_per_height_level[main_height_level].graph,
+            self.processed_graphs_and_nodes_per_height_level[main_height_level].nodes_gdf,
+        )
 
     def get_main_height_level(self):
         """Doublecheck the main height level is 0. This is the expected value for the BGT."""
@@ -104,6 +117,7 @@ class HexagonGraphComposer:
             for component in rx.connected_components(height_graph.graph):
                 gdf_component_nodes = height_graph.nodes_gdf.loc[list(component)]
                 # Get the outer nodes (nodes to join to the main graph) of the component.
+                # TODO use inradius in this file
                 component_area = gdf_component_nodes.buffer(self.hexagon_size).union_all(grid_size=0.1)
                 if not isinstance(component_area, shapely.Polygon):
                     logger.warning("Component area is not a polygon, this is unexpected. Skipping.")
@@ -298,3 +312,75 @@ class HexagonGraphComposer:
                     Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT, na_rows, "pytest_invalid_nodes"
                 )
         return gdf_main_nodes_to_outer_subgraph_nodes
+
+    def write_graph_per_height_level(self):
+        for height_level, height_level_graph in self.processed_graphs_and_nodes_per_height_level.items():
+            edges_gdf = convert_hexagon_edges_to_gdf(height_level_graph.graph, height_level_graph.nodes_gdf)
+            write_results_to_geopackage(
+                self.out,
+                height_level_graph.nodes_gdf,
+                f"pytest_graph_nodes_height_level_{height_level}",
+                overwrite=True,
+            )
+            write_results_to_geopackage(
+                self.out, edges_gdf, f"pytest_graph_edges_height_level_{height_level}", overwrite=True
+            )
+
+
+def build_and_compose_graph(
+    processed_criteria_per_height_level: dict[int, list[str]],
+    processed_criteria_vectors: dict[str, gpd.GeoDataFrame],
+    raster_groups: dict,
+    project_area: shapely.Polygon | shapely.MultiPolygon,
+    debug: bool = Config.DEBUG,
+    hexagon_size: float = Config.HEXAGON_SIZE,
+    block_size: int = Config.HEXAGON_BLOCK_SIZE,
+    apply_pipe_ramming: bool = Config.APPLY_PIPE_RAMMING,
+    osm_graph_preprocessed: rx.PyGraph = rx.PyGraph(),
+    pipe_ramming_settings: PipeRammingSettings = PipeRammingSettings(),
+) -> tuple[rx.PyGraph, gpd.GeoDataFrame, list]:
+
+    grid_constructor = HexagonGridBuilder(hexagon_size=hexagon_size, block_size=block_size)
+    hexagon_edge_generator = HexagonEdgeGenerator()
+    hexagon_graph_builder = HexagonGraphBuilder(grid_builder=grid_constructor, edge_generator=hexagon_edge_generator)
+
+    # TODO Cache the project area node grid so it is not recomputed each time
+    graphs_per_height: dict[int, HeightLevelGraph] = {}
+    pipe_ramming_crossings = []
+    for height_level, criteria in processed_criteria_per_height_level.items():
+        criteria_for_height_level = {}
+        for criterion in criteria:
+            gdf = processed_criteria_vectors[criterion][
+                processed_criteria_vectors[criterion]["relatieveHoogteligging"] == height_level
+            ]
+            criteria_for_height_level[criterion] = gdf  # type: ignore
+
+        graph, nodes_gdf = hexagon_graph_builder.build_graph(
+            project_area.buffer(0.01), raster_groups, criteria_for_height_level
+        )
+
+        # Only try to get pipe rammings for the "ground" level which is 0 when using the BGT.
+        if apply_pipe_ramming and height_level == 0:
+            pipe_ramming_settings.hexagon_size = hexagon_size
+            pipe_ramming = GetPotentialPipeRammingCrossings(
+                osm_graph_preprocessed,
+                graph,
+                nodes_gdf,
+                settings=pipe_ramming_settings,
+                debug=debug,
+            )
+            pipe_ramming.get_crossings()
+            graph = pipe_ramming.cost_surface_graph
+            nodes_gdf = pipe_ramming.cost_surface_nodes
+            pipe_ramming_crossings = pipe_ramming.crossing_collection
+
+        graphs_per_height[height_level] = HeightLevelGraph(graph, nodes_gdf)
+
+    hexagon_graph_composer = HexagonGraphComposer(
+        processed_criteria_per_height_level,
+        graphs_per_height,
+        hexagon_size=hexagon_graph_builder.hexagon_size,
+        debug=debug,
+    )
+    graph, gdf_nodes = hexagon_graph_composer.compose()
+    return graph, gdf_nodes, pipe_ramming_crossings

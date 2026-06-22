@@ -5,7 +5,9 @@ from dataclasses import dataclass, field, fields
 from enum import auto, Enum
 from pathlib import Path
 import math
+from typing import Any
 
+import pandas as pd
 import rustworkx as rx
 import shapely
 import shapely.ops
@@ -38,14 +40,14 @@ class Algorithm(Enum):
 
 @dataclass
 class MultiLayerRouteResults:
-    result_route_node_indices: rx.NodeIndices = field(default_factory=rx.NodeIndices)
-    result_route_guideline: shapely.LineString = field(default_factory=shapely.LineString)
-    result_route_edges: gpd.GeoDataFrame = field(default_factory=get_empty_geodataframe)
-    result_route_nodes: gpd.GeoDataFrame = field(default_factory=get_empty_geodataframe)
-    result_route_linestring: shapely.LineString = field(default_factory=shapely.LineString)
-    result_route_straightened: shapely.LineString = field(default_factory=shapely.LineString)
-    result_route_straightened_node_indices: list = field(default_factory=list)
-    result_route_quadratic_bezier: shapely.LineString = field(default_factory=shapely.LineString)
+    node_indices: rx.NodeIndices = field(default_factory=rx.NodeIndices)
+    guideline: shapely.LineString = field(default_factory=shapely.LineString)
+    unprocessed_edges: gpd.GeoDataFrame = field(default_factory=get_empty_geodataframe)
+    unprocessed_nodes: gpd.GeoDataFrame = field(default_factory=get_empty_geodataframe)
+    unprocessed_linestring: shapely.LineString = field(default_factory=shapely.LineString)
+    collapsed_linestring: shapely.LineString = field(default_factory=shapely.LineString)
+    collapsed_node_indices: list = field(default_factory=list)
+    quadratic_bezier_linestring: shapely.LineString = field(default_factory=shapely.LineString)
 
     def write_to_geopackage(self, out: Path, prefix: str = "") -> None:
         """Write results containing a geometry to file using the dataclass field name."""
@@ -57,9 +59,12 @@ class MultiLayerRouteResults:
             elif isinstance(value, shapely.geometry.base.BaseGeometry):
                 if value.is_empty:
                     continue
+            elif isinstance(value, list) and len(value) > 0:
+                # This is the node indices list, subset the unprocessed nodes
+                value = self.unprocessed_nodes.loc[value]
             else:
                 continue
-            write_results_to_geopackage(out, value, f"{prefix}{f.name}")
+            write_results_to_geopackage(out, value, f"{prefix}result_route_{f.name}")
 
 
 class MultilayerRouteEngine:
@@ -70,7 +75,7 @@ class MultilayerRouteEngine:
         gdf_cost_surface_nodes: gpd.GeoDataFrame,
         hexagon_size: float,
         # minimum_bending_radius: float = 0,
-        algorithm: Algorithm = Algorithm.dijkstra,
+        algorithm: Algorithm = Algorithm.astar,
         prefix: str = "",
         write_output: bool = False,
         out: Path = Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT,
@@ -79,7 +84,7 @@ class MultilayerRouteEngine:
         self.gdf_cost_surface_nodes = gdf_cost_surface_nodes
         self.osm_graph = osm_graph
         self.hexagon_size = hexagon_size
-        self.minimum_bending_radius = get_inradius(self.hexagon_size) / 2
+        self.minimum_bending_radius = get_inradius(self.hexagon_size)
         self.write_output = write_output
         self.algorithm = algorithm
         self.prefix = prefix
@@ -92,7 +97,7 @@ class MultilayerRouteEngine:
 
         straight_line = self.get_linestring(source, target)
         # Offset to avoid it being exactly on top of the nodes, causes issues with distance calculations during routing.
-        self.results.result_route_guideline = shapely.offset_curve(straight_line, self.hexagon_size / 4)
+        self.results.guideline = shapely.offset_curve(straight_line, self.hexagon_size / 4)
 
         path_node_indices = self.find_path_node_indices(source, target)
 
@@ -101,26 +106,19 @@ class MultilayerRouteEngine:
             self.cost_surface_graph, path_node_indices, gdf_path_nodes
         )
 
-        self.results.result_route_edges = gdf_path_edges
-        self.results.result_route_nodes = gdf_path_nodes
-        self.results.result_route_node_indices = path_node_indices
+        self.results.unprocessed_edges = gdf_path_edges
+        self.results.unprocessed_nodes = gdf_path_nodes
+        self.results.node_indices = path_node_indices
 
-        self.results.result_route_linestring = shapely.LineString(
+        self.results.unprocessed_linestring = shapely.LineString(
             [get_hexagon_node_geometry(self.gdf_cost_surface_nodes, node_id=i) for i in path_node_indices]
         )
-        self.results.result_route_straightened, self.results.result_route_straightened_node_indices = (
-            self.straighten_linestring()
-        )
+        self.results.collapsed_linestring, self.results.collapsed_node_indices = self.get_collapsed_route()
         if self.minimum_bending_radius:
             self.apply_bezier_curves(min_bend_radius=self.minimum_bending_radius)
 
         if self.write_output:
             self.results.write_to_geopackage(self.out, self.prefix)
-            write_results_to_geopackage(
-                self.out,
-                self.gdf_cost_surface_nodes.loc[self.results.result_route_straightened_node_indices],
-                f"{self.prefix}result_route_shortcut_nodes",
-            )
 
     def get_source_and_target_nodes(self, start_end: shapely.LineString) -> tuple[int, int]:
         start, end = get_first_last_point_from_linestring(start_end)
@@ -130,15 +128,15 @@ class MultilayerRouteEngine:
             raise ValueError("Source and target node are the same. Provide a linestring with points further apart.")
         return source, target
 
-    def get_result_route_length(self) -> float:
-        return self.results.result_route_edges.geometry.length.sum()
+    def get_result_route_length_unprocessed(self) -> float:
+        return self.results.unprocessed_edges.geometry.length.sum()
 
     def get_result_route_cost(self) -> float:
         """
         For now, divide total route cost by 2 as the edge weight is now computed as the sum of the weights of the source
         and target nodes.
         """
-        return self.results.result_route_edges["weight"].sum() / 2
+        return self.results.unprocessed_edges["weight"].sum() / 2
 
     def get_weight_dijkstra(self, edge: BaseWeightedEdgeInfo, modifier: float = 0.01) -> float:
         """
@@ -148,7 +146,7 @@ class MultilayerRouteEngine:
         weight = self.cost_surface_graph.get_edge_data_by_index(edge.edge_id).weight
         node_1, node_2 = self.cost_surface_graph.get_edge_endpoints_by_index(edge.edge_id)
         edge_line = self.get_linestring(node_1, node_2)
-        distance = edge_line.distance(self.results.result_route_guideline) * modifier
+        distance = edge_line.distance(self.results.guideline) * modifier
         if distance > weight:
             logger.warning("Unexpected situation during routing.")
         return weight + distance
@@ -158,7 +156,8 @@ class MultilayerRouteEngine:
 
     def get_estimate_astar(self, node: NodeInfo) -> float:
         node_point = get_hexagon_node_geometry(self.gdf_cost_surface_nodes, node.node_id)
-        guideline = shapely.LineString([node_point, shapely.get_point(self.results.result_route_guideline, 1)])
+        guideline = shapely.LineString([node_point, shapely.get_point(self.results.guideline, 1)])
+        # TODO i think this can be improved, the guideline is not always leading
 
         return guideline.length
 
@@ -193,18 +192,37 @@ class MultilayerRouteEngine:
                 raise ValueError(f"Unsupported algorithm type. Expected one of: {[a for a in Algorithm]}")
         return path_node_indices
 
-    def _get_shortcut_costs(self, line: shapely.LineString, inradius: int) -> list[float]:
-        # Multiply each node suitability value by 2, as edge weights are set as the sum of two node suitability values.
-        nearby = self.gdf_cost_surface_nodes[self.gdf_cost_surface_nodes.dwithin(line, inradius)]
+    def _get_shortcut_costs(self, line: shapely.LineString, inradius: int, height: int) -> list[float]:
+        # Take some margin because of rounding differences to ensure proper selection.
+        nearby = self.gdf_cost_surface_nodes[
+            (self.gdf_cost_surface_nodes["height_level"] == height)
+            & (self.gdf_cost_surface_nodes.dwithin(line, inradius * 1.02))
+        ]
         costs = nearby.suitability_value.unique()
+
         # Only look at the intersection when necessary to save resources
         if len(costs) != 1:
-            intersected = nearby[nearby.buffer(inradius / 2).intersects(line)]
-            costs = intersected.suitability_value.unique()
+            within_inner = nearby[nearby.dwithin(line, inradius * 0.98)]
+            inner_unique = within_inner.suitability_value.unique()
+
+            intersected_left_line = line.buffer(inradius * 1.02, single_sided=True)
+            intersected_right_line = line.buffer(-inradius * 1.02, single_sided=True)
+
+            intersected_left = nearby[nearby.intersects(intersected_left_line)]
+            intersected_right = nearby[nearby.intersects(intersected_right_line)]
+
+            if len(intersected_left.suitability_value.unique()) == 1 and len(inner_unique) == 1:
+                costs = intersected_left.suitability_value.unique()
+            elif len(intersected_right.suitability_value.unique()) == 1 and len(inner_unique) == 1:
+                costs = intersected_right.suitability_value.unique()
+            else:
+                costs = nearby.suitability_value.unique()
+
+        # Multiply each node suitability value by 2, as edge weights are set as the sum of two node suitability values.
         return (costs * 2).tolist()
 
     @time_function
-    def straighten_linestring(self) -> tuple[shapely.LineString, list[int]]:
+    def get_collapsed_route(self) -> tuple[shapely.LineString, list[int]]:
         """
         The idea is to create shortcuts in the route by skipping nodes if the cost does not change. This is done by
         creating a linestring from the current node to the next node in the route and checking if the suitability values
@@ -222,27 +240,30 @@ class MultilayerRouteEngine:
         This results in a "straightened" linestring.
 
         """
-        logger.info("Starting straightening of the found route.")
+        logger.info("Starting collapsed route calculation of the found route.")
         # center to center distance from a neighbouring hexagon
         inradius = get_inradius(self.hexagon_size)
-        shortcut_order: list = [self.results.result_route_node_indices[0]]
+        shortcut_order: list = [self.results.node_indices[0]]
 
-        # TODO add height
-        # create dataframe with: node_order, suit value, height level. use to get segments.
-        gdf_crossed_nodes = self.gdf_cost_surface_nodes.loc[self.results.result_route_node_indices].reset_index()
-        gdf_crossed_nodes["segment"] = (
-            gdf_crossed_nodes["suitability_value"] != gdf_crossed_nodes["suitability_value"].shift()
-        ).cumsum()
+        # Get segments to consider for shortcuts
+        gdf_crossed_nodes = self.get_segments()
 
-        # Note segments do not encapsulate pipe rammings as the costs are not on the node.
         for segment in gdf_crossed_nodes["segment"].unique():
             gdf_active_mask = gdf_crossed_nodes[gdf_crossed_nodes["segment"] == segment]
-            if len(gdf_active_mask) == 1:
-                shortcut_order.append(int(gdf_active_mask.iloc[0]["node_id"]))
+            current_height_level = gdf_active_mask["height_level"].iloc[0]
+
+            if gdf_active_mask.empty:
                 continue
+            if len(gdf_active_mask) == 1:
+                node_id = int(gdf_active_mask.iloc[0]["node_id"])
+                if shortcut_order[-1] != node_id:
+                    shortcut_order.append(node_id)
+                continue
+
             start_node = int(gdf_active_mask.iloc[0]["node_id"])
             forwarded_node = int(gdf_active_mask.iloc[1]["node_id"])
             end_node = int(gdf_active_mask.iloc[-1]["node_id"])
+
             while start_node != end_node:
                 # For each node in the active segment, create a line from start_node and compute shortcut costs.
                 # Pick the last node (most skipped) with still the same suitability costs
@@ -250,42 +271,89 @@ class MultilayerRouteEngine:
                 start_node_geom = get_hexagon_node_geometry(self.gdf_cost_surface_nodes, node_id=start_node)
                 # Create lines from start_node to all nodes in the active segment
                 series_forwarded = gpd.GeoSeries(shapely.shortest_line(start_node_geom, gdf_active_mask["geometry"]))
+                if current_height_level != 0:
+                    # Select only those nodes within a reasonable perimeter of the route
+                    height_nodes = self.gdf_cost_surface_nodes[
+                        self.gdf_cost_surface_nodes["height_level"] == current_height_level
+                    ]
+                    minx, miny, maxx, maxy = series_forwarded.buffer(2).total_bounds
+                    subset_height_nodes = height_nodes.cx[minx:maxx, miny:maxy]
+                    valid_area = (
+                        # Ensure we create a single polygon with the union.
+                        subset_height_nodes.buffer(inradius * 2, resolution=4)
+                        .union_all()
+                        # Give it a bit of slack to prevent it being too strict at the edges.
+                        .buffer(-inradius * 1.6, resolution=4)
+                    )
+                    series_forwarded = series_forwarded.intersection(valid_area)
+                    series_forwarded = series_forwarded.where(
+                        (series_forwarded.geom_type == "LineString")
+                        & (~series_forwarded.is_empty)
+                        & (series_forwarded.intersects(start_node_geom)),
+                        other=shapely.LineString(),
+                    )
                 # Compute shortcut costs for each line
-                series_shortcut_costs = series_forwarded.apply(self._get_shortcut_costs, inradius=inradius)
+                series_shortcut_costs = series_forwarded.apply(
+                    self._get_shortcut_costs, inradius=inradius, height=current_height_level
+                )
 
                 # Filter nodes where shortcut costs equal basic_cost
                 valid_nodes = gdf_active_mask[series_shortcut_costs.apply(lambda costs: costs == [basic_cost])]
 
                 if valid_nodes.empty:
                     # No valid shortcut found for this part of the segment, move to the next node
-                    shortcut_order.append(forwarded_node)
+                    shortcut_order.append(int(forwarded_node))
                     gdf_active_mask = gdf_active_mask[1:]
                     start_node = int(gdf_active_mask.iloc[0]["node_id"])
-                    forwarded_node = gdf_active_mask.iloc[1]["node_id"] if len(gdf_active_mask) > 1 else end_node
-
+                    forwarded_node = int(gdf_active_mask.iloc[1]["node_id"]) if len(gdf_active_mask) > 1 else end_node
                 else:
                     # Pick the last valid node (most nodes skipped)
                     start_node = int(valid_nodes.iloc[-1]["node_id"])
                     shortcut_order.append(start_node)
                     gdf_active_mask = gdf_active_mask[gdf_active_mask.index > valid_nodes.iloc[-1].name]
-                    forwarded_node = gdf_active_mask.iloc[0]["node_id"] if len(gdf_active_mask) > 0 else end_node
+                    forwarded_node = int(gdf_active_mask.iloc[0]["node_id"]) if len(gdf_active_mask) > 0 else end_node
 
         shortcut_linestring = shapely.LineString(
             gdf_crossed_nodes[gdf_crossed_nodes["node_id"].isin(shortcut_order)].geometry.to_list()
         )
 
         logger.info(
-            f"Input LineString: {self.results.result_route_linestring.length}. Shortcut LineString: {shortcut_linestring.length}."
+            f"Input LineString: {self.results.unprocessed_linestring.length}. Collapsed LineString: {shortcut_linestring.length}."
         )
 
         return shortcut_linestring, shortcut_order
+
+    def get_segments(self) -> Any:
+        gdf_crossed_nodes = self.gdf_cost_surface_nodes.loc[self.results.node_indices].reset_index()
+        edges = self.results.unprocessed_edges.reset_index(drop=True)
+
+        is_height = edges["connects_height_levels"].fillna(False)
+        is_junction = edges["origin"].notna() if "origin" in edges.columns else pd.Series(False, index=edges.index)
+        is_special = is_height | is_junction
+
+        # An edge starts a new segment when:
+        #  - it is special (height transition or junction crossing)
+        #  - the previous edge was special (so the node after a special edge starts fresh)
+        #  - its weight differs from the previous edge.
+        edge_break = is_special | is_special.shift(fill_value=False) | (edges["weight"] != edges["weight"].shift())
+        edge_break.iloc[0] = True
+        edge_segment = edge_break.cumsum()
+
+        # Map edge segments onto nodes. Node i takes the segment of the edge that arrives at it
+        # (edge i-1). The first node takes the first edge's segment.
+        node_segment = pd.Series(index=gdf_crossed_nodes.index, dtype=int)
+        node_segment.iloc[0] = edge_segment.iloc[0]
+        node_segment.iloc[1:] = edge_segment.values
+
+        gdf_crossed_nodes["segment"] = node_segment.values.astype(int)
+        return gdf_crossed_nodes
 
     @time_function
     def apply_bezier_curves(
         self,
         min_bend_radius: float,
         samples_per_curve: int = 30,
-    ) -> shapely.LineString:
+    ):
         """
         Replace corners in straightened route with quadratic Bezier arcs.
 
@@ -303,16 +371,24 @@ class MultilayerRouteEngine:
         Adjacent corners share legs, so each corner can use at most half of a leg's length.
         """
         logger.info("Starting route smoothing through application of bezier curves.")
+        # TODO determine what to do with height here
+        height = 0
         # TODO split and cleanup
-        coords = list(self.results.result_route_straightened.coords)
-        if len(coords) < 3:
-            return self.results.result_route_straightened
+        # TODO when approaching a pipe ramming edge, make a small loop
 
+        # -- part 1
+        coords = list(self.results.collapsed_linestring.coords)
+        if len(coords) < 3:
+            logger.info("Input LineString has less than 3 points, unable to create bezier curve.")
+            self.results.quadratic_bezier_linestring = self.results.collapsed_linestring
+            return
+
+        # -- part 2
         inradius = get_inradius(self.hexagon_size)
 
         legs = [shapely.LineString([coords[i], coords[i + 1]]) for i in range(len(coords) - 1)]
         leg_lengths = [leg.length for leg in legs]
-        leg_costs = [self._get_shortcut_costs(leg, int(inradius)) for leg in legs]
+        leg_costs = [self._get_shortcut_costs(leg, int(inradius), height) for leg in legs]
 
         new_pieces: list[shapely.LineString] = []
         cursor = shapely.Point(coords[0])
@@ -349,18 +425,17 @@ class MultilayerRouteEngine:
 
             # Iteratively shrink d until the curve stays inside allowed cells.
             d = d_max
-            bezier_line = None
+            bezier_line = shapely.LineString()
             for _ in range(10):
                 a = _point_along(p_curr, p_prev, d)
                 b = _point_along(p_curr, p_next, d)
                 bezier_line = _quadratic_bezier(a, p_curr, b, samples_per_curve)
-                if self._curve_stays_in_cells(bezier_line, allowed_costs, inradius):
+                if self._curve_stays_in_cells(bezier_line, allowed_costs, inradius, height):
                     break
                 if d <= d_min + 1e-6:
                     break
                 d = max(d_min, d * 0.5)
 
-            assert bezier_line is not None
             new_pieces.append(shapely.LineString([cursor, shapely.Point(bezier_line.coords[0])]))
             new_pieces.append(bezier_line)
             cursor = shapely.Point(bezier_line.coords[-1])
@@ -379,9 +454,8 @@ class MultilayerRouteEngine:
                     all_coords.extend(pc)
             merged = shapely.LineString(all_coords)
 
-        self.results.result_route_quadratic_bezier = merged
-        return merged
+        self.results.quadratic_bezier_linestring = merged
 
-    def _curve_stays_in_cells(self, curve: shapely.LineString, allowed: set, inradius: float) -> bool:
-        costs = self._get_shortcut_costs(curve, int(inradius))
+    def _curve_stays_in_cells(self, curve: shapely.LineString, allowed: set, inradius: float, height: int) -> bool:
+        costs = self._get_shortcut_costs(curve, int(inradius), height)
         return set(costs).issubset(allowed)

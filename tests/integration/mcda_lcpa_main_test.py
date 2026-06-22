@@ -5,11 +5,9 @@
 import pytest
 import shapely
 
-from main import run_mcda_lcpa
 from settings import Config
 from utility_route_planner.models.lcpa.lcpa_engine import LcpaUtilityRouteEngine
 from utility_route_planner.models.mcda.mcda_engine import McdaCostSurfaceEngine
-from utility_route_planner.util.geo_utilities import get_first_last_point_from_linestring
 from utility_route_planner.util.write import write_results_to_geopackage
 import geopandas as gpd
 
@@ -46,53 +44,3 @@ class TestMcdaLcpaChain:
             mcda_engine.raster_preset.general.project_area_geometry,
         )
         write_results_to_geopackage(Config.PATH_GEOPACKAGE_LCPA_OUTPUT, lcpa_engine.lcpa_result, "utility_route_result")
-
-
-@pytest.mark.skip(reason="Benchmark cases are skipped in normal test runs to save time.")
-@pytest.mark.parametrize(
-    "path_geopackage, layer_name_project_area, layer_name_utility_route_human_designed",
-    [
-        (
-            Config.PATH_GEOPACKAGE_CASE_01,
-            Config.LAYER_NAME_PROJECT_AREA_CASE_01,
-            Config.LAYER_NAME_HUMAN_DESIGNED_ROUTE_CASE_01,
-        ),
-        (
-            Config.PATH_GEOPACKAGE_CASE_02,
-            Config.LAYER_NAME_PROJECT_AREA_CASE_02,
-            Config.LAYER_NAME_HUMAN_DESIGNED_ROUTE_CASE_02,
-        ),
-        (
-            Config.PATH_GEOPACKAGE_CASE_03,
-            Config.LAYER_NAME_PROJECT_AREA_CASE_03,
-            Config.LAYER_NAME_HUMAN_DESIGNED_ROUTE_CASE_03,
-        ),
-        (
-            Config.PATH_GEOPACKAGE_CASE_04,
-            Config.LAYER_NAME_PROJECT_AREA_CASE_04,
-            Config.LAYER_NAME_HUMAN_DESIGNED_ROUTE_CASE_04,
-        ),
-        (
-            Config.PATH_GEOPACKAGE_CASE_05,
-            Config.LAYER_NAME_PROJECT_AREA_CASE_05,
-            Config.LAYER_NAME_HUMAN_DESIGNED_ROUTE_CASE_05,
-        ),
-    ],
-)
-def test_mcda_lcpa_chain_all_benchmark_cases(
-    path_geopackage, layer_name_project_area, layer_name_utility_route_human_designed
-):
-    human_designed_route = (
-        gpd.read_file(path_geopackage, layer=layer_name_utility_route_human_designed).iloc[0].geometry
-    )
-    start_end_point = get_first_last_point_from_linestring(human_designed_route)
-
-    run_mcda_lcpa(
-        Config.RASTER_PRESET_NAME_BENCHMARK,
-        path_geopackage,
-        gpd.read_file(path_geopackage, layer=layer_name_project_area).geometry.iloc[0],
-        start_end_point,
-        human_designed_route,
-        raster_name_prefix="",
-        compute_rasters_in_parallel=False,
-    )

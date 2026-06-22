@@ -36,6 +36,7 @@ class Config:
     HEXAGON_SIZE = 0.5
     HEXAGON_BLOCK_SIZE = 512
     THRESHOLD_EDGE_LENGTH_CROSSING_M: float = 30
+    APPLY_PIPE_RAMMING: bool = True
     MAX_PIPE_RAMMING_LENGTH_M: float = 15
     MIN_PIPE_RAMMING_LENGTH_M: float = 3
     SUITABILITY_VALUE_CROSSING_THRESHOLD: float = 10
@@ -57,22 +58,3 @@ class Config:
     PYTEST_PATH_GEOPACKAGE_MCDA = BASEDIR / "data/examples/pytest_data.gpkg"
     PYTEST_LAYER_NAME_PROJECT_AREA = "project_area_ede"
     PYTEST_OSM_GRAPH_PICKLE = BASEDIR / "data/examples/pytest_osm_graph.pkl"
-
-    # Research question 1 data paths.
-    PATH_GEOPACKAGE_CASE_01 = BASEDIR / "data/examples/case_01.gpkg"
-    PATH_GEOPACKAGE_CASE_02 = BASEDIR / "data/examples/case_02.gpkg"
-    PATH_GEOPACKAGE_CASE_03 = BASEDIR / "data/examples/case_03.gpkg"
-    PATH_GEOPACKAGE_CASE_04 = BASEDIR / "data/examples/case_04.gpkg"
-    PATH_GEOPACKAGE_CASE_05 = BASEDIR / "data/examples/case_05.gpkg"
-
-    LAYER_NAME_PROJECT_AREA_CASE_01 = "ps_case_01_project_area"
-    LAYER_NAME_PROJECT_AREA_CASE_02 = "ps_case_02_project_area"
-    LAYER_NAME_PROJECT_AREA_CASE_03 = "ps_case_03_project_area"
-    LAYER_NAME_PROJECT_AREA_CASE_04 = "ps_case_04_project_area"
-    LAYER_NAME_PROJECT_AREA_CASE_05 = "ps_case_05_project_area"
-
-    LAYER_NAME_HUMAN_DESIGNED_ROUTE_CASE_01 = "ps_case_01_route_human_designed"
-    LAYER_NAME_HUMAN_DESIGNED_ROUTE_CASE_02 = "ps_case_02_route_human_designed"
-    LAYER_NAME_HUMAN_DESIGNED_ROUTE_CASE_03 = "ps_case_03_route_human_designed"
-    LAYER_NAME_HUMAN_DESIGNED_ROUTE_CASE_04 = "ps_case_04_route_human_designed"
-    LAYER_NAME_HUMAN_DESIGNED_ROUTE_CASE_05 = "ps_case_05_route_human_designed"

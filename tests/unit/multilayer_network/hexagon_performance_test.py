@@ -68,9 +68,6 @@ class TestVectorToGraph:
     ):
         mcda_engine = vectors_for_project_areas
 
-        raster_groups = {
-            criteria_key: criteria.group for criteria_key, criteria in mcda_engine.raster_preset.criteria.items()
-        }
         grid_constructor = HexagonGridBuilder(hexagon_size=4, block_size=8)
         hexagon_edge_generator = HexagonEdgeGenerator()
         hexagon_graph_builder = HexagonGraphBuilder(
@@ -78,7 +75,7 @@ class TestVectorToGraph:
         )
         graph, nodes_gdf = hexagon_graph_builder.build_graph(
             mcda_engine.project_area_geometry,
-            raster_groups,
+            mcda_engine.get_raster_groups(),
             mcda_engine.processed_vectors,
         )
 

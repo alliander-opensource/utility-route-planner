@@ -25,17 +25,26 @@ def _point_along(origin: shapely.Point, towards: shapely.Point, distance: float)
     return shapely.Point(origin.x + dx / n * distance, origin.y + dy / n * distance)
 
 
-def _quadratic_bezier(p0: shapely.Point, p1: shapely.Point, p2: shapely.Point, n: int) -> shapely.LineString:
-    pts = []
-    for k in range(n):
-        t = k / (n - 1)
-        omt = 1 - t
-        x = omt * omt * p0.x + 2 * omt * t * p1.x + t * t * p2.x
-        y = omt * omt * p0.y + 2 * omt * t * p1.y + t * t * p2.y
-        pts.append((x, y))
-    return shapely.LineString(pts)
+def _quadratic_bezier(p0: shapely.Point, p1: shapely.Point, p2: shapely.Point, samples: int) -> shapely.LineString:
+    """
+    Create the quadratic Bézier curve.
+
+    :param p0: starting point
+    :param p1: control point
+    :param p2: end point
+    :param samples: number of points to create the curve with.
+    :return: quadratic Bézier curve as linestring.
+    """
+    bezier_points = []
+    for sample in range(samples):
+        rel_1 = sample / (samples - 1)
+        rel_2 = 1 - rel_1
+        x = rel_2 * rel_2 * p0.x + 2 * rel_2 * rel_1 * p1.x + rel_1 * rel_1 * p2.x
+        y = rel_2 * rel_2 * p0.y + 2 * rel_2 * rel_1 * p1.y + rel_1 * rel_1 * p2.y
+        bezier_points.append((x, y))
+    return shapely.LineString(bezier_points)
 
 
 def get_inradius(hexagon_size: float) -> float:
     """Get the inradius of a hexagon for checking intersections with cost surface nodes during straightening."""
-    return math.sqrt(3) * hexagon_size
+    return math.sqrt(3) * hexagon_size / 2

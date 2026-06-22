@@ -211,3 +211,9 @@ class McdaCostSurfaceEngine:
             n_total_weights += len(self.raster_preset.criteria[criterion].weight_values.keys())
 
         return n_total_weights
+
+    def get_raster_groups(self) -> dict:
+        """
+        Get the raster groups with the corresponding criteria for which rasters were created. This is used for the graph composition.
+        """
+        return {criteria_key: criteria.group for criteria_key, criteria in self.raster_preset.criteria.items()}

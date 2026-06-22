@@ -79,7 +79,7 @@ def align_linestring(linestring: shapely.LineString, cell_size: float) -> shapel
     return aligned_linestring
 
 
-def get_first_last_point_from_linestring(linestring: shapely.LineString) -> tuple:
+def get_first_last_point_from_linestring(linestring: shapely.LineString) -> tuple[shapely.Point, shapely.Point]:
     """
     Get the first and last point of a linestring.
 
@@ -156,7 +156,7 @@ def get_angle_between_points(point_a: shapely.Point, point_b: shapely.Point, cen
     vector_b = np.array([point_b.x - center_point.x, point_b.y - center_point.y])
     cos_theta = np.dot(vector_a, vector_b) / (np.linalg.norm(vector_a) * np.linalg.norm(vector_b))
     angle_radians = np.arccos(np.clip(cos_theta, -1, 1))
-    cross = np.cross(vector_a, vector_b)
+    cross = vector_a[0] * vector_b[1] - vector_a[1] * vector_b[0]
     angle_deg = np.degrees(angle_radians)
     if cross < 0:
         angle_deg = 360 - angle_deg

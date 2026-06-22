@@ -2,6 +2,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 import pathlib
+from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
@@ -31,52 +32,59 @@ from utility_route_planner.util.write import write_results_to_geopackage
 logger = structlog.get_logger(__name__)
 
 
+@dataclass
+class PipeRammingSettings:
+    hexagon_size: float = Config.HEXAGON_SIZE
+    # Minimum length of a street segment to be considered for adding pipe ramming crossings.
+    threshold_edge_length_crossing_m: float = Config.THRESHOLD_EDGE_LENGTH_CROSSING_M
+    # Maximum/minimum length possible of a pipe ramming crossings.
+    max_pipe_ramming_length_m: float = Config.MAX_PIPE_RAMMING_LENGTH_M
+    min_pipe_ramming_length_m: float = Config.MIN_PIPE_RAMMING_LENGTH_M
+    # Cost surface value below which we consider a crossing suitable.
+    suitability_value_crossing_threshold: float = Config.SUITABILITY_VALUE_CROSSING_THRESHOLD
+    # Cost surface value above which we consider unsuitable for crossing.
+    suitability_value_obstacles_threshold: float = Config.SUITABILITY_VALUE_OBSTACLES_THRESHOLD
+    plot_crossings: bool = True
+
+
 class GetPotentialPipeRammingCrossings:
     def __init__(
         self,
         osm_graph: rx.PyGraph,
         cost_surface_graph: rx.PyGraph,
         cost_surface_nodes: gpd.GeoDataFrame,
-        threshold_edge_length_crossing_m: float = Config.THRESHOLD_EDGE_LENGTH_CROSSING_M,
-        max_pipe_ramming_length_m: float = Config.MAX_PIPE_RAMMING_LENGTH_M,
-        min_pipe_ramming_length_m: float = Config.MIN_PIPE_RAMMING_LENGTH_M,
-        suitability_value_crossing_threshold: float = Config.SUITABILITY_VALUE_CROSSING_THRESHOLD,
-        suitability_value_obstacles_threshold: float = Config.SUITABILITY_VALUE_OBSTACLES_THRESHOLD,
-        hexagon_size: float = Config.HEXAGON_SIZE,
+        settings: PipeRammingSettings = PipeRammingSettings(),
         debug_out: pathlib.Path = Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT,
         debug: bool = False,
     ):
+        # Input data
         self.osm_graph = osm_graph
         self.osm_nodes, self.osm_edges = osm_graph_to_gdfs(osm_graph)
         self.cost_surface_graph = cost_surface_graph
         # TODO discuss adding the properties (BGT elements) to the hexagon nodes. That way you can force it to only include sidewalks, ignoring the suitability value.
         self.cost_surface_nodes = cost_surface_nodes
         self.junctions_of_interests = get_empty_geodataframe()
-        # Minimum length of a street segment to be considered for adding pipe ramming crossings.
-        self.threshold_edge_length_crossing_m = threshold_edge_length_crossing_m
-        # Maximum/minimum length possible of a pipe ramming crossings.
-        self.max_pipe_ramming_length_m = max_pipe_ramming_length_m
-        self.min_pipe_ramming_length_m = min_pipe_ramming_length_m
-        # Cost surface value below which we consider a crossing suitable.
-        self.suitability_value_crossing_threshold = suitability_value_crossing_threshold
-        # Cost surface value above which we consider unsuitable for crossing.
-        self.suitability_value_obstacles_threshold = suitability_value_obstacles_threshold
-        self.hexagon_size = hexagon_size
-        # Debugging options
-        self.debug = debug
-        self.out = debug_out
-        self.plot_crossings = False
 
-        # Do some monkey checks on input.
-        if self.threshold_edge_length_crossing_m <= self.max_pipe_ramming_length_m:
+        # Settings for determining what is suitable for crossing.
+        self.settings = settings
+
+        # Debugging options
+        self.out = debug_out
+        self.debug = debug
+
+        # Output
+        self.crossing_collection: list[tuple[int, int, PipeRammingEdgeInfo]] = []
+
+        # Validate input
+        if self.settings.threshold_edge_length_crossing_m <= self.settings.max_pipe_ramming_length_m:
             raise ValueError(
                 "The threshold_edge_length_crossing_m should be larger than the max_pipe_ramming_length_m for segment pipe ramming."
             )
-        if not self.max_pipe_ramming_length_m > self.min_pipe_ramming_length_m > 0:
+        if not self.settings.max_pipe_ramming_length_m > self.settings.min_pipe_ramming_length_m > 0:
             raise ValueError("The max_pipe_ramming_length_m should be larger than the min_pipe_ramming_length_m > 0.")
         if not self.cost_surface_graph.num_nodes() and self.cost_surface_graph.num_edges():
             raise ValueError("The cost surface graph appears to be empty.")
-        if not self.osm_graph.num_nodes() and self.osm_graph.num_edges():
+        if self.osm_graph.num_nodes() == 0 or self.osm_graph.num_edges() == 0:
             raise ValueError("The OSM graph appears to be empty.")
 
     def get_crossings(self):
@@ -97,17 +105,21 @@ class GetPotentialPipeRammingCrossings:
         # Group the edges into street segments between junctions (node degree > 2).
         self.create_street_segment_groups()
 
-        crossing_collection = []
         # Finds crossings (parallel to the edge!) for junctions.
         self.prepare_junction_crossings()
         with tqdm(total=len(self.junctions_of_interests), desc="Processing junctions") as pbar:
             invalid_junctions = []
             for node_id, junction in self.junctions_of_interests.iterrows():
-                crossing = self.get_crossing_for_junction(node_id, junction.osm_id, junction.geometry, junction.degree)
-                if len(crossing):
-                    crossing_collection.extend(crossing)
-                else:
-                    invalid_junctions.append(node_id)
+                try:
+                    crossing = self.get_crossing_for_junction(
+                        node_id, junction.osm_id, junction.geometry, junction.degree
+                    )
+                    if len(crossing):
+                        self.crossing_collection.extend(crossing)
+                    else:
+                        invalid_junctions.append(node_id)
+                except Exception as e:
+                    logger.error(f"An error occurred for node {node_id}: {e}")
                 pbar.update()
             if invalid_junctions:
                 logger.warning(f"No crossings found for junction(s): {invalid_junctions}.")
@@ -120,7 +132,7 @@ class GetPotentialPipeRammingCrossings:
                 try:
                     crossing = self.get_crossings_per_segment(segment_group, segment.geometry)
                     if len(crossing):
-                        crossing_collection.extend(crossing)
+                        self.crossing_collection.extend(crossing)
                     else:
                         invalid_segments.append(segment_group)
                 except Exception as e:
@@ -129,16 +141,15 @@ class GetPotentialPipeRammingCrossings:
             if invalid_segments:
                 logger.warning(f"No crossings found for segment group(s): {invalid_segments}.")
 
-        self.add_crossings_to_graph(crossing_collection)
+        self.add_crossings_to_graph(self.crossing_collection)
 
-        logger.info(f"Found and added {len(crossing_collection)} crossings.")
-        return crossing_collection
+        logger.info(f"Found and added {len(self.crossing_collection)} crossings.")
 
     def add_crossings_to_graph(self, crossing_collection: list):
         """Add the crossings to the cost surface graph and set the edge ids."""
         edge_ids = self.cost_surface_graph.add_edges_from(crossing_collection)
         [edge_info[2].set_edge_id(edge_id) for edge_id, edge_info in zip(edge_ids, crossing_collection)]
-        if self.plot_crossings:
+        if self.settings.plot_crossings:
             write_results_to_geopackage(
                 self.out,
                 gpd.GeoDataFrame(data=[vars(i[2]) for i in crossing_collection]),
@@ -187,7 +198,7 @@ class GetPotentialPipeRammingCrossings:
 
             write_results_to_geopackage(self.out, self.cost_surface_nodes, f"{prefix}cost_surface_nodes")
             cost_surface_nodes_filtered = self.cost_surface_nodes[
-                self.cost_surface_nodes["suitability_value"] < self.suitability_value_crossing_threshold
+                self.cost_surface_nodes["suitability_value"] < self.settings.suitability_value_crossing_threshold
             ]
             write_results_to_geopackage(self.out, cost_surface_nodes_filtered, f"{prefix}cost_surface_filtered")
 
@@ -202,7 +213,7 @@ class GetPotentialPipeRammingCrossings:
             logger.info(f"Found {len(junctions)} junctions to consider for pipe ramming.")
 
         # Determine the area around the junctions where we can ram pipes.
-        junctions["geometry"] = junctions.buffer(self.max_pipe_ramming_length_m + 1)
+        junctions["geometry"] = junctions.buffer(self.settings.max_pipe_ramming_length_m + 1)
 
         self.junctions_of_interests = junctions
 
@@ -219,7 +230,7 @@ class GetPotentialPipeRammingCrossings:
         # Get road crossings for only long segments.
         merged_segments = self.osm_edges.dissolve(by="group")
         merged_segments["length"] = merged_segments.geometry.length
-        merged_segments["is_suitable"] = merged_segments["length"] > self.threshold_edge_length_crossing_m * 2
+        merged_segments["is_suitable"] = merged_segments["length"] > self.settings.threshold_edge_length_crossing_m * 2
         merged_segments["geometry"] = merged_segments.line_merge()
         if not merged_segments.geom_type.unique() == np.array("LineString"):
             logger.warning(
@@ -228,7 +239,7 @@ class GetPotentialPipeRammingCrossings:
             )
         logger.info(
             f"Found {len(merged_segments[merged_segments['is_suitable']])} segments longer than "
-            f"{self.threshold_edge_length_crossing_m}m to consider for pipe ramming."
+            f"{self.settings.threshold_edge_length_crossing_m}m to consider for pipe ramming."
         )
 
         if self.debug:
@@ -248,8 +259,8 @@ class GetPotentialPipeRammingCrossings:
         # Create rectangles which simulate potential crossings.
         minx, miny, maxx, maxy = junction_area.bounds
         boxes = [
-            shapely.box(x, miny, min(x + self.hexagon_size, maxx), maxy)
-            for x in np.arange(minx, maxx, self.hexagon_size)
+            shapely.box(x, miny, min(x + self.settings.hexagon_size, maxx), maxy)
+            for x in np.arange(minx, maxx, self.settings.hexagon_size)
         ]
         center_outer_point = shapely.Point(self.osm_nodes.loc[node_id].geometry.x, maxy)
         all_rammings = gpd.GeoDataFrame(data=boxes, columns=["geometry"], crs=Config.CRS)
@@ -299,7 +310,7 @@ class GetPotentialPipeRammingCrossings:
                 row["point_inner"],
                 row["point_outer"],
                 # long enough to cross/split the junction area polygon.
-                distance=self.max_pipe_ramming_length_m * 3,
+                distance=self.settings.max_pipe_ramming_length_m * 3,
             ),
             axis=1,
         )
@@ -412,11 +423,15 @@ class GetPotentialPipeRammingCrossings:
         # Determine points per segment where crossings can be added. Skip the first and last meters as this is near a
         # junction and handled separately.
         crossing_intervals = np.linspace(
-            self.max_pipe_ramming_length_m,
-            segment_geometry.length - self.max_pipe_ramming_length_m,
+            self.settings.max_pipe_ramming_length_m,
+            segment_geometry.length - self.settings.max_pipe_ramming_length_m,
             int(
-                (segment_geometry.length - self.max_pipe_ramming_length_m - self.max_pipe_ramming_length_m)
-                // self.threshold_edge_length_crossing_m
+                (
+                    segment_geometry.length
+                    - self.settings.max_pipe_ramming_length_m
+                    - self.settings.max_pipe_ramming_length_m
+                )
+                // self.settings.threshold_edge_length_crossing_m
             )
             + 1,
             endpoint=True,
@@ -424,7 +439,7 @@ class GetPotentialPipeRammingCrossings:
         crossing_points = shapely.MultiPoint([segment_geometry.interpolate(dist) for dist in crossing_intervals])
 
         # Subset the cost surface nodes to those within the area of interest (buffered street).
-        segment_geometry_area = segment_geometry.buffer(self.max_pipe_ramming_length_m, cap_style="flat")
+        segment_geometry_area = segment_geometry.buffer(self.settings.max_pipe_ramming_length_m, cap_style="flat")
         sides = shapely.ops.split(segment_geometry_area, segment_geometry)
         if not int(shapely.get_num_geometries(sides)) == 2:
             sides = shapely.ops.split(segment_geometry_area, extend_linestring_both_ends(segment_geometry, 1))
@@ -446,14 +461,14 @@ class GetPotentialPipeRammingCrossings:
         all_ramming_rectangles = []
         for street in list(self.osm_edges[self.osm_edges["group"] == segment_group].geometry):
             street_copy = street
-            if street.length <= self.hexagon_size:
+            if street.length <= self.settings.hexagon_size:
                 logger.warning(f"Street segment {segment_group} appears to be very short, skipping.")
                 continue
-            if street.length < self.max_pipe_ramming_length_m * 2:
+            if street.length < self.settings.max_pipe_ramming_length_m * 2:
                 # Ensure the linestring is longer than the buffered street segment is wide.
-                distance_to_stretch = (((self.max_pipe_ramming_length_m * 2) - street.length) / 2) + 0.5
+                distance_to_stretch = (((self.settings.max_pipe_ramming_length_m * 2) - street.length) / 2) + 0.5
                 street = extend_linestring_both_ends(street, distance_to_stretch)
-                if not street.length >= self.max_pipe_ramming_length_m * 2:
+                if not street.length >= self.settings.max_pipe_ramming_length_m * 2:
                     logger.warning(
                         "Stretching the street segment did not result in a long enough linestring for creating pipe ramming rectangles. Skipping"
                     )
@@ -470,7 +485,7 @@ class GetPotentialPipeRammingCrossings:
             # Split the buffered street side with the linestrings to create potential crossing rectangles.
             all_ramming_rectangles.extend(
                 split_polygon_by_linestrings(
-                    street_copy.buffer(self.max_pipe_ramming_length_m, cap_style="flat"), linestrings
+                    street_copy.buffer(self.settings.max_pipe_ramming_length_m, cap_style="flat"), linestrings
                 )
             )
 
@@ -539,7 +554,7 @@ class GetPotentialPipeRammingCrossings:
         rammings_without_obstacles = rammings_without_obstacles.explode().reset_index(drop=True)
         # Filter rammings which intersect with at least 1 pair of suitable nodes on either side of the street.
         rammings_intersecting_suitable_nodes = cost_surface_nodes_junction[
-            cost_surface_nodes_junction["suitability_value"] <= self.suitability_value_crossing_threshold
+            cost_surface_nodes_junction["suitability_value"] <= self.settings.suitability_value_crossing_threshold
         ].sjoin(rammings_without_obstacles, predicate="intersects", how="left")
         potential = rammings_intersecting_suitable_nodes.groupby(by="index_right")["idx_street_side"].nunique()
         combinations = (
@@ -551,9 +566,11 @@ class GetPotentialPipeRammingCrossings:
         potential_rammings = rammings_without_obstacles.join(filters[filters.potential > 1], how="right")
 
         if self.debug:
-            write_results_to_geopackage(self.out, all_rammings, f"{prefix}rammings_all")
-            write_results_to_geopackage(self.out, rammings_without_obstacles, f"{prefix}rammings_without_obstacles")
-            write_results_to_geopackage(self.out, potential_rammings, f"{prefix}rammings_potential")
+            write_results_to_geopackage(self.out, all_rammings, f"{prefix}rammings_all", overwrite=True)
+            write_results_to_geopackage(
+                self.out, rammings_without_obstacles, f"{prefix}rammings_without_obstacles", overwrite=True
+            )
+            write_results_to_geopackage(self.out, potential_rammings, f"{prefix}rammings_potential", overwrite=True)
 
         return potential_rammings, rammings_intersecting_suitable_nodes
 
@@ -582,8 +599,8 @@ class GetPotentialPipeRammingCrossings:
             logger.warning("Some ramming linestrings do not have exactly two points, this is unexpected.")
 
         closest_node_linestrings_filtered = closest_node_linestrings[
-            (closest_node_linestrings.length >= self.min_pipe_ramming_length_m)
-            & (closest_node_linestrings.length <= self.max_pipe_ramming_length_m)
+            (closest_node_linestrings.length >= self.settings.min_pipe_ramming_length_m)
+            & (closest_node_linestrings.length <= self.settings.max_pipe_ramming_length_m)
         ]
         #  Check if there is enough space in either direction for a ramming.
         side_1 = closest_node_linestrings_filtered.apply(
@@ -611,8 +628,8 @@ class GetPotentialPipeRammingCrossings:
     ) -> tuple[gpd.GeoSeries, shapely.Polygon]:
         """Determine the unpassable area for crossing."""
         unpassable_area = cost_surface_nodes[
-            cost_surface_nodes["suitability_value"] >= self.suitability_value_obstacles_threshold
-        ].buffer(self.hexagon_size)
+            cost_surface_nodes["suitability_value"] >= self.settings.suitability_value_obstacles_threshold
+        ].buffer(self.settings.hexagon_size)
         unpassable_area_polygon = unpassable_area.union_all()
         if self.debug:
             write_results_to_geopackage(self.out, unpassable_area, f"{prefix}unpassable_area")
