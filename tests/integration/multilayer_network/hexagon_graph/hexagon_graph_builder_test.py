@@ -24,7 +24,7 @@ from utility_route_planner.util.write import reset_geopackage, write_results_to_
 
 
 HEXAGON_SIZE = 1
-DEBUG = False
+DEBUG = Config.DEBUG
 PREFIX = "pytest_"
 
 

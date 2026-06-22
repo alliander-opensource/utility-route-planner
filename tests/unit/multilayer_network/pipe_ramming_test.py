@@ -39,7 +39,7 @@ class CrossingType(Enum):
 
 
 class TestPipeRamming:
-    debug: bool = False
+    debug: bool = Config.DEBUG
     hexagon_size: float = 0.5
     out: pathlib.Path = Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT
 

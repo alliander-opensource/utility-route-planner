@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 import pytest
 import shapely
+from settings import Config
 from shapely.testing import assert_geometries_equal
 
 from utility_route_planner.util.geo_utilities import (
@@ -89,8 +90,8 @@ class TestExtendLinestringBothEnds:
             ),
         ],
     )
-    def test_extend_linestring_both_ends(self, linestring, distance, expected, debug=False):
-        result = extend_linestring_both_ends(linestring, 5, debug)
+    def test_extend_linestring_both_ends(self, linestring, distance, expected):
+        result = extend_linestring_both_ends(linestring, 5, Config.DEBUG)
         assert result.length == linestring.length + 2 * distance
         assert result.equals_exact(expected, tolerance=0.01, normalize=True)
 
@@ -140,8 +141,8 @@ class TestSplitPolygonByMultiLineString:
             ),
         ],
     )
-    def test_split_polygon(self, polygon, linestrings, expected_polygons_count, debug=False):
-        result = split_polygon_by_linestrings(polygon, linestrings, debug)
+    def test_split_polygon(self, polygon, linestrings, expected_polygons_count):
+        result = split_polygon_by_linestrings(polygon, linestrings, Config.DEBUG)
         assert len(result) == expected_polygons_count
         for polygon in result:
             assert polygon.is_valid

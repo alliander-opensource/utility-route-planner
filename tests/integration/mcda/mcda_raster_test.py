@@ -147,7 +147,7 @@ def test_rasterize_vector_data_cell_size_error():
         get_raster_settings(project_area, cell_size=500000)
 
 
-def test_rasterize_single_criterion(single_criterion_vectors: gpd.GeoDataFrame, debug=False):
+def test_rasterize_single_criterion(single_criterion_vectors: gpd.GeoDataFrame):
     max_value = Config.INTERMEDIATE_RASTER_VALUE_LIMIT_UPPER
     min_value = Config.INTERMEDIATE_RASTER_VALUE_LIMIT_LOWER
     no_data = Config.INTERMEDIATE_RASTER_NO_DATA
@@ -168,7 +168,7 @@ def test_rasterize_single_criterion(single_criterion_vectors: gpd.GeoDataFrame, 
         crs=Config.CRS,
         columns=["sample_id", "expected_suitability_value", "geometry"],
     )
-    if debug:
+    if Config.DEBUG:
         # Using QGIS, it is easier doublecheck what values we are expecting in this test.
         gdf.to_file(Config.PATH_RESULTS / "pytest_rasterize_single_criterion.geojson")
         points_to_sample.to_file(Config.PATH_RESULTS / "pytest_rasterize_single_criterion_points_to_sample.geojson")
