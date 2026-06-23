@@ -94,7 +94,7 @@ def run_benchmark_case(benchmark_case_id: int):
             gpd.read_file(benchmark_route.path_geopackage, layer=benchmark_route.layer_name_project_area)
             .iloc[0]
             .geometry,
-            benchmark_route.graph_date,
+            benchmark_route.construction_date,
         )
 
 
