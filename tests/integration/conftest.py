@@ -6,6 +6,7 @@ from typing import Callable
 import pytest
 import geopandas as gpd
 import shapely
+import copy
 
 from settings import Config
 from utility_route_planner.util.write import reset_geopackage, write_results_to_geopackage
@@ -165,7 +166,7 @@ def write_criteria_vectors(
     criteria_vectors: dict[str, gpd.GeoDataFrame],
     out: pathlib.Path = Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT,
 ):
-    """Extracted so the names of the layers are the same across tests. This makes is easier for debugging in QGIS."""
+    """Extracted so the names of the layers are the same across tests. This makes it easier for debugging in QGIS."""
     write_results_to_geopackage(out, project_area, "pytest_project_area", overwrite=True)
 
     for name, gdf in criteria_vectors.items():
@@ -175,3 +176,15 @@ def write_criteria_vectors(
             f"pytest_{name}",
             overwrite=True,
         )
+
+
+def write_cost_surface_nodes(
+    inradius: float,
+    cost_surface_nodes: gpd.GeoDataFrame,
+    out: pathlib.Path = Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT,
+):
+    """Extracted so the names of the layers are the same across tests. This makes it easier for debugging in QGIS."""
+    write_results_to_geopackage(out, cost_surface_nodes, "pytest_cost_surface_nodes", overwrite=True)
+    gdf_nodes_copy = copy.deepcopy(cost_surface_nodes)
+    gdf_nodes_copy["geometry"] = cost_surface_nodes.buffer(inradius)
+    write_results_to_geopackage(out, gdf_nodes_copy, "pytest_cost_surface_nodes_inradius", overwrite=True)
