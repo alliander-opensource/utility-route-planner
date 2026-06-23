@@ -15,7 +15,12 @@ import geopandas as gpd
 import structlog
 
 from settings import Config
-from utility_route_planner.models.multilayer_network.graph_datastructures import BaseWeightedEdgeInfo, NodeInfo
+from utility_route_planner.models.multilayer_network.graph_datastructures import (
+    BaseWeightedEdgeInfo,
+    NodeInfo,
+    HexagonConnectionEdgeInfo,
+    PipeRammingEdgeInfo,
+)
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_utils import (
     get_hexagon_edge_geometries_for_path,
     get_hexagon_node_geometry,
@@ -192,7 +197,7 @@ class MultilayerRouteEngine:
                 raise ValueError(f"Unsupported algorithm type. Expected one of: {[a for a in Algorithm]}")
         return path_node_indices
 
-    def _get_shortcut_costs(self, line: shapely.LineString, inradius: int, height: int) -> list[float]:
+    def _get_shortcut_costs(self, line: shapely.LineString, inradius: float, height: int) -> list[float]:
         # Take some margin because of rounding differences to ensure proper selection.
         nearby = self.gdf_cost_surface_nodes[
             (self.gdf_cost_surface_nodes["height_level"] == height)
@@ -369,23 +374,52 @@ class MultilayerRouteEngine:
           2. The Bezier does not enter hexagon cells whose suitability_value differs
              from the cells covered by the two legs being joined.
         Adjacent corners share legs, so each corner can use at most half of a leg's length.
+
         """
         logger.info("Starting route smoothing through application of bezier curves.")
-        # TODO determine what to do with height here
-        height = 0
-        # TODO split and cleanup
-        # TODO when approaching a pipe ramming edge, make a small loop
 
-        # -- part 1
+        # TODO retrieve height during edge transition
+        height = 0
+
+        # -- part 1: sanity check
         coords = list(self.results.collapsed_linestring.coords)
-        if len(coords) < 3:
-            logger.info("Input LineString has less than 3 points, unable to create bezier curve.")
+        if len(self.results.collapsed_node_indices) != len(coords):
+            raise ValueError("Results seem to be desynced, exiting.")
+
+        if len(self.results.collapsed_node_indices) < 3:
+            logger.info("The resulting collapsed route has less than 3 points, unable to create bezier curve.")
             self.results.quadratic_bezier_linestring = self.results.collapsed_linestring
             return
 
-        # -- part 2
+        # -- part 2: prepare
         inradius = get_inradius(self.hexagon_size)
 
+        segments_to_smooth = []
+        for i in range(len(coords) - 1):
+            node_a, node_b = (self.results.collapsed_node_indices[i], self.results.collapsed_node_indices[i + 1])
+            collapsed_linestring = shapely.LineString(
+                [
+                    shapely.get_point(self.results.collapsed_linestring, i),
+                    shapely.get_point(self.results.collapsed_linestring, i + 1),
+                ]
+            )
+            shortcut_costs = self._get_shortcut_costs(collapsed_linestring, inradius, 0)
+            if self.cost_surface_graph.has_edge(node_a, node_b):
+                edge_data = self.cost_surface_graph.get_edge_data(node_a, node_b)
+            else:
+                edge_data = None
+            segments_to_smooth.append(
+                BezierHelper(
+                    collapsed_node_indices=(node_a, node_b),
+                    collapsed_linestring=collapsed_linestring,
+                    shortcut_cost=shortcut_costs,
+                    is_special_edge=edge_data,
+                )
+            )
+
+        # part 3: apply curves.
+        # - for "normal" segment pairs, apply quadratic beziers # TODO do something about the arbitrary shrinking. it should "hug" the inradius of adjacent higher value hexagons
+        # - for height transitions / pipe ramming we can possibly get a 180 degree reversal, so we need to apply a circular arc with the largest radius that still fits the inradius corridor.
         legs = [shapely.LineString([coords[i], coords[i + 1]]) for i in range(len(coords) - 1)]
         leg_lengths = [leg.length for leg in legs]
         leg_costs = [self._get_shortcut_costs(leg, int(inradius), height) for leg in legs]
@@ -430,6 +464,7 @@ class MultilayerRouteEngine:
                 a = _point_along(p_curr, p_prev, d)
                 b = _point_along(p_curr, p_next, d)
                 bezier_line = _quadratic_bezier(a, p_curr, b, samples_per_curve)
+
                 if self._curve_stays_in_cells(bezier_line, allowed_costs, inradius, height):
                     break
                 if d <= d_min + 1e-6:
@@ -459,3 +494,15 @@ class MultilayerRouteEngine:
     def _curve_stays_in_cells(self, curve: shapely.LineString, allowed: set, inradius: float, height: int) -> bool:
         costs = self._get_shortcut_costs(curve, int(inradius), height)
         return set(costs).issubset(allowed)
+
+
+@dataclass
+class BezierHelper:
+    collapsed_node_indices: tuple[int, int]
+    collapsed_linestring: shapely.LineString
+    shortcut_cost: list[float]
+    is_special_edge: BaseWeightedEdgeInfo | HexagonConnectionEdgeInfo | PipeRammingEdgeInfo | None = None
+    length: float = field(init=False)
+
+    def __post_init__(self):
+        self.length = self.collapsed_linestring.length
