@@ -420,17 +420,15 @@ class MultilayerRouteEngine:
         # part 3: apply curves.
         # - for "normal" segment pairs, apply quadratic beziers # TODO do something about the arbitrary shrinking. it should "hug" the inradius of adjacent higher value hexagons
         # - for height transitions / pipe ramming we can possibly get a 180 degree reversal, so we need to apply a circular arc with the largest radius that still fits the inradius corridor.
-        legs = [shapely.LineString([coords[i], coords[i + 1]]) for i in range(len(coords) - 1)]
-        leg_lengths = [leg.length for leg in legs]
-        leg_costs = [self._get_shortcut_costs(leg, int(inradius), height) for leg in legs]
 
         new_pieces: list[shapely.LineString] = []
-        cursor = shapely.Point(coords[0])
+        cursor = shapely.get_point(segments_to_smooth[0].collapsed_linestring, 0)
 
-        for i in range(1, len(coords) - 1):
-            p_prev = shapely.Point(coords[i - 1])
-            p_curr = shapely.Point(coords[i])
-            p_next = shapely.Point(coords[i + 1])
+        # Skip first/last point
+        for segment_1, segment_2 in zip(segments_to_smooth, segments_to_smooth[1:]):
+            p_prev = shapely.get_point(segment_1.collapsed_linestring, 0)
+            p_curr = shapely.get_point(segment_1.collapsed_linestring, 1)  # same as 0, segment_2
+            p_next = shapely.get_point(segment_2.collapsed_linestring, 1)
 
             v_in = (p_curr.x - p_prev.x, p_curr.y - p_prev.y)
             v_out = (p_next.x - p_curr.x, p_next.y - p_curr.y)
@@ -441,7 +439,7 @@ class MultilayerRouteEngine:
                 continue
 
             d_min = min_bend_radius * math.tan(alpha / 2)
-            d_max = 0.5 * min(leg_lengths[i - 1], leg_lengths[i])
+            d_max = 0.5 * min(segment_1.length, segment_2.length)
 
             if d_min > d_max:
                 logger.warning(
@@ -455,7 +453,8 @@ class MultilayerRouteEngine:
                 cursor = p_curr
                 continue
 
-            allowed_costs = set(leg_costs[i - 1]) | set(leg_costs[i])
+            # TODO if not the same cost, how to handle?
+            allowed_costs = set(segment_1.shortcut_cost) | set(segment_2.shortcut_cost)
 
             # Iteratively shrink d until the curve stays inside allowed cells.
             d = d_max
@@ -477,17 +476,9 @@ class MultilayerRouteEngine:
 
         new_pieces.append(shapely.LineString([cursor, shapely.Point(coords[-1])]))
 
-        merged = shapely.ops.linemerge(shapely.MultiLineString(new_pieces))
-        if isinstance(merged, shapely.MultiLineString):
-            # Fallback: concatenate raw coordinates if linemerge could not produce a single line.
-            all_coords: list[tuple[float, float]] = []
-            for piece in new_pieces:
-                pc = list(piece.coords)
-                if all_coords and all_coords[-1] == pc[0]:
-                    all_coords.extend(pc[1:])
-                else:
-                    all_coords.extend(pc)
-            merged = shapely.LineString(all_coords)
+        # Concatenate raw coordinates
+        bezier_coordinates_merged = [coord for piece in new_pieces for coord in piece.coords]
+        merged = shapely.remove_repeated_points(shapely.LineString(bezier_coordinates_merged), tolerance=0)
 
         self.results.quadratic_bezier_linestring = merged
 
