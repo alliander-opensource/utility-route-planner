@@ -1,7 +1,6 @@
 # SPDX-FileCopyrightText: Contributors to the utility-route-project and Alliander N.V.
 #
 # SPDX-License-Identifier: Apache-2.0
-import copy
 
 import geopandas as gpd
 import numpy as np
@@ -11,17 +10,16 @@ import shapely
 import rustworkx as rx
 
 from settings import Config
-from tests.integration.conftest import write_criteria_vectors
+from tests.integration.conftest import write_criteria_vectors, write_cost_surface_nodes
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_graph_composer import build_and_compose_graph
 from utility_route_planner.models.multilayer_network.multilayer_route_helpers import get_inradius
 from utility_route_planner.models.multilayer_network.multilayer_route_planner import MultilayerRouteEngine, Algorithm
-from utility_route_planner.util.write import write_results_to_geopackage, reset_geopackage
+from utility_route_planner.util.write import reset_geopackage
 
 
 class TestMultiLayerRouting:
     hexagon_size: float = 2.5
-    debug: bool = False
-    prefix: str = "pytest_"
+    debug: bool = Config.DEBUG
     out = Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT
 
     project_area = shapely.Polygon([(0, 0), (0, 100), (100, 100), (100, 0)]).buffer(0.01)
@@ -66,12 +64,8 @@ class TestMultiLayerRouting:
 
             if self.debug:
                 reset_geopackage(self.out, truncate=False)
-                write_criteria_vectors(self.project_area, processed_criteria_vectors)
-
-                gdf_nodes_copy = copy.deepcopy(nodes_gdf)
-                write_results_to_geopackage(self.out, gdf_nodes_copy, f"{self.prefix}theory_nodes")
-                gdf_nodes_copy["geometry"] = nodes_gdf.buffer(get_inradius(self.hexagon_size))
-                write_results_to_geopackage(self.out, gdf_nodes_copy, f"{self.prefix}theory_nodes_inradius")
+                write_criteria_vectors(self.project_area, processed_criteria_vectors, self.out)
+                write_cost_surface_nodes(get_inradius(self.hexagon_size), nodes_gdf, self.out)
 
             route_engine = MultilayerRouteEngine(
                 graph,
@@ -79,7 +73,7 @@ class TestMultiLayerRouting:
                 nodes_gdf,
                 hexagon_size=self.hexagon_size,
                 write_output=self.debug,
-                prefix=self.prefix,
+                prefix="pytest_",
                 algorithm=Algorithm.astar,
             )
             return route_engine
@@ -270,6 +264,14 @@ class TestMultiLayerRouting:
         assert route_engine.results.unprocessed_linestring.length == pytest.approx(138.5, abs=0.1)
         assert route_engine.results.collapsed_linestring.length == pytest.approx(134.1, abs=0.1)
         assert route_engine.results.quadratic_bezier_linestring.length == pytest.approx(129.8, abs=0.1)
+
+    def test_bezier_curvature(self, setup_grid):
+        route_engine = setup_grid(([10, 0, shapely.Polygon([(0, 10), (90, 10), (90, 100), (0, 100)])],))
+        # Straight crossing
+        route_engine.find_route(shapely.LineString([(0, 1), (99, 99)]))
+        # assert len(route_engine.results.node_indices) == 23
+        assert len(route_engine.results.collapsed_node_indices) == 10
+        # TODO add assert if it stays within cells of correct value (2)
 
     def test_invalid_input_route_engine(self, setup_grid):
         route_engine = setup_grid(())

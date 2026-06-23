@@ -11,7 +11,7 @@ import rustworkx as rx
 import shapely
 
 from settings import Config
-from tests.integration.conftest import write_criteria_vectors
+from tests.integration.conftest import write_criteria_vectors, write_cost_surface_nodes
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_edge_generator import HexagonEdgeGenerator
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_graph_builder import HexagonGraphBuilder
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_graph_composer import build_and_compose_graph
@@ -19,6 +19,7 @@ from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_grid_
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_utils import (
     convert_hexagon_edges_to_gdf,
 )
+from utility_route_planner.models.multilayer_network.multilayer_route_helpers import get_inradius
 from utility_route_planner.models.multilayer_network.multilayer_route_planner import MultilayerRouteEngine
 from utility_route_planner.util.graph_utilities import build_osm_test_graph
 from utility_route_planner.models.mcda.mcda_engine import McdaCostSurfaceEngine
@@ -268,7 +269,7 @@ class TestPipeRamming:
 
 
 class TestPipeRammingTheoryExamples:
-    debug: bool = False
+    debug: bool = Config.DEBUG
     out: pathlib.Path = Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT
     hexagon_size = 0.5
     block_size = 32
@@ -345,11 +346,10 @@ class TestPipeRammingTheoryExamples:
                 write_results_to_geopackage(self.out, edges, f"{self.prefix}osm_edges", overwrite=True)
                 cost_surface_edges = convert_hexagon_edges_to_gdf(cost_surface_graph, cost_surface_nodes)
                 write_results_to_geopackage(
-                    self.out, cost_surface_nodes, f"{self.prefix}cost_surface_nodes", overwrite=True
-                )
-                write_results_to_geopackage(
                     self.out, cost_surface_edges, f"{self.prefix}cost_surface_edges", overwrite=True
                 )
+
+                write_cost_surface_nodes(get_inradius(self.hexagon_size), cost_surface_nodes, self.out)
 
             return cost_surface_graph, cost_surface_nodes, crossings, settings
 
