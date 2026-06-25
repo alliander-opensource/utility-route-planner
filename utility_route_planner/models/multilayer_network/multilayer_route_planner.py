@@ -29,7 +29,7 @@ from utility_route_planner.models.multilayer_network.multilayer_route_helpers im
     _angle_between,
     _point_along,
     _quadratic_bezier,
-    get_inradius,
+    get_inradius, _tangent_arc_fillet,
 )
 from utility_route_planner.util.geo_utilities import get_first_last_point_from_linestring, get_empty_geodataframe
 from utility_route_planner.util.timer import time_function
@@ -53,6 +53,7 @@ class MultiLayerRouteResults:
     collapsed_linestring: shapely.LineString = field(default_factory=shapely.LineString)
     collapsed_node_indices: list = field(default_factory=list)
     quadratic_bezier_linestring: shapely.LineString = field(default_factory=shapely.LineString)
+    string_pulled_linestring: shapely.LineString = field(default_factory=shapely.LineString)
 
     def write_to_geopackage(self, out: Path, prefix: str = "") -> None:
         """Write results containing a geometry to file using the dataclass field name."""
@@ -121,6 +122,7 @@ class MultilayerRouteEngine:
         self.results.collapsed_linestring, self.results.collapsed_node_indices = self.get_collapsed_route()
         if self.minimum_bending_radius:
             self.apply_bezier_curves(min_bend_radius=self.minimum_bending_radius)
+            self.apply_string_pulling(min_bend_radius=self.minimum_bending_radius)
 
         if self.write_output:
             self.results.write_to_geopackage(self.out, self.prefix)
@@ -413,7 +415,7 @@ class MultilayerRouteEngine:
                     collapsed_node_indices=(node_a, node_b),
                     collapsed_linestring=collapsed_linestring,
                     shortcut_cost=shortcut_costs,
-                    is_special_edge=edge_data,
+                    special_edge=edge_data,
                 )
             )
 
@@ -486,13 +488,162 @@ class MultilayerRouteEngine:
         costs = self._get_shortcut_costs(curve, int(inradius), height)
         return set(costs).issubset(allowed)
 
+    @time_function
+    def apply_string_pulling(
+            self,
+            min_bend_radius: float,
+            samples_per_curve: int = 30,
+    ):
+        """
+        Replace corners in the straightened route with circular arc fillets.
+
+        At each interior vertex P_i the corner formed by legs (P_{i-1} -> P_i) and
+        (P_i -> P_{i+1}) is replaced by:
+          - a straight piece up to tangent point A on the incoming leg, distance d back
+            from P_i,
+          - a circular arc of radius ``min_bend_radius`` tangent to both legs, ending at
+            tangent point B on the outgoing leg, distance d forward from P_i.
+
+        Using a fixed radius equal to ``min_bend_radius`` yields the shortest corner
+        rounding that still respects the minimum bend radius: a tighter arc would violate
+        the constraint, while a wider arc is both longer and cuts deeper into the corner.
+        The tangent offset for a corner with deflection angle ``alpha`` is
+        ``d = min_bend_radius * tan(alpha / 2)``.
+
+        Constraints:
+          1. The arc radius is exactly ``min_bend_radius`` so the bend constraint holds
+             along the whole arc (unlike a Bezier, whose curvature varies).
+          2. Adjacent corners share legs, so each corner may use at most half of a leg's
+             length (``d <= 0.5 * min(leg_in, leg_out)``).
+          3. The arc must not enter hexagon cells whose suitability_value differs from the
+             cells covered by the two legs being joined.
+        When a constraint cannot be met the sharp corner is kept as a fallback. Because
+        ``min_bend_radius`` is already the tightest allowed radius, there is no room to
+        shrink the arc further to stay inside the cells - hence the hard fallback.
+
+        """
+        logger.info("Starting route smoothing through application of tangent arc fillets.")
+
+        # TODO retrieve height during edge transition
+        height = 0
+
+        # -- part 1: sanity check
+        coords = list(self.results.collapsed_linestring.coords)
+        if len(self.results.collapsed_node_indices) != len(coords):
+            raise ValueError("Results seem to be desynced, exiting.")
+
+        if len(self.results.collapsed_node_indices) < 3:
+            logger.info("The resulting collapsed route has less than 3 points, unable to create a fillet.")
+            self.results.string_pulled_linestring = self.results.collapsed_linestring
+            return
+
+        # -- part 2: prepare
+        inradius = get_inradius(self.hexagon_size)
+
+        segments_to_smooth = []
+        for i in range(len(coords) - 1):
+            node_a, node_b = (self.results.collapsed_node_indices[i], self.results.collapsed_node_indices[i + 1])
+            collapsed_linestring = shapely.LineString(
+                [
+                    shapely.get_point(self.results.collapsed_linestring, i),
+                    shapely.get_point(self.results.collapsed_linestring, i + 1),
+                ]
+            )
+            shortcut_costs = self._get_shortcut_costs(collapsed_linestring, inradius, 0)
+            if self.cost_surface_graph.has_edge(node_a, node_b):
+                edge_data = self.cost_surface_graph.get_edge_data(node_a, node_b)
+            else:
+                edge_data = None
+            segments_to_smooth.append(
+                BezierHelper(
+                    collapsed_node_indices=(node_a, node_b),
+                    collapsed_linestring=collapsed_linestring,
+                    shortcut_cost=shortcut_costs,
+                    special_edge=edge_data,
+                )
+            )
+
+        # part 3: apply fillets.
+        # - for "normal" corners we round with a constant-radius arc tangent to both legs.
+        # TODO: special edges (height transitions / pipe ramming) may impose a near-180
+        #  degree reversal. When ``min_bend_radius`` is large relative to the hexagon
+        #  inradius a simple fillet cannot honour the crossed cost surface integrity and a
+        #  dedicated primitive (e.g. Dubins / Reeds-Shepp arc) is required. For now such
+        #  corners fall back to the sharp corner like any other infeasible fillet.
+
+        new_pieces = []
+        for segment_1, segment_2 in zip(segments_to_smooth, segments_to_smooth[1:]):
+            p_prev = shapely.get_point(segment_1.collapsed_linestring, 0)
+            p_curr = shapely.get_point(segment_1.collapsed_linestring, 1)  # same as 0, segment_2
+            p_next = shapely.get_point(segment_2.collapsed_linestring, 1)
+
+            # create tautline here
+            # TODO discuss: depening on how we determine MCDA scores, we should use inradius here.
+            #  we can also tautline the hexagon itself rather than the inradius.
+            line_with_obstacle = shapely.LineString([p_prev, p_next])
+            obstacle = shapely.polygonize([segment_1.collapsed_linestring, segment_2.collapsed_linestring, line_with_obstacle]).geoms[0]
+            nearby = self.gdf_cost_surface_nodes[
+                (self.gdf_cost_surface_nodes["height_level"] == 0) # TODO height
+                & (self.gdf_cost_surface_nodes.dwithin(obstacle, inradius * 1.02))
+                ]
+            obstacle = nearby[nearby.suitability_value != segment_1.shortcut_cost[0] / 2]
+            obstacle = obstacle.buffer(inradius*1.02).unary_union
+            split = shapely.ops.split(obstacle, line_with_obstacle)
+            idx = min(
+                range(len(split.geoms)),
+                key=lambda x: split.geoms[x].distance(p_curr)
+            )
+            leading_obstacle = split.geoms[idx]
+            convex_hull = shapely.convex_hull(shapely.MultiLineString([leading_obstacle.exterior, line_with_obstacle]))
+            if not isinstance(convex_hull, shapely.Polygon):
+                print('fout boel')
+            if new_pieces:
+                convex_hull_split = shapely.ops.split(convex_hull, new_pieces[-1])
+                if shapely.get_num_geometries(convex_hull_split) != 2:
+                    print('nog foutere boel')
+                idx = max(
+                    range(len(convex_hull_split.geoms)),
+                    key=lambda x: convex_hull_split.geoms[x].distance(p_prev)
+                )
+                convex_hull = convex_hull_split.geoms[idx]
+
+
+            hull_coords = list(convex_hull.exterior.coords[:-1])
+            taut_points = [shapely.Point(c) for c in hull_coords if not shapely.Point(c).intersects(line_with_obstacle.buffer(0.01))]
+            taut_points = shapely.MultiPoint(taut_points)
+            taut_points = shapely.MultiPoint(sorted(taut_points.geoms, key=lambda x: x.distance(p_prev)))
+
+            if new_pieces:
+                # trim previous segment if intersects
+                # TODO height check
+                if new_pieces[-1].dwithin(taut_points, 0.01):
+                    trimmed_previous_piece = new_pieces[-1].difference(convex_hull)
+                    idx = max(
+                        range(len(trimmed_previous_piece.geoms)),
+                        key=lambda x: trimmed_previous_piece.geoms[x].distance(segment_1.collapsed_linestring)
+                    )
+                    new_pieces[-1] = shapely.get_geometry(trimmed_previous_piece, idx)
+
+            new_pieces.append(shapely.LineString([*taut_points.geoms, p_next]))
+            write_results_to_geopackage(self.out, convex_hull, 'pytest_convex_hull', overwrite=True)
+            write_results_to_geopackage(self.out, shapely.MultiLineString(new_pieces), 'pytest_new_piece', overwrite=True)
+            write_results_to_geopackage(self.out, taut_points, 'pytest_taut_points', overwrite=True)
+            write_results_to_geopackage(self.out, line_with_obstacle, 'line_with_obstacle', overwrite=True)
+
+        # Merge to a single linestring
+        coordinates_merged = [coord for piece in new_pieces for coord in piece.coords]
+        coordinates_merged.insert(0, segments_to_smooth[0].collapsed_linestring.coords[0])
+        merged = shapely.remove_repeated_points(shapely.LineString(coordinates_merged), tolerance=0)
+
+        self.results.string_pulled_linestring = merged
+
 
 @dataclass
 class BezierHelper:
     collapsed_node_indices: tuple[int, int]
     collapsed_linestring: shapely.LineString
     shortcut_cost: list[float]
-    is_special_edge: BaseWeightedEdgeInfo | HexagonConnectionEdgeInfo | PipeRammingEdgeInfo | None = None
+    special_edge: BaseWeightedEdgeInfo | HexagonConnectionEdgeInfo | PipeRammingEdgeInfo | None = None
     length: float = field(init=False)
 
     def __post_init__(self):
