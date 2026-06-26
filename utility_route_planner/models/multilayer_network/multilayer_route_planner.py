@@ -573,28 +573,33 @@ class MultilayerRouteEngine:
 
         new_pieces = []
         for segment_1, segment_2 in zip(segments_to_smooth, segments_to_smooth[1:]):
-            p_prev = shapely.get_point(segment_1.collapsed_linestring, 0)
+            p_prev = shapely.Point(new_pieces[-1].coords[-1]) if new_pieces else shapely.get_point(segment_1.collapsed_linestring, 0)
+            # p_prev = shapely.get_point(segment_1.collapsed_linestring, 0)
             p_curr = shapely.get_point(segment_1.collapsed_linestring, 1)  # same as 0, segment_2
             p_next = shapely.get_point(segment_2.collapsed_linestring, 1)
 
             # create tautline here
             # TODO discuss: depening on how we determine MCDA scores, we should use inradius here.
             #  we can also tautline the hexagon itself rather than the inradius.
+
+            # TODO change logic to just pick the nearest hexagon to the p_curr? Because we already know that this is the boosdoener from collapsing the path?
             line_with_obstacle = shapely.LineString([p_prev, p_next])
-            obstacle = shapely.polygonize([segment_1.collapsed_linestring, segment_2.collapsed_linestring, line_with_obstacle]).geoms[0]
-            nearby = self.gdf_cost_surface_nodes[
+            # obstacle = shapely.minimum_rotated_rectangle(shapely.MultiLineString([segment_1.collapsed_linestring, segment_2.collapsed_linestring, line_with_obstacle]))
+            obstacle_area = shapely.convex_hull(shapely.GeometryCollection([segment_2.collapsed_linestring, line_with_obstacle]))
+            obstacle_hexagons = self.gdf_cost_surface_nodes[
                 (self.gdf_cost_surface_nodes["height_level"] == 0) # TODO height
-                & (self.gdf_cost_surface_nodes.dwithin(obstacle, inradius * 1.02))
+                & (self.gdf_cost_surface_nodes.dwithin(obstacle_area, inradius * 1.02))
+                & (self.gdf_cost_surface_nodes.suitability_value != segment_1.shortcut_cost[0] / 2)
                 ]
-            obstacle = nearby[nearby.suitability_value != segment_1.shortcut_cost[0] / 2]
-            obstacle = obstacle.buffer(inradius*1.02).unary_union
-            split = shapely.ops.split(obstacle, line_with_obstacle)
-            idx = min(
-                range(len(split.geoms)),
-                key=lambda x: split.geoms[x].distance(p_curr)
-            )
-            leading_obstacle = split.geoms[idx]
-            convex_hull = shapely.convex_hull(shapely.MultiLineString([leading_obstacle.exterior, line_with_obstacle]))
+            # obstacle = obstacle_hexagons[obstacle_hexagons.suitability_value != segment_1.shortcut_cost[0] / 2] # TODO value transitions?
+            obstacle = obstacle_hexagons.buffer(inradius*1.02).unary_union.intersection(obstacle_area)  # possibly bigger for minimum bending radi?
+            # split = shapely.ops.split(obstacle, line_with_obstacle)
+            # idx = min(
+            #     range(len(split.geoms)),
+            #     key=lambda x: split.geoms[x].distance(p_curr)
+            # )
+            # leading_obstacle = split.geoms[idx]
+            convex_hull = shapely.convex_hull(shapely.GeometryCollection([obstacle, line_with_obstacle]))
             if not isinstance(convex_hull, shapely.Polygon):
                 print('fout boel')
             if new_pieces:
@@ -607,32 +612,62 @@ class MultilayerRouteEngine:
                 )
                 convex_hull = convex_hull_split.geoms[idx]
 
+            # anchor = shapely.Point(new_pieces[-1].coords[-1]) if new_pieces else p_prev
 
             hull_coords = list(convex_hull.exterior.coords[:-1])
             taut_points = [shapely.Point(c) for c in hull_coords if not shapely.Point(c).intersects(line_with_obstacle.buffer(0.01))]
             taut_points = shapely.MultiPoint(taut_points)
-            taut_points = shapely.MultiPoint(sorted(taut_points.geoms, key=lambda x: x.distance(p_prev)))
+            # Keep the convex hull's natural ring order (no crossings), but rotate it so the
+            # chain starts at the taut point closest to where we currently are, and walks toward p_next.
+            hull_points = list(taut_points.geoms)
+            if len(hull_points) > 1:
+                # anchor = shapely.Point(new_pieces[-1].coords[-1]) if new_pieces else p_prev
 
-            if new_pieces:
-                # trim previous segment if intersects
-                # TODO height check
-                if new_pieces[-1].dwithin(taut_points, 0.01):
-                    trimmed_previous_piece = new_pieces[-1].difference(convex_hull)
-                    idx = max(
-                        range(len(trimmed_previous_piece.geoms)),
-                        key=lambda x: trimmed_previous_piece.geoms[x].distance(segment_1.collapsed_linestring)
-                    )
-                    new_pieces[-1] = shapely.get_geometry(trimmed_previous_piece, idx)
+                # 1. Rotate the ring so it starts at the vertex closest to the anchor.
+                start_idx = min(range(len(hull_points)), key=lambda i: hull_points[i].distance(p_prev))
+                rotated = hull_points[start_idx:] + hull_points[:start_idx]
 
-            new_pieces.append(shapely.LineString([*taut_points.geoms, p_next]))
-            write_results_to_geopackage(self.out, convex_hull, 'pytest_convex_hull', overwrite=True)
-            write_results_to_geopackage(self.out, shapely.MultiLineString(new_pieces), 'pytest_new_piece', overwrite=True)
-            write_results_to_geopackage(self.out, taut_points, 'pytest_taut_points', overwrite=True)
-            write_results_to_geopackage(self.out, line_with_obstacle, 'line_with_obstacle', overwrite=True)
+                # 2. Pick the walking direction whose end finishes closest to p_next.
+                forward_end_dist = rotated[-1].distance(p_next)
+                reversed_chain = [rotated[0]] + rotated[1:][::-1]
+                reversed_end_dist = reversed_chain[-1].distance(p_next)
+                if reversed_end_dist < forward_end_dist:
+                    rotated = reversed_chain
+
+                hull_points = rotated
+
+            taut_points = shapely.MultiPoint(hull_points)
+
+            # if new_pieces:
+            #     # trim previous segment if intersects
+            #     # TODO height check
+            #     if new_pieces[-1].dwithin(taut_points, 0.01):
+            #         pass
+                    # trimmed_previous_piece = new_pieces[-1].difference(convex_hull.buffer(0.01))
+                    # idx = max(
+                    #     range(len(trimmed_previous_piece.geoms)),
+                    #     key=lambda x: trimmed_previous_piece.geoms[x].distance(segment_1.collapsed_linestring)
+                    # )
+                    # new_pieces[-1] = shapely.get_geometry(trimmed_previous_piece, idx)
+
+            new_pieces.append(shapely.LineString([*taut_points.geoms]))
+            prefix = "pytest_a_"
+            write_results_to_geopackage(self.out, shapely.MultiLineString([segment_1.collapsed_linestring, segment_2.collapsed_linestring]), f'{prefix}segment_12', overwrite=True)
+            write_results_to_geopackage(self.out, line_with_obstacle, f'{prefix}line_with_obstacle', overwrite=True)
+            write_results_to_geopackage(self.out, obstacle, f'{prefix}obstacle', overwrite=True)
+            write_results_to_geopackage(self.out, obstacle_area, f'{prefix}obstacle_area', overwrite=True)
+            write_results_to_geopackage(self.out, obstacle_hexagons, f'{prefix}obstacle_hexagons', overwrite=True)
+            # write_results_to_geopackage(self.out, leading_obstacle, f'{prefix}leading_obstacle', overwrite=True)
+            write_results_to_geopackage(self.out, convex_hull, f'{prefix}convex_hull', overwrite=True)
+            write_results_to_geopackage(self.out, shapely.MultiLineString(new_pieces), f'{prefix}new_piece', overwrite=True)
+            write_results_to_geopackage(self.out, taut_points, f'{prefix}taut_points', overwrite=True)
+            write_results_to_geopackage(self.out, gpd.GeoSeries(data=rotated), f'{prefix}rotated', overwrite=True)
+            print('stahp')
 
         # Merge to a single linestring
         coordinates_merged = [coord for piece in new_pieces for coord in piece.coords]
-        coordinates_merged.insert(0, segments_to_smooth[0].collapsed_linestring.coords[0])
+        coordinates_merged.insert(0, shapely.get_point(self.results.collapsed_linestring, 0))
+        coordinates_merged.append(shapely.get_point(self.results.collapsed_linestring, -1))
         merged = shapely.remove_repeated_points(shapely.LineString(coordinates_merged), tolerance=0)
 
         self.results.string_pulled_linestring = merged
