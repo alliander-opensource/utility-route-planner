@@ -29,7 +29,7 @@ from utility_route_planner.models.multilayer_network.multilayer_route_helpers im
     _angle_between,
     _point_along,
     _quadratic_bezier,
-    get_inradius, _tangent_arc_fillet,
+    get_inradius,
 )
 from utility_route_planner.util.geo_utilities import get_first_last_point_from_linestring, get_empty_geodataframe
 from utility_route_planner.util.timer import time_function
@@ -490,9 +490,9 @@ class MultilayerRouteEngine:
 
     @time_function
     def apply_string_pulling(
-            self,
-            min_bend_radius: float,
-            samples_per_curve: int = 30,
+        self,
+        min_bend_radius: float,
+        samples_per_curve: int = 30,
     ):
         """
         Replace corners in the straightened route with circular arc fillets.
@@ -563,36 +563,35 @@ class MultilayerRouteEngine:
                 )
             )
 
-        # part 3: apply fillets.
-        # - for "normal" corners we round with a constant-radius arc tangent to both legs.
-        # TODO: special edges (height transitions / pipe ramming) may impose a near-180
-        #  degree reversal. When ``min_bend_radius`` is large relative to the hexagon
-        #  inradius a simple fillet cannot honour the crossed cost surface integrity and a
-        #  dedicated primitive (e.g. Dubins / Reeds-Shepp arc) is required. For now such
-        #  corners fall back to the sharp corner like any other infeasible fillet.
-
-        new_pieces = []
+        # part 3: apply corner cutting
+        new_pieces: list = []
         for segment_1, segment_2 in zip(segments_to_smooth, segments_to_smooth[1:]):
-            p_prev = shapely.Point(new_pieces[-1].coords[-1]) if new_pieces else shapely.get_point(segment_1.collapsed_linestring, 0)
+            p_prev = (
+                shapely.Point(new_pieces[-1].coords[-1])
+                if new_pieces
+                else shapely.get_point(segment_1.collapsed_linestring, 0)
+            )
             # p_prev = shapely.get_point(segment_1.collapsed_linestring, 0)
-            p_curr = shapely.get_point(segment_1.collapsed_linestring, 1)  # same as 0, segment_2
+            # p_curr = shapely.get_point(segment_1.collapsed_linestring, 1)  # same as 0, segment_2
             p_next = shapely.get_point(segment_2.collapsed_linestring, 1)
 
-            # create tautline here
-            # TODO discuss: depening on how we determine MCDA scores, we should use inradius here.
-            #  we can also tautline the hexagon itself rather than the inradius.
+            # TODO change MCDA so it resolves on "touches", that way we can use innradius.
 
             # TODO change logic to just pick the nearest hexagon to the p_curr? Because we already know that this is the boosdoener from collapsing the path?
             line_with_obstacle = shapely.LineString([p_prev, p_next])
             # obstacle = shapely.minimum_rotated_rectangle(shapely.MultiLineString([segment_1.collapsed_linestring, segment_2.collapsed_linestring, line_with_obstacle]))
-            obstacle_area = shapely.convex_hull(shapely.GeometryCollection([segment_2.collapsed_linestring, line_with_obstacle]))
+            obstacle_area = shapely.convex_hull(
+                shapely.GeometryCollection([segment_2.collapsed_linestring, line_with_obstacle])
+            )
             obstacle_hexagons = self.gdf_cost_surface_nodes[
-                (self.gdf_cost_surface_nodes["height_level"] == 0) # TODO height
-                & (self.gdf_cost_surface_nodes.dwithin(obstacle_area, inradius * 1.02))
+                (self.gdf_cost_surface_nodes["height_level"] == height)
+                & (self.gdf_cost_surface_nodes.dwithin(obstacle_area, inradius * 1.01))
                 & (self.gdf_cost_surface_nodes.suitability_value != segment_1.shortcut_cost[0] / 2)
-                ]
+            ]
             # obstacle = obstacle_hexagons[obstacle_hexagons.suitability_value != segment_1.shortcut_cost[0] / 2] # TODO value transitions?
-            obstacle = obstacle_hexagons.buffer(inradius*1.02).unary_union.intersection(obstacle_area)  # possibly bigger for minimum bending radi?
+            obstacle = obstacle_hexagons.buffer(inradius * 1.01).unary_union.intersection(
+                obstacle_area
+            )  # possibly bigger for minimum bending radi?
             # split = shapely.ops.split(obstacle, line_with_obstacle)
             # idx = min(
             #     range(len(split.geoms)),
@@ -600,22 +599,27 @@ class MultilayerRouteEngine:
             # )
             # leading_obstacle = split.geoms[idx]
             convex_hull = shapely.convex_hull(shapely.GeometryCollection([obstacle, line_with_obstacle]))
-            if not isinstance(convex_hull, shapely.Polygon):
-                print('fout boel')
-            if new_pieces:
-                convex_hull_split = shapely.ops.split(convex_hull, new_pieces[-1])
-                if shapely.get_num_geometries(convex_hull_split) != 2:
-                    print('nog foutere boel')
-                idx = max(
-                    range(len(convex_hull_split.geoms)),
-                    key=lambda x: convex_hull_split.geoms[x].distance(p_prev)
-                )
-                convex_hull = convex_hull_split.geoms[idx]
+            # if not isinstance(convex_hull, shapely.Polygon):
+            #     print('fout boel')
+            # # TODO not sure if this is still necessary
+            # if new_pieces:
+            #     convex_hull_split = shapely.ops.split(convex_hull, new_pieces[-1])
+            #     if shapely.get_num_geometries(convex_hull_split) != 2:
+            #         print('nog foutere boel')
+            #     idx = max(
+            #         range(len(convex_hull_split.geoms)),
+            #         key=lambda x: convex_hull_split.geoms[x].distance(p_prev)
+            #     )
+            #     convex_hull = convex_hull_split.geoms[idx]
 
             # anchor = shapely.Point(new_pieces[-1].coords[-1]) if new_pieces else p_prev
 
             hull_coords = list(convex_hull.exterior.coords[:-1])
-            taut_points = [shapely.Point(c) for c in hull_coords if not shapely.Point(c).intersects(line_with_obstacle.buffer(0.01))]
+            taut_points = [
+                shapely.Point(c)
+                for c in hull_coords
+                if not shapely.Point(c).intersects(line_with_obstacle.buffer(0.02))
+            ]
             taut_points = shapely.MultiPoint(taut_points)
             # Keep the convex hull's natural ring order (no crossings), but rotate it so the
             # chain starts at the taut point closest to where we currently are, and walks toward p_next.
@@ -643,26 +647,33 @@ class MultilayerRouteEngine:
             #     # TODO height check
             #     if new_pieces[-1].dwithin(taut_points, 0.01):
             #         pass
-                    # trimmed_previous_piece = new_pieces[-1].difference(convex_hull.buffer(0.01))
-                    # idx = max(
-                    #     range(len(trimmed_previous_piece.geoms)),
-                    #     key=lambda x: trimmed_previous_piece.geoms[x].distance(segment_1.collapsed_linestring)
-                    # )
-                    # new_pieces[-1] = shapely.get_geometry(trimmed_previous_piece, idx)
+            # trimmed_previous_piece = new_pieces[-1].difference(convex_hull.buffer(0.01))
+            # idx = max(
+            #     range(len(trimmed_previous_piece.geoms)),
+            #     key=lambda x: trimmed_previous_piece.geoms[x].distance(segment_1.collapsed_linestring)
+            # )
+            # new_pieces[-1] = shapely.get_geometry(trimmed_previous_piece, idx)
 
             new_pieces.append(shapely.LineString([*taut_points.geoms]))
             prefix = "pytest_a_"
-            write_results_to_geopackage(self.out, shapely.MultiLineString([segment_1.collapsed_linestring, segment_2.collapsed_linestring]), f'{prefix}segment_12', overwrite=True)
-            write_results_to_geopackage(self.out, line_with_obstacle, f'{prefix}line_with_obstacle', overwrite=True)
-            write_results_to_geopackage(self.out, obstacle, f'{prefix}obstacle', overwrite=True)
-            write_results_to_geopackage(self.out, obstacle_area, f'{prefix}obstacle_area', overwrite=True)
-            write_results_to_geopackage(self.out, obstacle_hexagons, f'{prefix}obstacle_hexagons', overwrite=True)
+            write_results_to_geopackage(
+                self.out,
+                shapely.MultiLineString([segment_1.collapsed_linestring, segment_2.collapsed_linestring]),
+                f"{prefix}segment_12",
+                overwrite=True,
+            )
+            write_results_to_geopackage(self.out, line_with_obstacle, f"{prefix}line_with_obstacle", overwrite=True)
+            write_results_to_geopackage(self.out, obstacle, f"{prefix}obstacle", overwrite=True)
+            write_results_to_geopackage(self.out, obstacle_area, f"{prefix}obstacle_area", overwrite=True)
+            write_results_to_geopackage(self.out, obstacle_hexagons, f"{prefix}obstacle_hexagons", overwrite=True)
             # write_results_to_geopackage(self.out, leading_obstacle, f'{prefix}leading_obstacle', overwrite=True)
-            write_results_to_geopackage(self.out, convex_hull, f'{prefix}convex_hull', overwrite=True)
-            write_results_to_geopackage(self.out, shapely.MultiLineString(new_pieces), f'{prefix}new_piece', overwrite=True)
-            write_results_to_geopackage(self.out, taut_points, f'{prefix}taut_points', overwrite=True)
-            write_results_to_geopackage(self.out, gpd.GeoSeries(data=rotated), f'{prefix}rotated', overwrite=True)
-            print('stahp')
+            write_results_to_geopackage(self.out, convex_hull, f"{prefix}convex_hull", overwrite=True)
+            write_results_to_geopackage(
+                self.out, shapely.MultiLineString(new_pieces), f"{prefix}new_piece", overwrite=True
+            )
+            write_results_to_geopackage(self.out, taut_points, f"{prefix}taut_points", overwrite=True)
+            write_results_to_geopackage(self.out, gpd.GeoSeries(data=rotated), f"{prefix}rotated", overwrite=True)
+            print("stahp")
 
         # Merge to a single linestring
         coordinates_merged = [coord for piece in new_pieces for coord in piece.coords]

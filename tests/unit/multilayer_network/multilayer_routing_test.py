@@ -178,13 +178,15 @@ class TestMultiLayerRouting:
         linestring = shapely.LineString(
             [(1.88, 76.72), (37.58, 97.7), (93.682, 64.830), (52.445, 41.017), (99.379, 14.247)]
         )
+        # TODO change so the wall has different suitability values
+        # TODO change so the path has different suitability values
         route_engine = setup_grid(
             (
                 [300, 0, shapely.Point(7.535, 62.606).buffer(10).intersection(self.project_area)],
                 [300, 0, linestring.buffer(inradius, cap_style="flat")],
-                [80, 0, shapely.Point(37.149,79.696).buffer(self.hexagon_size)],
-                [90, 0, shapely.Point(71.205,64.922).buffer(self.hexagon_size)],
-                [111, 0, shapely.Point(63.637,61.002).buffer(self.hexagon_size)],
+                [80, 0, shapely.Point(37.149, 79.696).buffer(self.hexagon_size)],
+                [90, 0, shapely.Point(71.205, 64.922).buffer(self.hexagon_size)],
+                [111, 0, shapely.Point(63.637, 61.002).buffer(self.hexagon_size)],
                 [300, 0, linestring.offset_curve(-self.hexagon_size * 3).buffer(inradius, cap_style="flat")],
             )
         )

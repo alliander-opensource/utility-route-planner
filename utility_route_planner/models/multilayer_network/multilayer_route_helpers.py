@@ -45,6 +45,76 @@ def _quadratic_bezier(p0: shapely.Point, p1: shapely.Point, p2: shapely.Point, s
     return shapely.LineString(bezier_points)
 
 
+def _tangent_arc_fillet(
+    p_prev: shapely.Point,
+    p_curr: shapely.Point,
+    p_next: shapely.Point,
+    radius: float,
+    offset: float,
+    samples: int,
+) -> shapely.LineString:
+    """
+    Create a circular arc fillet of the given radius, tangent to both legs of a corner.
+
+    The corner is defined by the incoming leg (p_prev -> p_curr) and the outgoing leg
+    (p_curr -> p_next). The returned arc starts at tangent point A on the incoming leg
+    (distance ``offset`` back from ``p_curr``) and ends at tangent point B on the
+    outgoing leg (distance ``offset`` forward from ``p_curr``).
+
+    For a fillet of the given ``radius`` the tangent ``offset`` must be
+    ``radius * tan(alpha / 2)`` where ``alpha`` is the deflection angle of the corner.
+    Using a fixed ``radius`` guarantees the curvature never exceeds ``1 / radius``.
+
+    :param p_prev: previous vertex (start of the incoming leg).
+    :param p_curr: corner vertex.
+    :param p_next: next vertex (end of the outgoing leg).
+    :param radius: radius of the fillet arc.
+    :param offset: tangent offset distance along each leg measured from ``p_curr``.
+    :param samples: number of points used to discretise the arc.
+    :return: the arc as a LineString from A to B.
+    """
+    a = _point_along(p_curr, p_prev, offset)
+    b = _point_along(p_curr, p_next, offset)
+
+    v_in = (p_curr.x - p_prev.x, p_curr.y - p_prev.y)
+    v_out = (p_next.x - p_curr.x, p_next.y - p_curr.y)
+    norm_in = math.hypot(*v_in)
+    if norm_in == 0:
+        return shapely.LineString([a, b])
+    v_in_hat = (v_in[0] / norm_in, v_in[1] / norm_in)
+
+    # Turn direction: a positive cross product is a left (counter-clockwise) turn. The
+    # arc centre lies on the inside of the corner, i.e. along the inward normal of the
+    # incoming leg at tangent point A.
+    cross = v_in[0] * v_out[1] - v_in[1] * v_out[0]
+    if cross >= 0:
+        normal = (-v_in_hat[1], v_in_hat[0])
+        counter_clockwise = True
+    else:
+        normal = (v_in_hat[1], -v_in_hat[0])
+        counter_clockwise = False
+
+    center = shapely.Point(a.x + radius * normal[0], a.y + radius * normal[1])
+
+    ang_a = math.atan2(a.y - center.y, a.x - center.x)
+    ang_b = math.atan2(b.y - center.y, b.x - center.x)
+    sweep = ang_b - ang_a
+    # Normalise the swept angle to match the turn direction (minor arc).
+    if counter_clockwise:
+        while sweep <= 0:
+            sweep += 2 * math.pi
+    else:
+        while sweep >= 0:
+            sweep -= 2 * math.pi
+
+    arc_points = []
+    for sample in range(samples):
+        rel = sample / (samples - 1)
+        ang = ang_a + sweep * rel
+        arc_points.append((center.x + radius * math.cos(ang), center.y + radius * math.sin(ang)))
+    return shapely.LineString(arc_points)
+
+
 def get_inradius(hexagon_size: float) -> float:
     """Get the inradius of a hexagon for checking intersections with cost surface nodes during straightening."""
     return math.sqrt(3) * hexagon_size / 2
