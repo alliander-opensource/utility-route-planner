@@ -117,11 +117,12 @@ class HexagonGraphComposer:
             for component in rx.connected_components(height_graph.graph):
                 gdf_component_nodes = height_graph.nodes_gdf.loc[list(component)]
                 # Get the outer nodes (nodes to join to the main graph) of the component.
-                # TODO use inradius in this file
                 component_area = gdf_component_nodes.buffer(self.hexagon_size).union_all(grid_size=0.1)
                 if not isinstance(component_area, shapely.Polygon):
                     logger.warning("Component area is not a polygon, this is unexpected. Skipping.")
                     continue
+                if shapely.get_num_interior_rings(component_area) > 0:
+                    component_area = shapely.Polygon(component_area.exterior)
 
                 gdf_component_outer_nodes = self.filter_component_nodes(component_area, gdf_component_nodes)
                 # Outer component nodes are duplicated for each node to connect to in the main graph
