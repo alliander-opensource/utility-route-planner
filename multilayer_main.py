@@ -32,9 +32,6 @@ def run_multilayer_network(
     project_area_geometry: shapely.Polygon,
     construction_date: datetime | None = None,
 ):
-    reset_geopackage(Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT, truncate=False)
-    reset_geopackage(Config.PATH_GEOPACKAGE_MCDA_OUTPUT, truncate=False)
-
     start_cpu_time = time.process_time_ns()
 
     raw_graph = OSMGraphDownloader(project_area_geometry, graph_date=construction_date).download_graph()
@@ -67,6 +64,8 @@ def run_multilayer_network(
 @app.command()
 def run_debug_case():
     """e.g: uv run multilayer_main.py run-debug-case"""
+    reset_geopackage(Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT, truncate=False)
+
     with bound_contextvars(project_area="Componistenbuurt"):
         logger.info("Running multilayer routing engine for debug project area")
         run_multilayer_network(
@@ -80,22 +79,31 @@ def run_debug_case():
 
 
 @app.command()
-def run_benchmark_case(benchmark_case_id: int):
+def run_benchmark_case(benchmark_case_id: int | None = None):
     """e.g: uv run multilayer_main.py run-benchmark-case 4"""
+    reset_geopackage(Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT, truncate=False)
+
     benchmark_routes = BenchmarkRouteCollection()
-    with bound_contextvars(benchmark_id=benchmark_case_id):
-        benchmark_route = benchmark_routes.get_case(benchmark_case_id)
-        run_multilayer_network(
-            Config.RASTER_PRESET_NAME_BENCHMARK,
-            benchmark_route.path_geopackage,
-            gpd.read_file(benchmark_route.path_geopackage, layer=benchmark_route.layer_name_human_designed_route)
-            .iloc[0]
-            .geometry,
-            gpd.read_file(benchmark_route.path_geopackage, layer=benchmark_route.layer_name_project_area)
-            .iloc[0]
-            .geometry,
-            benchmark_route.construction_date,
-        )
+    if benchmark_case_id is None:
+        benchmark_case_ids = benchmark_routes.get_all_case_ids()
+    else:
+        benchmark_case_ids = [benchmark_case_id]
+
+    for benchmark_case_id in benchmark_case_ids:
+        with bound_contextvars(benchmark_id=benchmark_case_id):
+            reset_geopackage(Config.PATH_GEOPACKAGE_MCDA_OUTPUT, truncate=False)
+            benchmark_route = benchmark_routes.get_case(benchmark_case_id)
+            run_multilayer_network(
+                Config.RASTER_PRESET_NAME_BENCHMARK,
+                benchmark_route.path_geopackage,
+                gpd.read_file(benchmark_route.path_geopackage, layer=benchmark_route.layer_name_human_designed_route)
+                .iloc[0]
+                .geometry,
+                gpd.read_file(benchmark_route.path_geopackage, layer=benchmark_route.layer_name_project_area)
+                .iloc[0]
+                .geometry,
+                benchmark_route.construction_date,
+            )
 
 
 if __name__ == "__main__":
