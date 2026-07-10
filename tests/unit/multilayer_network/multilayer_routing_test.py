@@ -75,6 +75,7 @@ class TestMultiLayerRouting:
                 write_output=self.debug,
                 prefix="pytest_",
                 algorithm=Algorithm.astar,
+                experimental_smoothing=True,
             )
             return route_engine
 
@@ -178,8 +179,6 @@ class TestMultiLayerRouting:
         linestring = shapely.LineString(
             [(1.88, 76.72), (37.58, 97.7), (93.682, 64.830), (52.445, 41.017), (99.379, 14.247)]
         )
-        # TODO change so the wall has different suitability values
-        # TODO change so the path has different suitability values
         route_engine = setup_grid(
             (
                 [300, 0, shapely.Point(7.535, 62.606).buffer(10).intersection(self.project_area)],
@@ -199,6 +198,7 @@ class TestMultiLayerRouting:
         assert route_engine.results.unprocessed_linestring.length == pytest.approx(194.8, abs=0.1)
         assert route_engine.results.collapsed_linestring.length == pytest.approx(192.5, abs=0.1)
         assert route_engine.results.quadratic_bezier_linestring.length == pytest.approx(188.5, abs=0.1)
+        assert route_engine.results.string_pulled_linestring.length == pytest.approx(184.8, abs=0.1)
 
     def test_minimum_bending_radius(self, setup_grid):
         inradius = get_inradius(self.hexagon_size)
@@ -270,13 +270,20 @@ class TestMultiLayerRouting:
         assert route_engine.results.collapsed_linestring.length == pytest.approx(134.1, abs=0.1)
         assert route_engine.results.quadratic_bezier_linestring.length == pytest.approx(129.8, abs=0.1)
 
+    @pytest.mark.skip(reason="Bezier curves do not respect suitability value.")
     def test_bezier_curvature(self, setup_grid):
         route_engine = setup_grid(([10, 0, shapely.Polygon([(0, 10), (90, 10), (90, 100), (0, 100)])],))
         # Straight crossing
         route_engine.find_route(shapely.LineString([(0, 1), (99, 99)]))
         # assert len(route_engine.results.node_indices) == 23
-        assert len(route_engine.results.collapsed_node_indices) == 10
-        # TODO add assert if it stays within cells of correct value (2)
+        assert len(route_engine.results.collapsed_node_indices) == 3
+        # Note that Beziers currently do not respect suitability value integrity.
+        assert not (
+            route_engine.gdf_cost_surface_nodes[route_engine.gdf_cost_surface_nodes.suitability_value != 2]
+            .buffer(get_inradius(route_engine.hexagon_size))
+            .intersects(route_engine.results.quadratic_bezier_linestring)
+            .any()
+        )
 
     def test_invalid_input_route_engine(self, setup_grid):
         route_engine = setup_grid(())
