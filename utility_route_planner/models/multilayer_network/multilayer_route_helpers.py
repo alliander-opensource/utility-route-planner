@@ -25,7 +25,7 @@ def _point_along(origin: shapely.Point, towards: shapely.Point, distance: float)
     return shapely.Point(origin.x + dx / n * distance, origin.y + dy / n * distance)
 
 
-def _quadratic_bezier(p0: shapely.Point, p1: shapely.Point, p2: shapely.Point, samples: int) -> shapely.LineString:
+def get_quadratic_bezier(p0: shapely.Point, p1: shapely.Point, p2: shapely.Point, samples: int) -> shapely.LineString:
     """
     Create the quadratic Bézier curve.
 
@@ -45,42 +45,37 @@ def _quadratic_bezier(p0: shapely.Point, p1: shapely.Point, p2: shapely.Point, s
     return shapely.LineString(bezier_points)
 
 
-def _tangent_arc_fillet(
+def get_tangent_arc_fillet(
     p_prev: shapely.Point,
     p_curr: shapely.Point,
     p_next: shapely.Point,
     radius: float,
-    offset: float,
-    samples: int,
+    offset: float | None = None,
+    samples: int = 30,
 ) -> shapely.LineString:
-    """
-    Create a circular arc fillet of the given radius, tangent to both legs of a corner.
-
-    The corner is defined by the incoming leg (p_prev -> p_curr) and the outgoing leg
-    (p_curr -> p_next). The returned arc starts at tangent point A on the incoming leg
-    (distance ``offset`` back from ``p_curr``) and ends at tangent point B on the
-    outgoing leg (distance ``offset`` forward from ``p_curr``).
-
-    For a fillet of the given ``radius`` the tangent ``offset`` must be
-    ``radius * tan(alpha / 2)`` where ``alpha`` is the deflection angle of the corner.
-    Using a fixed ``radius`` guarantees the curvature never exceeds ``1 / radius``.
-
-    :param p_prev: previous vertex (start of the incoming leg).
-    :param p_curr: corner vertex.
-    :param p_next: next vertex (end of the outgoing leg).
-    :param radius: radius of the fillet arc.
-    :param offset: tangent offset distance along each leg measured from ``p_curr``.
-    :param samples: number of points used to discretise the arc.
-    :return: the arc as a LineString from A to B.
-    """
-    a = _point_along(p_curr, p_prev, offset)
-    b = _point_along(p_curr, p_next, offset)
-
+    """Create a circular arc fillet of the given radius, tangent to both legs of a corner."""
     v_in = (p_curr.x - p_prev.x, p_curr.y - p_prev.y)
     v_out = (p_next.x - p_curr.x, p_next.y - p_curr.y)
     norm_in = math.hypot(*v_in)
-    if norm_in == 0:
-        return shapely.LineString([a, b])
+    norm_out = math.hypot(*v_out)
+    if norm_in == 0 or norm_out == 0:
+        return shapely.LineString([p_prev, p_next])
+
+    # Deflection angle of the corner (0 == straight, pi == full reversal).
+    alpha = _angle_between(v_in, v_out)
+    if alpha < 1e-9:
+        # Essentially straight, no fillet needed.
+        return shapely.LineString([p_prev, p_next])
+
+    # Tangent offset for an arc of this radius to touch both legs. Clamp to the available leg
+    # length so the tangent points never overshoot the corner.
+    if offset is None:
+        offset = radius * math.tan(alpha / 2)
+    offset = min(offset, norm_in, norm_out)
+
+    a = _point_along(p_curr, p_prev, offset)
+    b = _point_along(p_curr, p_next, offset)
+
     v_in_hat = (v_in[0] / norm_in, v_in[1] / norm_in)
 
     # Turn direction: a positive cross product is a left (counter-clockwise) turn. The
@@ -113,6 +108,35 @@ def _tangent_arc_fillet(
         ang = ang_a + sweep * rel
         arc_points.append((center.x + radius * math.cos(ang), center.y + radius * math.sin(ang)))
     return shapely.LineString(arc_points)
+
+
+def create_arc_fillets(line: shapely.LineString, radius: float, samples: int = 30) -> shapely.LineString:
+    """
+    Round every interior corner of a linestring with tangent arc fillets of the given radius.
+
+    Straight pieces connect the tangent points of consecutive fillets, so the result is a
+    smooth path whose curvature never exceeds ``1 / radius``. Pass
+    ``radius = get_inradius(hexagon_size)`` to fillet using the hexagon inradius.
+
+    :param line: the polyline to fillet (e.g. a collapsed/straightened route).
+    :param radius: fillet radius, typically the hexagon inradius.
+    :param samples: number of points used to discretise each arc.
+    :return: the filleted linestring.
+    """
+    coords = list(line.coords)
+    if len(coords) < 3:
+        return line
+
+    points = [shapely.Point(c) for c in coords]
+    stitched: list[tuple[float, float]] = [coords[0]]
+    for i in range(1, len(points) - 1):
+        arc = get_tangent_arc_fillet(points[i - 1], points[i], points[i + 1], radius, samples=samples)
+        # Straight run up to the arc start, then the arc itself.
+        stitched.append(arc.coords[0])
+        stitched.extend(arc.coords[1:])
+    stitched.append(coords[-1])
+
+    return shapely.remove_repeated_points(shapely.LineString(stitched), tolerance=0)
 
 
 def get_inradius(hexagon_size: float) -> float:
