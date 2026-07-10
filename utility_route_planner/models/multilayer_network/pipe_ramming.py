@@ -153,7 +153,7 @@ class GetPotentialPipeRammingCrossings:
             write_results_to_geopackage(
                 self.out,
                 gpd.GeoDataFrame(data=[vars(i[2]) for i in crossing_collection]),
-                "pytest_crossings_added_to_graph",
+                "crossings_added_to_graph",
             )
 
     def create_street_segment_groups(self):
