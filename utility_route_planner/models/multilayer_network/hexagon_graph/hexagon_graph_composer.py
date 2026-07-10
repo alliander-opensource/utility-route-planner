@@ -307,10 +307,7 @@ class HexagonGraphComposer:
             gdf_main_nodes_to_outer_subgraph_nodes["node_id_left"] = gdf_main_nodes_to_outer_subgraph_nodes[
                 "node_id_left"
             ].astype(int)
-            if self.debug:
-                write_results_to_geopackage(
-                    Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT, na_rows, "pytest_invalid_nodes"
-                )
+            write_results_to_geopackage(self.out, na_rows, "outer_subgraph_invalid_nodes")
         return gdf_main_nodes_to_outer_subgraph_nodes
 
     def write_graph_per_height_level(self):
