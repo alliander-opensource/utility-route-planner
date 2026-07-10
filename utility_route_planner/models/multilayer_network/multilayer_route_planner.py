@@ -83,7 +83,7 @@ class MultilayerRouteEngine:
         hexagon_size: float,
         algorithm: Algorithm = Algorithm.astar,
         prefix: str = "",
-        write_output: bool = True,
+        write_output: bool = False,
         experimental_smoothing: bool = False,
         out: Path = Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT,
     ):
