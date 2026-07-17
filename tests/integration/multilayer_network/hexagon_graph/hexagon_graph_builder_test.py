@@ -6,6 +6,7 @@ from typing import Callable
 import geopandas as gpd
 import pytest
 import shapely
+import shapely.affinity
 import rustworkx as rx
 from geopandas import GeoDataFrame
 from shapely import Polygon
@@ -20,10 +21,10 @@ from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_graph
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_grid_builder import HexagonGridBuilder
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_utils import convert_hexagon_edges_to_gdf
 from utility_route_planner.models.multilayer_network.multilayer_route_planner import MultilayerRouteEngine
+from utility_route_planner.util.geo_utilities import get_empty_geodataframe
 from utility_route_planner.util.write import reset_geopackage, write_results_to_geopackage
 
 
-HEXAGON_SIZE = 1
 DEBUG = Config.DEBUG
 PREFIX = "pytest_"
 
@@ -35,14 +36,23 @@ class TestHexagonGraphBuilder:
     as input which enables more advanced testing with overlapping criteria.
     """
 
+    # @pytest.fixture()
+    # def hexagon_graph_builder(self) -> HexagonGraphBuilder:
+    #     grid_constructor = HexagonGridBuilder(hexagon_size=HEXAGON_SIZE, block_size=Config.HEXAGON_BLOCK_SIZE)
+    #     hexagon_edge_generator = HexagonEdgeGenerator()
+    #     _hexagon_graph_builder = HexagonGraphBuilder(
+    #         grid_builder=grid_constructor, edge_generator=hexagon_edge_generator
+    #     )
+    #     return _hexagon_graph_builder
+
     @pytest.fixture()
-    def hexagon_graph_builder(self) -> HexagonGraphBuilder:
-        grid_constructor = HexagonGridBuilder(hexagon_size=HEXAGON_SIZE, block_size=Config.HEXAGON_BLOCK_SIZE)
-        hexagon_edge_generator = HexagonEdgeGenerator()
-        _hexagon_graph_builder = HexagonGraphBuilder(
-            grid_builder=grid_constructor, edge_generator=hexagon_edge_generator
-        )
-        return _hexagon_graph_builder
+    def hexagon_graph_builder(self) -> Callable[..., HexagonGraphBuilder]:
+        def _builder(block_size: int = Config.HEXAGON_BLOCK_SIZE, hexagon_size: float = 1):
+            grid_constructor = HexagonGridBuilder(hexagon_size=hexagon_size, block_size=block_size)
+            hexagon_edge_generator = HexagonEdgeGenerator()
+            return HexagonGraphBuilder(grid_builder=grid_constructor, edge_generator=hexagon_edge_generator)
+
+        return _builder
 
     @pytest.fixture()
     def ede_project_area(self) -> shapely.Polygon:
@@ -57,7 +67,7 @@ class TestHexagonGraphBuilder:
         self,
         single_criterion_vectors: Callable,
         ede_project_area: shapely.Polygon,
-        hexagon_graph_builder: HexagonGraphBuilder,
+        hexagon_graph_builder: Callable[..., HexagonGraphBuilder],
         debug: bool = DEBUG,
     ):
         max_value = Config.MAX_NODE_SUITABILITY_VALUE
@@ -68,7 +78,7 @@ class TestHexagonGraphBuilder:
         preprocessed_vectors = {"test": single_criterion_vectors}
         raster_criteria_groups = {"test": "a"}
 
-        graph, nodes_gdf = hexagon_graph_builder.build_graph(
+        graph, nodes_gdf = hexagon_graph_builder().build_graph(
             ede_project_area, raster_criteria_groups, preprocessed_vectors
         )
         edges_gdf = convert_hexagon_edges_to_gdf(graph, nodes_gdf)
@@ -104,7 +114,7 @@ class TestHexagonGraphBuilder:
         self,
         multi_criteria_vectors: Callable,
         ede_project_area: shapely.MultiPolygon,
-        hexagon_graph_builder: HexagonGraphBuilder,
+        hexagon_graph_builder: Callable[..., HexagonGraphBuilder],
         debug: bool = DEBUG,
     ):
         max_value = Config.MAX_NODE_SUITABILITY_VALUE
@@ -116,7 +126,7 @@ class TestHexagonGraphBuilder:
             criterion_name: criterion_gdf for criterion_name, _, criterion_gdf in multiple_criteria_vectors
         }
 
-        graph, nodes_gdf = hexagon_graph_builder.build_graph(
+        graph, nodes_gdf = hexagon_graph_builder().build_graph(
             ede_project_area, raster_criteria_groups, preprocessed_vectors
         )
         edges_gdf = convert_hexagon_edges_to_gdf(graph, nodes_gdf)
@@ -164,6 +174,57 @@ class TestHexagonGraphBuilder:
         if debug:
             self.write_debug_output(
                 ede_project_area, preprocessed_vectors, nodes_gdf, edges_gdf, sample_points, suffix="multiple_criteria"
+            )
+
+    @pytest.mark.parametrize("rotation_angle", [0, 15, 30, 45, 60, 75])
+    def test_build_graph_is_connected_for_diagonal_project_area(
+        self,
+        hexagon_graph_builder: Callable[..., HexagonGraphBuilder],
+        ede_project_area: shapely.Polygon,
+        rotation_angle: float,
+        debug: bool = DEBUG,
+    ):
+        """
+        Regression test: a diagonal (rotated) project area must still yield a single, fully connected hexagon graph.
+
+        A rotated area produces partial, staircase-edged blocks and empty corner blocks along the diagonal. Earlier,
+        the sliding-window edge generation dropped the final-column signal for empty blocks, which left entire rows
+        unable to connect upward and fragmented the graph into disconnected horizontal bands. The area below is sized
+        so that its bounding box exceeds the block size in both dimensions (block_size=512 matrix cells at
+        HEXAGON_SIZE=1), guaranteeing multiple blocks - and, for diagonal angles, empty corner blocks - are exercised.
+        """
+
+        # Long, thin rectangle rotated around its centroid. At 45 degrees its bounding box spans multiple blocks in
+        # both directions while leaving opposite corner blocks empty.
+        base_rectangle = shapely.box(174680, 450765, 175484, 450934)
+        project_area = shapely.affinity.rotate(base_rectangle, rotation_angle, origin="centroid")
+
+        # A single criterion covering the whole project area so every in-area node is populated.
+        covering_vector = gpd.GeoDataFrame(
+            data=[[5, project_area]],
+            geometry="geometry",
+            crs=Config.CRS,
+            columns=["suitability_value", "geometry"],
+        )
+        preprocessed_vectors = {"test": covering_vector}
+        raster_criteria_groups = {"test": "a"}
+
+        graph, nodes_gdf = hexagon_graph_builder(block_size=126).build_graph(
+            project_area, raster_criteria_groups, preprocessed_vectors
+        )
+
+        # The graph must be a single connected component regardless of orientation.
+        assert rx.number_connected_components(graph) == 1
+
+        if debug:
+            edges_gdf = convert_hexagon_edges_to_gdf(graph, nodes_gdf)
+            self.write_debug_output(
+                base_rectangle,
+                preprocessed_vectors,
+                nodes_gdf,
+                edges_gdf,
+                get_empty_geodataframe(),
+                suffix=f"_{str(rotation_angle)}",
             )
 
     @staticmethod
@@ -374,7 +435,6 @@ class TestHexagonGraphBuilderWithHeightLevels:
             "grassland": grassland,
         }
         if DEBUG:
-            # self.debug_write_output_vectors(project_area, processed_criteria_vectors)
             write_criteria_vectors(project_area, processed_criteria_vectors)
 
         # Expected output from mcda engine after changes
@@ -430,11 +490,11 @@ class TestHexagonGraphBuilderWithHeightLevels:
             raster_groups=raster_groups,
             project_area=project_area,
             debug=DEBUG,
-            hexagon_size=HEXAGON_SIZE,
+            hexagon_size=1,
             apply_pipe_ramming=False,
         )
         route_engine = MultilayerRouteEngine(
-            merged_graph, rx.PyGraph(), merged_nodes_gdf, hexagon_size=HEXAGON_SIZE, write_output=DEBUG, prefix=PREFIX
+            merged_graph, rx.PyGraph(), merged_nodes_gdf, hexagon_size=1, write_output=DEBUG, prefix=PREFIX
         )
         return route_engine
 
@@ -487,7 +547,6 @@ class TestHexagonGraphBuilderWithHeightLevels:
         }
         if DEBUG:
             write_criteria_vectors(project_area, processed_criteria_vectors)
-            # self.debug_write_output_vectors(project_area, processed_criteria_vectors)
 
         processed_criteria_per_height_level = {
             0: ["road", "grassland"],  # ground level
@@ -584,7 +643,6 @@ class TestHexagonGraphBuilderWithHeightLevels:
         }
         if DEBUG:
             write_criteria_vectors(project_area, processed_criteria_vectors)
-            # self.debug_write_output_vectors(project_area, processed_criteria_vectors)
 
         # Expected output from mcda engine after changes
         processed_criteria_per_height_level = {

@@ -39,18 +39,23 @@ class HexagonGridBuilder:
         y_matrix: np.ndarray,
         preprocessed_vectors: dict[str, gpd.GeoDataFrame],
         raster_groups: dict[str, str],
-    ) -> Generator[tuple[pl.DataFrame, bool], None, None]:
+    ) -> Generator[tuple[pl.DataFrame | None, bool], None, None]:
         concatenated_vectors = self.concatenate_preprocessed_vectors(preprocessed_vectors, raster_groups)
 
         for block, final_column in self.divide_matrices_into_blocks(x_matrix, y_matrix):
             hexagonal_grid_for_block = self.filter_block_to_project_area(block, concatenated_vectors)
 
-            # A block can be empty in case it does not intersect with any vector
-            if not hexagonal_grid_for_block.empty:
-                weighted_hexagonal_block = self.assign_suitability_values_to_block(hexagonal_grid_for_block)
-                weighted_hexagonal_block = self.convert_cartesian_coordinates_to_axial(weighted_hexagonal_block)
+            # A block can be empty in case it does not intersect with any vector. We still yield it (as None) so the
+            # caller can advance its row/column bookkeeping. Skipping it entirely would drop the final-column signal,
+            # leaving the next row unable to connect upward and fragmenting the graph into disconnected bands.
+            if hexagonal_grid_for_block.empty:
+                yield None, final_column
+                continue
 
-                yield weighted_hexagonal_block, final_column
+            weighted_hexagonal_block = self.assign_suitability_values_to_block(hexagonal_grid_for_block)
+            weighted_hexagonal_block = self.convert_cartesian_coordinates_to_axial(weighted_hexagonal_block)
+
+            yield weighted_hexagonal_block, final_column
 
     def construct_hexagonal_grid_for_bounding_box(self, project_area: shapely.Polygon) -> tuple[np.ndarray, np.ndarray]:
         """

@@ -72,47 +72,62 @@ class HexagonGraphBuilder:
         for block, last_column in self.grid_builder.construct_grid_blocks(
             x_matrix, y_matrix, preprocessed_vectors, raster_groups
         ):
-            graph, block_node_ids = self._add_nodes_to_graph(graph, block)
+            # An empty block still carries the row/column position, so we must run the boundary bookkeeping below even
+            # though there are no nodes or edges to add. Skipping it entirely would drop the final-column signal and
+            # leave the next row unable to connect upward, fragmenting the graph into disconnected bands.
+            if block is not None:
+                graph, block_node_ids = self._add_nodes_to_graph(graph, block)
 
-            # Add node id to the block dataframe for edge processing
-            block = block.with_columns(pl.Series("node_id", list(block_node_ids), dtype=pl.Int32))
+                # Add node id to the block dataframe for edge processing
+                block = block.with_columns(pl.Series("node_id", list(block_node_ids), dtype=pl.Int32))
 
-            # Store all block information in the total node array
-            nodes["node_id"][block_node_ids] = block_node_ids
-            nodes["suitability_value"][block_node_ids] = block["suitability_value"]
-            nodes["x"][block_node_ids] = block["x"]
-            nodes["y"][block_node_ids] = block["y"]
+                # Store all block information in the total node array
+                nodes["node_id"][block_node_ids] = block_node_ids
+                nodes["suitability_value"][block_node_ids] = block["suitability_value"]
+                nodes["x"][block_node_ids] = block["x"]
+                nodes["y"][block_node_ids] = block["y"]
 
-            # Select all attributes in the current block which are relevant for edge generation
-            block_edge_attributes = block.select("node_id", "suitability_value", "q", "r")
-            block_edge_coordinates = self.get_block_edge_coordinates(block)
-            current_row_edge_coordinates = pl.concat([current_row_edge_coordinates, block_edge_coordinates])
+                # Select all attributes in the current block which are relevant for edge generation
+                block_edge_attributes = block.select("node_id", "suitability_value", "q", "r")
+                block_edge_coordinates = self.get_block_edge_coordinates(block)
+                current_row_edge_coordinates = pl.concat([current_row_edge_coordinates, block_edge_coordinates])
 
-            # Only check previous row nodes that are on top of the current block to reduce unnecessary joins. Filtering
-            # is performed using the min-max q-values + a buffer of 1 to include the boundaries as well.
-            relevant_previous_row_nodes = previous_row_edge_coordinates.filter(
-                pl.col("q").is_between(block_edge_attributes["q"].min() - 1, block_edge_attributes["q"].max() + 1)
-            )
+                # Only check previous row nodes that are on top of the current block to reduce unnecessary joins.
+                # Filtering is performed using the min-max q-values + a buffer of 1 to include the boundaries as well.
+                relevant_previous_row_nodes = previous_row_edge_coordinates.filter(
+                    pl.col("q").is_between(block_edge_attributes["q"].min() - 1, block_edge_attributes["q"].max() + 1)
+                )
 
-            # For edge determination, the edge generator must consider nodes within the block, boundary nodes from the
-            # previous block and boundary nodes from the previous row to make sure the graph is connected.
-            nodes_to_check = pl.concat(
-                [block_edge_attributes, previous_block_edge_coordinates, relevant_previous_row_nodes]
-            )
+                # For edge determination, the edge generator must consider nodes within the block, boundary nodes from
+                # the previous block and boundary nodes from the previous row to make sure the graph is connected.
+                nodes_to_check = pl.concat(
+                    [block_edge_attributes, previous_block_edge_coordinates, relevant_previous_row_nodes]
+                )
 
-            graph = self._add_edges_to_graph(graph, block_edge_attributes, nodes_to_check)
+                graph = self._add_edges_to_graph(graph, block_edge_attributes, nodes_to_check)
+
+                # Non-empty block: this block becomes the previous block for the next block in the row. When the row
+                # ends (last_column), this is overwritten by the reset below.
+                next_previous_block_edge_coordinates = block_edge_coordinates
+            else:
+                # An empty block represents a gap in the row. Reset the previous-block reference so the next non-empty
+                # block is not incorrectly bridged across the gap.
+                next_previous_block_edge_coordinates = self._get_empty_nodes_df()
+
             if last_column:
                 # If the final column of the current row is reached, set all edge coordinates of the current row as
                 # previous row edge coordinates. This way, they can be used to determine connecting upper edges in the
-                # next row. All other dataframes containing previous coordinates are reset
+                # next row. All other dataframes containing previous coordinates are reset. This must run even for an
+                # empty final-column block, otherwise the next row cannot connect to the current row.
                 previous_row_edge_coordinates = current_row_edge_coordinates
                 current_row_edge_coordinates = self._get_empty_nodes_df()
                 previous_block_edge_coordinates = self._get_empty_nodes_df()
             else:
                 # If the final column of the current row is not yet reached, set the previous block to the current
                 # block. This way, it can be connected to the next block in the current row.
-                previous_block_edge_coordinates = block_edge_coordinates
+                previous_block_edge_coordinates = next_previous_block_edge_coordinates
 
+        logger.info(f"Number of connected components: {len(rx.connected_components(graph))}")
         nodes_gdf = self._convert_nodes_to_gdf(nodes)
         return graph, nodes_gdf
 

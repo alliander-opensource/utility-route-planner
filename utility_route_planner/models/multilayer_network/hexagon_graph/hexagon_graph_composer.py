@@ -60,7 +60,7 @@ class HexagonGraphComposer:
 
     def compose(self) -> tuple[rx.PyGraph, gpd.GeoDataFrame]:
         n_height_levels = len(self.processed_graphs_and_nodes_per_height_level)
-        main_height_level = self.get_main_height_level()
+        main_height_level = self.validate_main_height_level()
         self.gdf_main_nodes = self.processed_graphs_and_nodes_per_height_level[main_height_level].nodes_gdf
         self.gdf_main_nodes["height_level"] = main_height_level
 
@@ -78,7 +78,7 @@ class HexagonGraphComposer:
             self.processed_graphs_and_nodes_per_height_level[main_height_level].nodes_gdf,
         )
 
-    def get_main_height_level(self):
+    def validate_main_height_level(self):
         """Doublecheck the main height level is 0. This is the expected value for the BGT."""
         node_count = {
             height: graph.graph.num_nodes()
@@ -87,6 +87,10 @@ class HexagonGraphComposer:
         main_height_level = max(node_count, key=node_count.get)
         if main_height_level != 0:
             logger.warning(f"Main height level is expected to be 0, but found {main_height_level} instead.")
+
+        if rx.number_connected_components(self.processed_graphs_and_nodes_per_height_level[0].graph) != 1:
+            logger.error("Main graph is not connected, this is unexpected")
+            raise ValueError
 
         return main_height_level
 
