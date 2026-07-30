@@ -115,8 +115,7 @@ def create_arc_fillets(line: shapely.LineString, radius: float, samples: int = 3
     Round every interior corner of a linestring with tangent arc fillets of the given radius.
 
     Straight pieces connect the tangent points of consecutive fillets, so the result is a
-    smooth path whose curvature never exceeds ``1 / radius``. Pass
-    ``radius = get_inradius(hexagon_size)`` to fillet using the hexagon inradius.
+    smooth path whose curvature never exceeds ``1 / radius``.
 
     :param line: the polyline to fillet (e.g. a collapsed/straightened route).
     :param radius: fillet radius, typically the hexagon inradius.
