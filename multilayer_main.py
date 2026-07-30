@@ -31,6 +31,7 @@ def run_multilayer_network(
     start_mid_end_points: shapely.LineString,
     project_area_geometry: shapely.Polygon,
     construction_date: datetime | None = None,
+    prefix: str = "",
 ):
     start_cpu_time = time.process_time_ns()
 
@@ -53,8 +54,9 @@ def run_multilayer_network(
         osm_graph_preprocessed,
         gdf_nodes,
         Config.HEXAGON_SIZE,
-        prefix=preset,
+        prefix=prefix,
         write_output=True,
+        experimental_smoothing=True,
     )
     multilayer_route_engine.find_route(start_mid_end_points)
 
@@ -79,30 +81,44 @@ def run_debug_case():
 
 
 @app.command()
-def run_benchmark_case(benchmark_case_id: int | None = None):
-    """e.g: uv run multilayer_main.py run-benchmark-case 4"""
+def run_benchmark_case(benchmark_case_ids: list[int] = typer.Argument(None)):
+    """Example commands:
+
+    Run all: uv run multilayer_main.py run-benchmark-case
+    Run selected cases: uv run multilayer_main.py run-benchmark-case 2 3
+
+    # TODO determine proper values for crossings
+    # TODO add scores to the linestring (suitability score)
+    """
     reset_geopackage(Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT, truncate=False)
 
     benchmark_routes = BenchmarkRouteCollection()
-    if benchmark_case_id is None:
+    if not benchmark_case_ids:
         benchmark_case_ids = benchmark_routes.get_all_case_ids()
-    else:
-        benchmark_case_ids = [benchmark_case_id]
 
     for benchmark_case_id in benchmark_case_ids:
         with bound_contextvars(benchmark_id=benchmark_case_id):
             reset_geopackage(Config.PATH_GEOPACKAGE_MCDA_OUTPUT, truncate=False)
             benchmark_route = benchmark_routes.get_case(benchmark_case_id)
+
+            if benchmark_route.custom_project_area.is_empty:
+                project_area = (
+                    gpd.read_file(benchmark_route.path_geopackage, layer=benchmark_route.layer_name_project_area)
+                    .iloc[0]
+                    .geometry
+                )
+            else:
+                project_area = benchmark_route.custom_project_area
+
             run_multilayer_network(
                 Config.RASTER_PRESET_NAME_BENCHMARK,
                 benchmark_route.path_geopackage,
                 gpd.read_file(benchmark_route.path_geopackage, layer=benchmark_route.layer_name_human_designed_route)
                 .iloc[0]
                 .geometry,
-                gpd.read_file(benchmark_route.path_geopackage, layer=benchmark_route.layer_name_project_area)
-                .iloc[0]
-                .geometry,
+                project_area,
                 benchmark_route.construction_date,
+                benchmark_route.raster_name_prefix,
             )
 
 
