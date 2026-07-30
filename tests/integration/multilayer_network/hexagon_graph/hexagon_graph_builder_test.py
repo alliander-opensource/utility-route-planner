@@ -36,15 +36,6 @@ class TestHexagonGraphBuilder:
     as input which enables more advanced testing with overlapping criteria.
     """
 
-    # @pytest.fixture()
-    # def hexagon_graph_builder(self) -> HexagonGraphBuilder:
-    #     grid_constructor = HexagonGridBuilder(hexagon_size=HEXAGON_SIZE, block_size=Config.HEXAGON_BLOCK_SIZE)
-    #     hexagon_edge_generator = HexagonEdgeGenerator()
-    #     _hexagon_graph_builder = HexagonGraphBuilder(
-    #         grid_builder=grid_constructor, edge_generator=hexagon_edge_generator
-    #     )
-    #     return _hexagon_graph_builder
-
     @pytest.fixture()
     def hexagon_graph_builder(self) -> Callable[..., HexagonGraphBuilder]:
         def _builder(block_size: int = Config.HEXAGON_BLOCK_SIZE, hexagon_size: float = 1):
