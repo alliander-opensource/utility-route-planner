@@ -41,10 +41,6 @@ class Config:
     MIN_PIPE_RAMMING_LENGTH_M: float = 3
     SUITABILITY_VALUE_CROSSING_THRESHOLD: float = 10
     SUITABILITY_VALUE_OBSTACLES_THRESHOLD: float = 76
-    # References:
-    # - e.g. Low voltage https://www.waskoenig.de/nl/producten/v-vmvksas#variants
-    # - e.g. mid voltage https://www.waskoenig.de/nl/producten/ymekrvaslqwd-10kv#variants
-    MINIMUM_BENDING_RADIUS: float = 0.75  # this might give problems if < cell size
 
     # input/output paths.
     PATH_RESULTS = BASEDIR / "data/processed"
