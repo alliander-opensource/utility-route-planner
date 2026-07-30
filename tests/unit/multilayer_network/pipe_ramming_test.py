@@ -1100,6 +1100,7 @@ class TestPipeRammingTheoryExamples:
             prefix=self.prefix,
             write_output=self.debug,
             out=self.out,
+            experimental_smoothing=True,
         )
 
         multilayer_route_engine.find_route(shapely.LineString(start_end))
