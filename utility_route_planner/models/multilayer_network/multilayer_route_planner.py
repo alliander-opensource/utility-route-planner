@@ -100,7 +100,6 @@ class MultilayerRouteEngine:
         self.experimental_smoothing = experimental_smoothing
         self.out = out
 
-        self.minimum_bending_radius = get_inradius(self.hexagon_size)
         self.results = MultiLayerRouteResults()
 
     def find_route(self, start_end: shapely.LineString):
@@ -129,7 +128,7 @@ class MultilayerRouteEngine:
         if self.experimental_smoothing:
             try:
                 self.apply_fillets_and_180_turns()
-                self.apply_bezier_curves(min_bend_radius=self.minimum_bending_radius)
+                self.apply_bezier_curves(min_bend_radius=get_inradius(self.hexagon_size))
                 self.apply_string_pulling()
             except Exception:
                 logger.exception("Error during experimental smoothing, skipping.")
@@ -499,7 +498,7 @@ class MultilayerRouteEngine:
         return set(costs).issubset(allowed)
 
     @time_function
-    def apply_string_pulling(self):
+    def apply_string_pulling(self, debug: bool = False):
         """Apply string pulling"""
         logger.info("Starting route smoothing through application of string pulling / tangent arc fillets.")
 
@@ -623,23 +622,23 @@ class MultilayerRouteEngine:
 
             new_pieces.append(shapely.LineString([*taut_points.geoms]))
 
-            prefix = "pytest_a_"
-            write_results_to_geopackage(
-                self.out,
-                shapely.MultiLineString([segment_1.collapsed_linestring, segment_2.collapsed_linestring]),
-                f"{prefix}segment_12",
-                overwrite=True,
-            )
-            write_results_to_geopackage(self.out, line_with_obstacle, f"{prefix}line_with_obstacle", overwrite=True)
-            write_results_to_geopackage(self.out, obstacle, f"{prefix}obstacle", overwrite=True)
-            write_results_to_geopackage(self.out, obstacle_area, f"{prefix}obstacle_area", overwrite=True)
-            write_results_to_geopackage(self.out, obstacle_hexagons, f"{prefix}obstacle_hexagons", overwrite=True)
-            # write_results_to_geopackage(self.out, leading_obstacle, f'{prefix}leading_obstacle', overwrite=True)
-            write_results_to_geopackage(self.out, convex_hull, f"{prefix}convex_hull", overwrite=True)
-            write_results_to_geopackage(
-                self.out, shapely.MultiLineString(new_pieces), f"{prefix}new_piece", overwrite=True
-            )
-            write_results_to_geopackage(self.out, taut_points, f"{prefix}taut_points", overwrite=True)
+            if debug:
+                prefix = "pytest_a_"
+                write_results_to_geopackage(
+                    self.out,
+                    shapely.MultiLineString([segment_1.collapsed_linestring, segment_2.collapsed_linestring]),
+                    f"{prefix}segment_12",
+                    overwrite=True,
+                )
+                write_results_to_geopackage(self.out, line_with_obstacle, f"{prefix}line_with_obstacle", overwrite=True)
+                write_results_to_geopackage(self.out, obstacle, f"{prefix}obstacle", overwrite=True)
+                write_results_to_geopackage(self.out, obstacle_area, f"{prefix}obstacle_area", overwrite=True)
+                write_results_to_geopackage(self.out, obstacle_hexagons, f"{prefix}obstacle_hexagons", overwrite=True)
+                write_results_to_geopackage(self.out, convex_hull, f"{prefix}convex_hull", overwrite=True)
+                write_results_to_geopackage(
+                    self.out, shapely.MultiLineString(new_pieces), f"{prefix}new_piece", overwrite=True
+                )
+                write_results_to_geopackage(self.out, taut_points, f"{prefix}taut_points", overwrite=True)
 
         # Merge to a single linestring
         coordinates_merged = [coord for piece in new_pieces for coord in piece.coords]
@@ -650,8 +649,16 @@ class MultilayerRouteEngine:
         self.results.string_pulled_linestring = merged
 
     def apply_fillets_and_180_turns(self):
+        """
+        Note that if the radius < hexagon_inradius, we can get unsolvable situations.
+
+        For commonly used materials, look at properties of the "buigstraal:
+            - e.g. Low voltage https://www.waskoenig.de/nl/producten/v-vmvksas#variants
+            - e.g. mid voltage https://www.waskoenig.de/nl/producten/ymekrvaslqwd-10kv#variants
+
+        """
         self.results.arc_fillet_linestring = create_arc_fillets(
-            self.results.collapsed_linestring, self.minimum_bending_radius
+            self.results.collapsed_linestring, get_inradius(self.hexagon_size)
         )
 
 
