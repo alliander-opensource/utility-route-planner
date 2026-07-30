@@ -13,7 +13,10 @@ This research includes the creation of a software package for automatic placemen
 
 This research is being carried out at Alliander, a Dutch DSO, as part of [Jelmar Versleijen](https://research.wur.nl/en/persons/jelmar-versleijen)'s PhD with [Wagening University](https://www.wur.nl/en.htm). [Read more about research at Alliander](https://www.alliander.com/nl/alliander-en-open-research/).
 
-Details on methodology can be found in publication: [Link to be added.]
+# Citing
+If you use or refer to this software in your research, please cite the following publication:
+
+Versleijen, J., de Bruin, S., Dirckx, D. et al. An open-source benchmark of the state-of-the-art in electrical cable routing. Energy Syst (2026). https://doi.org/10.1007/s12667-026-00827-x
 
 # Goals for sharing
 
@@ -90,7 +93,3 @@ This project is largely dependent on data. Data is incorporated in the example f
 - BGT: [CC PDM 1.0](https://creativecommons.org/publicdomain/mark/1.0/deed.en) downloaded from [PDOK](https://www.nationaalgeoregister.nl/geonetwork/srv/dut/catalog.search#/metadata/e01e63cd-6b3d-4c58-b34e-8d343a3c264b)
 - Natura2000: [CC PDM 1.0](https://creativecommons.org/publicdomain/mark/1.0/deed.en) downloaded from [PDOK](https://nationaalgeoregister.nl/geonetwork/srv/dut/catalog.search#/metadata/1601e160-91e8-4091-9aca-10294f819d42)
 - Alliander asset information: [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/deed.en) downloaded from ArcGIS Online: [gas](https://alliander.maps.arcgis.com/home/item.html?id=29b06805ca2b4d31bf82ad15f14d2392), [electricity](https://alliander.maps.arcgis.com/home/item.html?id=11b7bcf1b78b4462b91db0dff234cf78)
-
-Citing
--------
-t.b.d.
