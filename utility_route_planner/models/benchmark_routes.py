@@ -5,6 +5,7 @@ import pathlib
 from dataclasses import dataclass
 from datetime import datetime
 
+import shapely
 from settings import Config
 
 
@@ -16,6 +17,8 @@ class BenchmarkRoute:
     raster_name_prefix: str
     stops: list[list[float]]
     construction_date: datetime
+    # Optional for running smaller bits of the project
+    custom_project_area: shapely.Polygon = shapely.Polygon()
 
 
 @dataclass
@@ -44,6 +47,27 @@ class BenchmarkRouteCollection:
             "route_3_",
             [],
             datetime(year=2020, month=9, day=16),
+            custom_project_area=shapely.Polygon(
+                [
+                    (202639.41, 495198.44),
+                    (202711.57, 498061.02),
+                    (202243.66, 498975.08),
+                    (201188.14, 499377.71),
+                    (200894.33, 499834.73),
+                    (200099.97, 501586.68),
+                    (199120.62, 502206.94),
+                    (196264.78449903356, 499988.4143900737),
+                    (196793.55272657756, 499167.7661009254),
+                    (196721.64024763159, 498981.6396848299),
+                    (197051.59162161904, 498609.3868526389),
+                    (197656.13233617018, 497836.9622258426),
+                    (198059.31810967252, 497315.59675348416),
+                    (198905.77028832512, 496326.16564610373),
+                    (198927.5555393, 496158.01734974474),
+                    (201224.10170516933, 495934.66565043014),
+                    (202639.41, 495198.44),
+                ]
+            ),
         ),
         4: BenchmarkRoute(
             Config.BASEDIR / "data/examples/case_04.gpkg",
