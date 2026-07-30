@@ -5,13 +5,16 @@
 import os
 from pathlib import Path
 import logging
+from dotenv import load_dotenv
+
+load_dotenv(override=True)  # reads variables from a .env file and sets them in os.environ
 
 
 class Config:
     # General
     BASEDIR = Path(__file__).parent
     LOG_LEVEL = int(os.environ.get("LOG_LEVEL", logging.INFO))
-    DEBUG = False
+    DEBUG: bool = os.environ.get("DEBUG", "false").lower() == "true"
     CRS = 28992  # https://epsg.io/28992
 
     # MCDA
