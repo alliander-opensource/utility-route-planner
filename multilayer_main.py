@@ -89,6 +89,8 @@ def run_benchmark_case(benchmark_case_ids: list[int] = typer.Argument(None)):
 
     # TODO determine proper values for crossings
     # TODO add scores to the linestring (suitability score)
+    # TODO improve the string pulling for height levels
+    # TODO add tests for arcfillets
     """
     reset_geopackage(Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT, truncate=False)
 
