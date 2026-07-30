@@ -31,6 +31,7 @@ from utility_route_planner.models.multilayer_network.multilayer_route_helpers im
     get_quadratic_bezier,
     get_inradius,
     get_tangent_arc_fillet,
+    create_arc_fillets,
 )
 from utility_route_planner.util.geo_utilities import get_first_last_point_from_linestring, get_empty_geodataframe
 from utility_route_planner.util.timer import time_function
@@ -55,6 +56,7 @@ class MultiLayerRouteResults:
     collapsed_node_indices: list = field(default_factory=list)
     quadratic_bezier_linestring: shapely.LineString = field(default_factory=shapely.LineString)
     string_pulled_linestring: shapely.LineString = field(default_factory=shapely.LineString)
+    arc_fillet_linestring: shapely.LineString = field(default_factory=shapely.LineString)
 
     def write_to_geopackage(self, out: Path, prefix: str = "") -> None:
         """Write results containing a geometry to file using the dataclass field name."""
@@ -125,8 +127,12 @@ class MultilayerRouteEngine:
         self.results.collapsed_linestring, self.results.collapsed_node_indices = self.get_collapsed_route()
 
         if self.experimental_smoothing:
-            self.apply_bezier_curves(min_bend_radius=self.minimum_bending_radius)
-            self.apply_string_pulling(min_bend_radius=self.minimum_bending_radius)
+            try:
+                self.apply_fillets_and_180_turns()
+                self.apply_bezier_curves(min_bend_radius=self.minimum_bending_radius)
+                self.apply_string_pulling()
+            except Exception:
+                logger.exception("Error during experimental smoothing, skipping.")
 
         if self.write_output:
             self.results.write_to_geopackage(self.out, self.prefix)
@@ -493,11 +499,7 @@ class MultilayerRouteEngine:
         return set(costs).issubset(allowed)
 
     @time_function
-    def apply_string_pulling(
-        self,
-        min_bend_radius: float,
-        samples_per_curve: int = 30,
-    ):
+    def apply_string_pulling(self):
         """Apply string pulling"""
         logger.info("Starting route smoothing through application of string pulling / tangent arc fillets.")
 
@@ -646,6 +648,11 @@ class MultilayerRouteEngine:
         merged = shapely.remove_repeated_points(shapely.LineString(coordinates_merged), tolerance=0)
 
         self.results.string_pulled_linestring = merged
+
+    def apply_fillets_and_180_turns(self):
+        self.results.arc_fillet_linestring = create_arc_fillets(
+            self.results.collapsed_linestring, self.minimum_bending_radius
+        )
 
 
 @dataclass
