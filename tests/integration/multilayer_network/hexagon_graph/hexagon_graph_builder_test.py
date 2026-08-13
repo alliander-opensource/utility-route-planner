@@ -514,7 +514,6 @@ class TestHexagonGraphBuilderWithHeightLevels:
         assert len(e[e.connects_height_levels]) == 71
 
         # Find a route under the bridge
-        # TODO check string pulled linestring here
         route_engine.find_route(shapely.LineString([(6, 95), (6, 5)]))  # route should go under the bridge here (grass)
         assert route_engine.get_result_route_length_unprocessed() == pytest.approx(95, 0.5)
         # assert we can route from north to south through a tunnel
