@@ -136,8 +136,3 @@ def create_arc_fillets(line: shapely.LineString, radius: float, samples: int = 3
     stitched.append(coords[-1])
 
     return shapely.remove_repeated_points(shapely.LineString(stitched), tolerance=0)
-
-
-def get_inradius(hexagon_size: float) -> float:
-    """Get the inradius of a hexagon for checking intersections with cost surface nodes during straightening."""
-    return math.sqrt(3) * hexagon_size / 2

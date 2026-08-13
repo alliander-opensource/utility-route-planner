@@ -18,8 +18,8 @@ from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_graph
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_grid_builder import HexagonGridBuilder
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_utils import (
     convert_hexagon_edges_to_gdf,
+    get_inradius,
 )
-from utility_route_planner.models.multilayer_network.multilayer_route_helpers import get_inradius
 from utility_route_planner.models.multilayer_network.multilayer_route_planner import MultilayerRouteEngine
 from utility_route_planner.util.graph_utilities import build_osm_test_graph
 from utility_route_planner.models.mcda.mcda_engine import McdaCostSurfaceEngine
@@ -121,10 +121,11 @@ class TestPipeRamming:
                 (11, 12, 112),
             ],
         )
+        gdf = gpd.GeoDataFrame(data=[(0, shapely.Point())], columns=["suitability_value", "geometry"])
 
         # Enable debug for visual debugging in QGIS.
         crossings = GetPotentialPipeRammingCrossings(
-            osm_graph, cost_surface_graph=rx.PyGraph(), cost_surface_nodes=gpd.GeoDataFrame(), debug=self.debug
+            osm_graph, cost_surface_graph=rx.PyGraph(), cost_surface_nodes=gdf, debug=self.debug
         )
         crossings.create_street_segment_groups()
 
@@ -372,11 +373,11 @@ class TestPipeRammingTheoryExamples:
                 (),
                 (),
                 3,
-                130,
-                116,
-                805,
+                131,
+                118,
+                820,
                 1,
-                [(0.3, -6.7), (99, 39.8)],
+                [(0.3, -6.7), (99.734, 39.599)],
             ),
             # With obstacles
             (
@@ -389,11 +390,11 @@ class TestPipeRammingTheoryExamples:
                     [20, 0, shapely.Point(65.5, -7).buffer(4)],
                 ],
                 2,
-                128,
-                117,
-                840,
+                130.5,
+                119.8,
+                865,
                 2,
-                [(0.3, -6.7), (99, 39.8)],
+                [(0.3, -6.7), (99.734, 39.599)],
             ),
         ],
     )
@@ -485,9 +486,9 @@ class TestPipeRammingTheoryExamples:
                 (),
                 (),
                 3,
-                106,
-                98,
-                681.5,
+                105.5,
+                98.8,
+                691.5,
                 1,
                 [(0.6, 6.5), (56, 49.5)],
             ),
@@ -499,9 +500,9 @@ class TestPipeRammingTheoryExamples:
                 ],
                 [[20, 0, shapely.Point(43.6, -8.2).buffer(6)], [20, shapely.Point(58, 19).buffer(4)]],
                 2,
-                123,
-                109,
-                838,
+                123.7,
+                110.3,
+                858,
                 2,
                 [(0.6, 6.5), (99, -7)],
             ),
@@ -594,9 +595,9 @@ class TestPipeRammingTheoryExamples:
                 (),
                 (),
                 4,
-                118,
-                109,
-                803,
+                119,
+                112.5,
+                833,
                 2,
                 [(0.3, -6.7), (56.23, 49.68)],
             ),
@@ -617,12 +618,12 @@ class TestPipeRammingTheoryExamples:
                     [120, 0, shapely.LineString([(60, -18), (99, -18)]).buffer(8, cap_style="flat")],
                 ],
                 [
-                    [20, 0, shapely.Point(42.573, 8.294).buffer(4)],
+                    [20, 0, shapely.Point(42.573, 8.294).buffer(8)],
                 ],
-                4,
-                118,
-                111,
-                806.5,
+                2,
+                121,
+                114.1,
+                836.5,
                 2,
                 [(0.3, -6.7), (56.23, 49.68)],
             ),
@@ -721,22 +722,22 @@ class TestPipeRammingTheoryExamples:
                 (),
                 (),
                 9,
-                124,
-                111,
-                783.5,
+                141,
+                127,
+                886.5,
                 1,
-                ((1, -3), (93, 45)),
+                ((1, -3), (93.766, 44.783)),
             ),
             # With obstacles
             (
                 [[120, 0, shapely.LineString([(2, -26), (44, -18), (63, -36)]).buffer(8, cap_style="flat")]],
                 [[20, 0, shapely.Point(43, 6).buffer(4)]],
-                9,
-                138,
-                123,
-                913.5,
+                8,
+                136,
+                124,
+                895.0,
                 2,
-                [(1, -3), (93, 45)],
+                [(1, -3), (93.766, 44.783)],
             ),
         ],
     )
@@ -757,16 +758,16 @@ class TestPipeRammingTheoryExamples:
                 data=[
                     # road north
                     [30, 0, shapely.LineString([(50, 50), (50, 0)]).buffer(5, cap_style="flat")],
-                    [5, 0, shapely.LineString([(50, 50), (50, 0)]).buffer(7, cap_style="flat")],
+                    [5, 0, shapely.LineString([(50, 50), (50, 0)]).buffer(8, cap_style="flat")],
                     # road north-east
                     [30, 0, shapely.LineString([(50, 0), (90, 50)]).buffer(5, cap_style="flat")],
-                    [5, 0, shapely.LineString([(50, 0), (90, 50)]).buffer(7, cap_style="flat")],
+                    [5, 0, shapely.LineString([(50, 0), (90, 50)]).buffer(8, cap_style="flat")],
                     # road south-west
                     [30, 0, shapely.LineString([(50, 0), (100, -50)]).buffer(5, cap_style="flat")],
-                    [5, 0, shapely.LineString([(50, 0), (100, -50)]).buffer(7, cap_style="flat")],
+                    [5, 0, shapely.LineString([(50, 0), (100, -50)]).buffer(8, cap_style="flat")],
                     # road west
                     [30, 0, shapely.LineString([(50, 0), (0, -10)]).buffer(5, cap_style="flat")],
-                    [5, 0, shapely.LineString([(50, 0), (0, -10)]).buffer(7, cap_style="flat")],
+                    [5, 0, shapely.LineString([(50, 0), (0, -10)]).buffer(8, cap_style="flat")],
                 ],
                 columns=["suitability_value", "relatieveHoogteligging", "geometry"],
                 crs=Config.CRS,
@@ -833,24 +834,23 @@ class TestPipeRammingTheoryExamples:
                 (),
                 (),
                 3,
-                123,
-                108,
-                761.5,
+                124.7,
+                109.6,
+                775,
                 1,
                 [(1, 8), (98, -6)],
             ),
             # With obstacles
             (
                 [
-                    [120, 0, shapely.LineString([(10, 15), (45, 15)]).buffer(5, cap_style="flat")],
-                    [120, 0, shapely.LineString([(5, -15), (45, -15)]).buffer(5, cap_style="flat")],
-                    [120, 0, shapely.LineString([(55, -15), (95, -15)]).buffer(5, cap_style="flat")],
+                    [120, 0, shapely.LineString([(0, 15), (60, 15)]).buffer(5, cap_style="flat")],
+                    [120, 0, shapely.LineString([(0, -15), (100, -15)]).buffer(5, cap_style="flat")],
                 ],
                 [[20, 0, shapely.Point(30, -8).buffer(4)], [20, shapely.Point(65, 9).buffer(4)]],
-                3,
-                123,
-                108,
-                761.5,
+                2,
+                124.7,
+                109.6,
+                771.5,
                 1,
                 [(1, 8), (98, -6)],
             ),
@@ -940,9 +940,9 @@ class TestPipeRammingTheoryExamples:
                 (),
                 (),
                 6,
-                231,
-                211,
-                1385,
+                237.2,
+                216.2,
+                1456.5,
                 1,
                 [(1, 6), (159.4, -26.5)],
             ),
@@ -979,9 +979,9 @@ class TestPipeRammingTheoryExamples:
                     [20, 0, shapely.Point(75.1, -47.6).buffer(6.5)],
                 ],
                 4,
-                246,
-                225,
-                1481.5,
+                248.5,
+                227.1,
+                1496.5,
                 1,
                 [(1, 6), (159.4, -26.5)],
             ),

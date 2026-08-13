@@ -10,9 +10,12 @@ import shapely
 import rustworkx as rx
 
 from settings import Config
-from tests.integration.conftest import write_criteria_vectors, write_cost_surface_nodes
+from tests.integration.conftest import write_criteria_vectors, write_cost_surface_nodes, write_hexagons
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_graph_composer import build_and_compose_graph
-from utility_route_planner.models.multilayer_network.multilayer_route_helpers import get_inradius
+from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_utils import (
+    convert_hexagon_edges_to_gdf,
+    get_inradius,
+)
 from utility_route_planner.models.multilayer_network.multilayer_route_planner import MultilayerRouteEngine, Algorithm
 from utility_route_planner.util.write import reset_geopackage
 
@@ -63,9 +66,11 @@ class TestMultiLayerRouting:
             )
 
             if self.debug:
+                edges_gdf = convert_hexagon_edges_to_gdf(graph, nodes_gdf)
                 reset_geopackage(self.out, truncate=False)
                 write_criteria_vectors(self.project_area, processed_criteria_vectors, self.out)
                 write_cost_surface_nodes(get_inradius(self.hexagon_size), nodes_gdf, self.out)
+                write_hexagons(self.hexagon_size, edges_gdf, self.out)
 
             route_engine = MultilayerRouteEngine(
                 graph,
@@ -84,11 +89,12 @@ class TestMultiLayerRouting:
     def test_straightening_linestring_no_obstacle(self, setup_grid):
         route_engine = setup_grid(())
         # test that it can create a straight line: south -> north
-        start_end = shapely.LineString([(10, 90), (10, 10)])
+        start_end = shapely.LineString([(11.2, 90.8), (11.2, 10)])
         route_engine.find_route(start_end)
         assert len(route_engine.results.node_indices) == 20
         assert len(route_engine.results.collapsed_node_indices) == 2
         # Due to the flat top orientation, this is almost the same as the straightened line
+        assert route_engine.results.unprocessed_linestring.within(start_end.buffer(self.hexagon_size))
         assert route_engine.results.unprocessed_linestring.length == pytest.approx(82.2, abs=0.1)
         assert route_engine.results.collapsed_linestring.length == pytest.approx(82.2, abs=0.1)
         assert (
@@ -96,10 +102,11 @@ class TestMultiLayerRouting:
         )
 
         # Test that it can create a straight line: east -> west
-        start_end = shapely.LineString([(10, 90), (93.468, 90.874)])
+        start_end = shapely.LineString([(11.2, 90.8), (93.468, 90.874)])
         route_engine.find_route(start_end)
         assert len(route_engine.results.node_indices) == 23
         assert len(route_engine.results.collapsed_node_indices) == 2
+        assert route_engine.results.unprocessed_linestring.within(start_end.buffer(self.hexagon_size))
         assert route_engine.results.unprocessed_linestring.length == pytest.approx(95.3, abs=0.1)
         assert route_engine.results.collapsed_linestring.length == pytest.approx(82.5, abs=0.1)
         assert (
@@ -107,12 +114,14 @@ class TestMultiLayerRouting:
         )
 
         # test that it can create a straight line: diagonal
-        start_end = shapely.LineString([(10, 90), (90, 10)])
+        start_end = shapely.LineString([(11.2, 90.8), (93.7, 8.5)])
         route_engine.find_route(start_end)
-        assert len(route_engine.results.node_indices) == 30
+        assert len(route_engine.results.node_indices) == 31
         assert len(route_engine.results.collapsed_node_indices) == 2
-        assert route_engine.results.unprocessed_linestring.length == pytest.approx(125.5, abs=0.1)
-        assert route_engine.results.collapsed_linestring.length == pytest.approx(112.3, abs=0.1)
+        # Give it a bit more slack because it can go under/above the guideline.
+        assert route_engine.results.unprocessed_linestring.within(start_end.buffer(self.hexagon_size * 1.2))
+        assert route_engine.results.unprocessed_linestring.length == pytest.approx(129.9, abs=0.1)
+        assert route_engine.results.collapsed_linestring.length == pytest.approx(116.5, abs=0.1)
         assert (
             route_engine.results.quadratic_bezier_linestring.length == route_engine.results.collapsed_linestring.length
         )
@@ -120,35 +129,34 @@ class TestMultiLayerRouting:
     def test_straightening_linestring_small_obstacle(self, setup_grid):
         route_engine = setup_grid(
             (
-                [30, 0, shapely.Point(35, 50).buffer(15.1)],  # small round tower
-                [30, 0, shapely.LineString([(12, 6.3), (12, 0)]).buffer(1, cap_style="flat")],  # wall
+                [30, 0, shapely.Point(35, 50).buffer(13.6)],  # small round tower
             )
         )
         # test that it can properly navigate half of the small tower
         start_end = shapely.LineString([(10, 50), (93.7, 53.7)])
         route_engine.find_route(start_end)
         assert len(route_engine.results.node_indices) == 24
-        assert len(route_engine.results.collapsed_node_indices) == 3
+        assert len(route_engine.results.collapsed_node_indices) == 4
         assert route_engine.results.unprocessed_linestring.length == pytest.approx(99.6, abs=0.1)
-        assert route_engine.results.collapsed_linestring.length == pytest.approx(90.8, abs=0.1)
-        assert route_engine.results.quadratic_bezier_linestring.length == pytest.approx(89.8, abs=0.1)
+        assert route_engine.results.collapsed_linestring.length == pytest.approx(90.95, abs=0.1)
+        assert route_engine.results.quadratic_bezier_linestring.length == pytest.approx(90.46, abs=0.1)
 
     def test_straightening_linestring_small_obstacle_circumnavigation(self, setup_grid):
         route_engine = setup_grid(
             (
                 [30, 0, shapely.Point(33.665, 52.258).buffer(16.5)],  # small round tower
-                [30, 0, shapely.LineString([(33.665, 52.258), (33.665, 100)]).buffer(5, cap_style="flat")],  # wall
+                [30, 0, shapely.LineString([(33.665, 52.258), (33.665, 100)]).buffer(4.6, cap_style="flat")],  # wall
             )
         )
 
         start_end = shapely.LineString([(10, 50), (44.710, 98.006)])
         route_engine.find_route(start_end)
 
-        assert len(route_engine.results.node_indices) == 28
-        assert len(route_engine.results.collapsed_node_indices) == 7
-        assert route_engine.results.unprocessed_linestring.length == pytest.approx(116.9, abs=0.1)
-        assert route_engine.results.collapsed_linestring.length == pytest.approx(107.3, abs=0.1)
-        assert route_engine.results.quadratic_bezier_linestring.length == pytest.approx(106.1, abs=0.1)
+        assert len(route_engine.results.node_indices) == 29
+        assert len(route_engine.results.collapsed_node_indices) == 6
+        assert route_engine.results.unprocessed_linestring.length == pytest.approx(121.24, abs=0.1)
+        assert route_engine.results.collapsed_linestring.length == pytest.approx(112.3, abs=0.1)
+        assert route_engine.results.quadratic_bezier_linestring.length == pytest.approx(109.3, abs=0.1)
 
     def test_straightening_linestring_large_obstacle_and_zigzags(self, setup_grid):
         route_engine = setup_grid(
@@ -158,7 +166,7 @@ class TestMultiLayerRouting:
                 [
                     300,
                     0,
-                    shapely.LineString([(97.795, 6.253), (71.628, 17.343), (66.653, 4.718)]).buffer(
+                    shapely.LineString([(97.795, 6.253), (71.628, 17.343), (67.513, 6.487)]).buffer(
                         2, cap_style="flat"
                     ),
                 ],
@@ -168,11 +176,10 @@ class TestMultiLayerRouting:
         start_end = shapely.LineString([(7.323, 51.3), (74.935, 10.679)])
         route_engine.find_route(start_end)
 
-        assert len(route_engine.results.node_indices) == 50
-        assert len(route_engine.results.collapsed_node_indices) == 12
-        assert route_engine.results.unprocessed_linestring.length == pytest.approx(212.2, abs=0.1)
-        assert route_engine.results.collapsed_linestring.length == pytest.approx(194, abs=0.1)
-        assert route_engine.results.quadratic_bezier_linestring.length == pytest.approx(187.4, abs=0.1)
+        assert len(route_engine.results.node_indices) == 53
+        assert len(route_engine.results.collapsed_node_indices) == 13
+        assert route_engine.results.unprocessed_linestring.length == pytest.approx(225.1, abs=0.1)
+        assert route_engine.results.quadratic_bezier_linestring.length == pytest.approx(204.5, abs=0.1)
 
     def test_many_zigzags(self, setup_grid):
         inradius = get_inradius(self.hexagon_size)
@@ -181,34 +188,32 @@ class TestMultiLayerRouting:
         )
         route_engine = setup_grid(
             (
-                [300, 0, shapely.Point(7.535, 62.606).buffer(10).intersection(self.project_area)],
+                [300, 0, shapely.Point(7.535, 61.606).buffer(5.5).intersection(self.project_area)],
                 [300, 0, linestring.buffer(inradius, cap_style="flat")],
-                [80, 0, shapely.Point(37.149, 79.696).buffer(self.hexagon_size)],
-                [90, 0, shapely.Point(71.205, 64.922).buffer(self.hexagon_size)],
+                [80, 0, shapely.Point(40.906, 68.937).buffer(self.hexagon_size)],
+                [90, 0, shapely.Point(52.269, 66.457).buffer(self.hexagon_size)],
                 [111, 0, shapely.Point(63.637, 61.002).buffer(self.hexagon_size)],
-                [300, 0, linestring.offset_curve(-self.hexagon_size * 3).buffer(inradius, cap_style="flat")],
+                [300, 0, linestring.offset_curve(-self.hexagon_size * 6).buffer(inradius, cap_style="flat")],
             )
         )
 
-        start_end = shapely.LineString([(3.427, 73.255), (97.600, 10.573)])
+        start_end = shapely.LineString([(3.447, 69.203), (97.410, 2.085)])
         route_engine.find_route(start_end)
 
-        assert len(route_engine.results.node_indices) == 46
-        assert len(route_engine.results.collapsed_node_indices) == 7
-        assert route_engine.results.unprocessed_linestring.length == pytest.approx(194.8, abs=0.1)
-        assert route_engine.results.collapsed_linestring.length == pytest.approx(192.5, abs=0.1)
-        assert route_engine.results.quadratic_bezier_linestring.length == pytest.approx(188.5, abs=0.1)
-        assert route_engine.results.string_pulled_linestring.length == pytest.approx(184.8, abs=0.1)
+        assert len(route_engine.results.node_indices) == 45
+        assert len(route_engine.results.collapsed_node_indices) == 10
+        assert route_engine.results.unprocessed_linestring.length == pytest.approx(190.5, abs=0.1)
+        assert route_engine.results.collapsed_linestring.length == pytest.approx(190.5, abs=0.1)
+        assert route_engine.results.quadratic_bezier_linestring.length == pytest.approx(186.6, abs=0.1)
 
     def test_minimum_bending_radius(self, setup_grid):
-        inradius = get_inradius(self.hexagon_size)
         route_engine = setup_grid(
             (
-                [300, 0, shapely.LineString([(39.316, 63.809), (66.870, 80.155)]).buffer(inradius, cap_style="flat")],
-                [300, 0, shapely.Point(37.393, 62.681).buffer(inradius)],
-                [300, 0, shapely.Point(37.326, 58.338).buffer(inradius)],
-                [300, 0, shapely.Point(41.338, 56.182).buffer(inradius)],
-                [300, 0, shapely.Point(44.853, 58.271).buffer(inradius)],
+                [300, 0, shapely.LineString([(39.316, 63.809), (66.870, 80.155)]).buffer(1, cap_style="flat")],
+                [300, 0, shapely.Point(37.393, 62.681).buffer(1)],
+                [300, 0, shapely.Point(37.326, 58.338).buffer(1)],
+                [300, 0, shapely.Point(41.338, 56.182).buffer(1)],
+                [300, 0, shapely.Point(44.853, 58.271).buffer(1)],
             )
         )
         route_engine.find_route(shapely.LineString([(41.073, 60.427), (48.699, 73.604)]))
@@ -226,28 +231,28 @@ class TestMultiLayerRouting:
                     10,
                     0,
                     shapely.LineString([(0, 80), (100, 80)])
-                    .buffer(3, cap_style="flat")
+                    .buffer(2, cap_style="flat")
                     .intersection(self.project_area),
                 ],
                 [
                     20,
                     0,
                     shapely.LineString([(0, 58), (100, 58)])
-                    .buffer(3, cap_style="flat")
+                    .buffer(2, cap_style="flat")
                     .intersection(self.project_area),
                 ],
                 [
                     30,
                     0,
                     shapely.LineString([(0, 40), (100, 40)])
-                    .buffer(3, cap_style="flat")
+                    .buffer(2, cap_style="flat")
                     .intersection(self.project_area),
                 ],
                 [
                     40,
                     0,
                     shapely.LineString([(0, 20), (100, 20)])
-                    .buffer(3, cap_style="flat")
+                    .buffer(2, cap_style="flat")
                     .intersection(self.project_area),
                 ],
             )
@@ -255,7 +260,7 @@ class TestMultiLayerRouting:
         # Straight crossing
         route_engine.find_route(shapely.LineString([(52, 1), (52, 99)]))
         assert len(route_engine.results.node_indices) == 23
-        assert len(route_engine.results.collapsed_node_indices) == 10
+        assert len(route_engine.results.collapsed_node_indices) == 17
 
         assert route_engine.results.unprocessed_linestring.length == pytest.approx(95.2, abs=0.1)
         assert route_engine.results.collapsed_linestring.length == pytest.approx(95.2, abs=0.1)
@@ -264,11 +269,11 @@ class TestMultiLayerRouting:
         # Diagonal crossing
         route_engine.find_route(shapely.LineString([(93.581, 95.256), (7.495, 6.328)]))
         assert len(route_engine.results.node_indices) == 33
-        assert len(route_engine.results.collapsed_node_indices) == 10
+        assert len(route_engine.results.collapsed_node_indices) == 17
 
         assert route_engine.results.unprocessed_linestring.length == pytest.approx(138.5, abs=0.1)
-        assert route_engine.results.collapsed_linestring.length == pytest.approx(134.1, abs=0.1)
-        assert route_engine.results.quadratic_bezier_linestring.length == pytest.approx(129.8, abs=0.1)
+        assert route_engine.results.collapsed_linestring.length == pytest.approx(136.8, abs=0.1)
+        assert route_engine.results.quadratic_bezier_linestring.length == pytest.approx(133.2, abs=0.1)
 
     @pytest.mark.skip(reason="Bezier curves do not respect suitability value.")
     def test_bezier_curvature(self, setup_grid):
@@ -292,72 +297,66 @@ class TestMultiLayerRouting:
             route_engine.find_route(start_end)
             route_engine.get_source_and_target_nodes(start_end)
 
-    def setup_segments(self, edges):
+
+class TestSegmentizer:
+    def setup_segments(self, node_suitability, height_edges=(), junction_edges=()):
         nodes = gpd.GeoDataFrame(
-            data=[(i, shapely.Point()) for i in range(len(edges) + 1)],
-            columns=["id", "geometry"],
+            data=[(i, suitability, shapely.Point()) for i, suitability in enumerate(node_suitability)],
+            columns=["id", "suitability_value", "geometry"],
         )
-        route_engine = MultilayerRouteEngine(rx.PyGraph(), rx.PyGraph(), nodes, hexagon_size=self.hexagon_size)
+        edges = pd.DataFrame(
+            data=[
+                (
+                    source + target,
+                    edge_index in height_edges,
+                    "JUNCTION" if edge_index in junction_edges else np.nan,
+                )
+                for edge_index, (source, target) in enumerate(zip(node_suitability, node_suitability[1:]))
+            ],
+            columns=["weight", "connects_height_levels", "origin"],
+        )
+        route_engine = MultilayerRouteEngine(rx.PyGraph(), rx.PyGraph(), nodes, hexagon_size=1)
         route_engine.results.unprocessed_edges = edges
-        route_engine.results.node_indices = [i for i in range(len(edges) + 1)]
+        route_engine.results.node_indices = list(range(len(nodes)))
         return route_engine.get_segments()
 
     def test_create_segments_suitability_value_change(self):
-        edges = pd.DataFrame(
-            data=[
-                (10, False, np.nan),
-                (10, False, np.nan),
-                (100, False, np.nan),
-                (100, False, np.nan),
-                (10, False, np.nan),
-                (11, False, np.nan),
-                (12, False, np.nan),
-                (10, False, np.nan),
-            ],
-            columns=["weight", "connects_height_levels", "origin"],
-        )
-        segments = self.setup_segments(edges)
+        segments = self.setup_segments([10, 10, 10, 100, 100, 10, 11, 12, 10])
 
         assert segments["segment"].to_list() == [1, 1, 1, 2, 2, 3, 4, 5, 6]
 
+    def test_create_segments_isolated_suitability_value(self):
+        segments = self.setup_segments([2, 2, 2, 111, 2, 2])
+
+        assert segments["segment"].to_list() == [1, 1, 1, 2, 3, 3]
+
     def test_create_segments_height_level_changes(self):
-        edges = pd.DataFrame(
-            data=[
-                (10, False, np.nan),
-                (10, False, np.nan),
-                (10, False, np.nan),
-                (10, True, np.nan),
-                (10, False, np.nan),
-                (10, False, np.nan),
-                (10, True, np.nan),
-                (10, False, np.nan),
-            ],
-            columns=["weight", "connects_height_levels", "origin"],
-        )
-        segments = self.setup_segments(edges)
+        segments = self.setup_segments([10] * 9, height_edges=(3, 6))
 
         assert segments["segment"].to_list() == [1, 1, 1, 1, 2, 3, 3, 4, 5]
 
     def test_create_segments_mixed_changes(self):
-        edges = pd.DataFrame(
-            data=[
-                (10, False, np.nan),
-                (1222, False, "JUNCTION"),
-                (10, False, np.nan),
-                (10, False, np.nan),
-                (130, False, np.nan),
-                (130, False, np.nan),
-                (10, False, np.nan),
-                (10, False, np.nan),
-                (99, False, np.nan),
-                (10, False, np.nan),
-                (263, False, "JUNCTION"),
-                (301, False, "JUNCTION"),
-                (10, False, np.nan),
-                (10, False, np.nan),
-            ],
-            columns=["weight", "connects_height_levels", "origin"],
+        segments = self.setup_segments(
+            [10, 10, 10, 10, 10, 30, 30, 10, 10, 99, 10, 10, 10, 10, 10],
+            junction_edges=(1, 10, 11),
         )
-        segments = self.setup_segments(edges)
 
         assert segments["segment"].to_list() == [1, 1, 2, 3, 3, 4, 4, 5, 5, 6, 7, 8, 9, 10, 10]
+
+    def test_create_segments_mixed_changes_with_junction_and_height(self):
+        segments = self.setup_segments(
+            [2, 2, 2, 2, 2, 2, 2, 2, 2, 2],
+            junction_edges=(2,),
+            height_edges=(6,),
+        )
+
+        assert segments["segment"].to_list() == [1, 1, 1, 2, 3, 3, 3, 4, 5, 5]
+
+    def test_create_segments_mixed_changes_with_junction_and_height_and_value(self):
+        segments = self.setup_segments(
+            [2, 2, 20, 2, 2, 2, 2, 2, 2, 2],
+            junction_edges=(2,),
+            height_edges=(6,),
+        )
+
+        assert segments["segment"].to_list() == [1, 1, 2, 3, 4, 4, 4, 5, 6, 6]

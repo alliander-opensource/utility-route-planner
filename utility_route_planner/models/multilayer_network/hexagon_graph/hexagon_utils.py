@@ -38,6 +38,46 @@ def get_hexagon_width_and_height(hexagon_size: float) -> tuple[float, float]:
     return hexagon_width, hexagon_height
 
 
+def get_inradius(hexagon_size: float) -> float:
+    """Get the inradius of a hexagon."""
+    return math.sqrt(3) * hexagon_size / 2
+
+
+def build_flat_top_hexagons(hexagon_centroid_grid: gpd.GeoDataFrame, hexagon_size: float) -> np.ndarray:
+    """
+    Vectorized construction of flat-top hexagon polygons from their centroids.
+
+    :param hexagon_centroid_grid: GeoDataFrame containing the centroids of the hexagons
+    :param hexagon_size: inner circle of the hexagon
+    :return: numpy array of shapely.Polygon objects, one per input centroid
+    """
+    coords = hexagon_centroid_grid.get_coordinates()
+    x, y = coords["x"].to_numpy(), coords["y"].to_numpy()
+
+    inradius = get_inradius(hexagon_size)
+
+    # Vertex offsets for a flat-top hexagon, closed ring (first vertex repeated at the end).
+    dx = np.array(
+        [
+            hexagon_size,
+            hexagon_size / 2,
+            -hexagon_size / 2,
+            -hexagon_size,
+            -hexagon_size / 2,
+            hexagon_size / 2,
+            hexagon_size,
+        ]
+    )
+    dy = np.array([0.0, inradius, inradius, 0.0, -inradius, -inradius, 0.0])
+
+    # Broadcast centroids against the constant offsets to a (N, 7, 2) coordinate array.
+    coords = np.empty((x.size, dx.size, 2), dtype=np.float64)
+    coords[:, :, 0] = x[:, None] + dx[None, :]
+    coords[:, :, 1] = y[:, None] + dy[None, :]
+
+    return shapely.polygons(coords)
+
+
 def update_edge_id(
     new_id: int, hexagon_edge: hexagon_edge_info | BaseWeightedEdgeInfo
 ) -> hexagon_edge_info | BaseWeightedEdgeInfo:

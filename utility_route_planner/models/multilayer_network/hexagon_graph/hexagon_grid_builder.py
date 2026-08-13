@@ -11,7 +11,10 @@ import polars as pl
 import shapely
 import structlog
 
-from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_utils import get_hexagon_width_and_height
+from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_utils import (
+    get_hexagon_width_and_height,
+    build_flat_top_hexagons,
+)
 from settings import Config
 
 logger = structlog.get_logger(__name__)
@@ -144,14 +147,37 @@ class HexagonGridBuilder:
 
         return concatenated_vectors
 
-    @staticmethod
-    def filter_block_to_project_area(bounding_box_grid: gpd.GeoDataFrame, concatenated_vectors) -> gpd.GeoDataFrame:
-        points_within_project_area = gpd.sjoin(
-            bounding_box_grid,
+    def filter_block_to_project_area(
+        self, bounding_box_grid: gpd.GeoDataFrame, concatenated_vectors
+    ) -> gpd.GeoDataFrame:
+        """
+        Create temporarily hexagons from the centroid grid for the spatial join. Filter to project area and discard
+        hexagon geometry afterward, keep only centroids.
+        """
+        hexagons = build_flat_top_hexagons(bounding_box_grid, self.hexagon_size)
+        hexagon_grid = gpd.GeoDataFrame(
+            {
+                "node_id": bounding_box_grid["node_id"].to_numpy(),
+                "centroid": bounding_box_grid.geometry.to_numpy(),
+            },
+            geometry=gpd.GeoSeries(hexagons, index=bounding_box_grid.index, crs=Config.CRS),
+            crs=Config.CRS,
+        )
+
+        joined = gpd.sjoin(
+            hexagon_grid,
             concatenated_vectors[["group", "suitability_value", "geometry"]],
-            predicate="within",
+            predicate="intersects",
             how="inner",
-        ).set_index("node_id")
+        )
+
+        # Discard the hexagon polygons and restore the centroid point as the active geometry.
+        points_within_project_area = (
+            joined.drop(columns="geometry")
+            .rename(columns={"centroid": "geometry"})
+            .set_geometry("geometry")
+            .set_index("node_id")
+        )
 
         return points_within_project_area
 

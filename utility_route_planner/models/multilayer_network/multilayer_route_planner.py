@@ -3,9 +3,9 @@
 # SPDX-License-Identifier: Apache-2.0
 from dataclasses import dataclass, field, fields
 from enum import auto, Enum
+from functools import cached_property
 from pathlib import Path
 import math
-from typing import Any
 
 import pandas as pd
 import rustworkx as rx
@@ -24,12 +24,13 @@ from utility_route_planner.models.multilayer_network.graph_datastructures import
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_utils import (
     get_hexagon_edge_geometries_for_path,
     get_hexagon_node_geometry,
+    build_flat_top_hexagons,
+    get_inradius,
 )
 from utility_route_planner.models.multilayer_network.multilayer_route_helpers import (
     _angle_between,
     _point_along,
     get_quadratic_bezier,
-    get_inradius,
     get_tangent_arc_fillet,
     create_arc_fillets,
 )
@@ -101,9 +102,15 @@ class MultilayerRouteEngine:
         self.out = out
 
         self.results = MultiLayerRouteResults()
+        # Set in find_route; used by the A* heuristic as the crow-flies target.
+        self._target_point: shapely.Point = shapely.Point()
 
     def find_route(self, start_end: shapely.LineString):
         source, target = self.get_source_and_target_nodes(start_end)
+
+        # Keep the true target geometry so the A* heuristic can aim straight at it (a lower-bound
+        # estimate) instead of at an intermediate guideline vertex.
+        self._target_point = get_hexagon_node_geometry(self.gdf_cost_surface_nodes, target)
 
         straight_line = self.get_linestring(source, target)
         # Offset to avoid it being exactly on top of the nodes, causes issues with distance calculations during routing.
@@ -167,15 +174,35 @@ class MultilayerRouteEngine:
             logger.warning("Unexpected situation during routing.")
         return weight + distance
 
-    def get_weight_astar(self, edge: BaseWeightedEdgeInfo) -> float:
-        return self.cost_surface_graph.get_edge_data_by_index(edge.edge_id).weight
+    def get_weight_astar(self, edge: BaseWeightedEdgeInfo, tie_break: float = 1e-3) -> float:
+        """
+        Compass tie-breaker: nudge equal-cost routes toward the crow-flies guideline. Edge weights
+        are integers in [1, 256], so the smallest real difference is 1. We scale the guideline
+        deviation by `tie_break` and clamp the result to < 1, guaranteeing this term can only decide
+        ties and never override a genuine suitability difference.
+        """
+        weight = self.cost_surface_graph.get_edge_data_by_index(edge.edge_id).weight
+
+        node_1, node_2 = self.cost_surface_graph.get_edge_endpoints_by_index(edge.edge_id)
+        edge_line = self.get_linestring(node_1, node_2)
+        deviation_penalty = min(tie_break * edge_line.distance(self.results.guideline), 0.999)
+
+        return weight + deviation_penalty
 
     def get_estimate_astar(self, node: NodeInfo) -> float:
+        """
+        Convert the geometric distance into an admissible cost lower bound. Edge weights are
+        suitability-based (sum of two node values), not distances, so a raw Euclidean estimate
+        overestimates the true remaining cost whenever the cost-per-distance drops below 1 (which
+        happens on diagonal moves at low base suitability), breaking A* optimality and disabling the
+        guideline compass. In a flat-top hex grid all six neighbours are equidistant, so the minimum
+        remaining cost is at least (distance / neighbour_spacing) steps at the cheapest possible edge
+        weight.
+        """
         node_point = get_hexagon_node_geometry(self.gdf_cost_surface_nodes, node.node_id)
-        guideline = shapely.LineString([node_point, shapely.get_point(self.results.guideline, 1)])
-        # TODO i think this can be improved, the guideline is not always leading
+        distance = node_point.distance(self._target_point)
 
-        return guideline.length
+        return distance / self.hexagon_neighbour_distance * self.minimum_edge_suitability_value
 
     def get_linestring(self, node_1: int, node_2: int) -> shapely.LineString:
         nodes = self.gdf_cost_surface_nodes
@@ -186,6 +213,16 @@ class MultilayerRouteEngine:
             ]
         )
         return edge_line
+
+    @cached_property
+    def hexagon_neighbour_distance(self):
+        """Get the distance between two neighbouring hexagon centroids."""
+        return get_inradius(self.hexagon_size) * 2
+
+    @cached_property
+    def minimum_edge_suitability_value(self):
+        """Get the minimum edge suitability value."""
+        return 2 * Config.MIN_NODE_SUITABILITY_VALUE
 
     @time_function
     def find_path_node_indices(self, source, target):
@@ -238,7 +275,7 @@ class MultilayerRouteEngine:
         return (costs * 2).tolist()
 
     @time_function
-    def get_collapsed_route(self) -> tuple[shapely.LineString, list[int]]:
+    def get_collapsed_route(self, debug: bool = False) -> tuple[shapely.LineString, list[int]]:
         """
         The idea is to create shortcuts in the route by skipping nodes if the cost does not change. This is done by
         creating a linestring from the current node to the next node in the route and checking if the suitability values
@@ -276,17 +313,24 @@ class MultilayerRouteEngine:
                     shortcut_order.append(node_id)
                 continue
 
-            start_node = int(gdf_active_mask.iloc[0]["node_id"])
-            forwarded_node = int(gdf_active_mask.iloc[1]["node_id"])
-            end_node = int(gdf_active_mask.iloc[-1]["node_id"])
+            # Always forward from the last node actually committed to the collapsed route. If
+            # that anchor belongs to the current segment, only nodes after it are candidates;
+            # otherwise all nodes in this new segment are candidates.
+            start_node = int(shortcut_order[-1])
+            anchor_positions = gdf_active_mask.index[gdf_active_mask["node_id"] == start_node]
+            if len(anchor_positions) > 0:
+                remaining_nodes = gdf_active_mask[gdf_active_mask.index > anchor_positions[-1]]
+            else:
+                remaining_nodes = gdf_active_mask
 
-            while start_node != end_node:
+            while not remaining_nodes.empty:
                 # For each node in the active segment, create a line from start_node and compute shortcut costs.
                 # Pick the last node (most skipped) with still the same suitability costs
+                forwarded_node = int(remaining_nodes.iloc[0]["node_id"])
                 basic_cost = self.cost_surface_graph.get_edge_data(start_node, forwarded_node).weight
                 start_node_geom = get_hexagon_node_geometry(self.gdf_cost_surface_nodes, node_id=start_node)
                 # Create lines from start_node to all nodes in the active segment
-                series_forwarded = gpd.GeoSeries(shapely.shortest_line(start_node_geom, gdf_active_mask["geometry"]))
+                series_forwarded = gpd.GeoSeries(shapely.shortest_line(start_node_geom, remaining_nodes["geometry"]))
                 if current_height_level != 0:
                     # Select only those nodes within a reasonable perimeter of the route
                     height_nodes = self.gdf_cost_surface_nodes[
@@ -314,20 +358,23 @@ class MultilayerRouteEngine:
                 )
 
                 # Filter nodes where shortcut costs equal basic_cost
-                valid_nodes = gdf_active_mask[series_shortcut_costs.apply(lambda costs: costs == [basic_cost])]
+                valid_nodes = remaining_nodes[series_shortcut_costs.apply(lambda costs: costs == [basic_cost])]
 
                 if valid_nodes.empty:
-                    # No valid shortcut found for this part of the segment, move to the next node
-                    shortcut_order.append(int(forwarded_node))
-                    gdf_active_mask = gdf_active_mask[1:]
-                    start_node = int(gdf_active_mask.iloc[0]["node_id"])
-                    forwarded_node = int(gdf_active_mask.iloc[1]["node_id"]) if len(gdf_active_mask) > 1 else end_node
+                    # Preserve the first node after a cost/special boundary when no shortcut is valid.
+                    selected_row = remaining_nodes.iloc[0]
                 else:
                     # Pick the last valid node (most nodes skipped)
-                    start_node = int(valid_nodes.iloc[-1]["node_id"])
+                    selected_row = valid_nodes.iloc[-1]
+
+                start_node = int(selected_row["node_id"])
+                if shortcut_order[-1] != start_node:
                     shortcut_order.append(start_node)
-                    gdf_active_mask = gdf_active_mask[gdf_active_mask.index > valid_nodes.iloc[-1].name]
-                    forwarded_node = int(gdf_active_mask.iloc[0]["node_id"]) if len(gdf_active_mask) > 0 else end_node
+                remaining_nodes = remaining_nodes[remaining_nodes.index > selected_row.name]
+
+                if debug:
+                    temp = gpd.GeoDataFrame(series_forwarded).join(series_shortcut_costs, rsuffix="val_")
+                    write_results_to_geopackage(self.out, temp, "pytest_forwarded", overwrite=True)
 
         shortcut_linestring = shapely.LineString(
             gdf_crossed_nodes[gdf_crossed_nodes["node_id"].isin(shortcut_order)].geometry.to_list()
@@ -339,7 +386,8 @@ class MultilayerRouteEngine:
 
         return shortcut_linestring, shortcut_order
 
-    def get_segments(self) -> Any:
+    def get_segments(self) -> gpd.GeoDataFrame:
+        """Create segments so we do not shortcut across terrain which could invalidate suitability value integrity."""
         gdf_crossed_nodes = self.gdf_cost_surface_nodes.loc[self.results.node_indices].reset_index()
         edges = self.results.unprocessed_edges.reset_index(drop=True)
 
@@ -347,21 +395,18 @@ class MultilayerRouteEngine:
         is_junction = edges["origin"].notna() if "origin" in edges.columns else pd.Series(False, index=edges.index)
         is_special = is_height | is_junction
 
-        # An edge starts a new segment when:
-        #  - it is special (height transition or junction crossing)
-        #  - the previous edge was special (so the node after a special edge starts fresh)
-        #  - its weight differs from the previous edge.
-        edge_break = is_special | is_special.shift(fill_value=False) | (edges["weight"] != edges["weight"].shift())
-        edge_break.iloc[0] = True
-        edge_segment = edge_break.cumsum()
+        # Normal edge weights are the sum of both endpoint suitability values. Consequently,
+        # A -> B and B -> A have the same weight, so edge-weight changes cannot identify the
+        # boundary after an isolated B node. Define ordinary boundaries from the nodes instead.
+        node_break = gdf_crossed_nodes["suitability_value"].ne(gdf_crossed_nodes["suitability_value"].shift())
 
-        # Map edge segments onto nodes. Node i takes the segment of the edge that arrives at it
-        # (edge i-1). The first node takes the first edge's segment.
-        node_segment = pd.Series(index=gdf_crossed_nodes.index, dtype=int)
-        node_segment.iloc[0] = edge_segment.iloc[0]
-        node_segment.iloc[1:] = edge_segment.values
+        # A special edge and the node immediately after it must each start a segment, preventing
+        # collapsed shortcuts from crossing a height transition or pipe-ramming junction.
+        node_break.iloc[1:] |= is_special.to_numpy()
+        if len(gdf_crossed_nodes) > 2:
+            node_break.iloc[2:] |= is_special.iloc[:-1].to_numpy()
 
-        gdf_crossed_nodes["segment"] = node_segment.values.astype(int)
+        gdf_crossed_nodes["segment"] = node_break.cumsum().astype(int)
         return gdf_crossed_nodes
 
     @time_function
@@ -390,6 +435,7 @@ class MultilayerRouteEngine:
         logger.info("Starting route smoothing through application of bezier curves.")
 
         # TODO retrieve height during edge transition
+        # TODO use hexagon geometry rather than inradius buffered centroids
         height = 0
 
         # -- part 1: sanity check
@@ -512,7 +558,7 @@ class MultilayerRouteEngine:
             raise ValueError("Results seem to be desynced, exiting.")
 
         if len(self.results.collapsed_node_indices) < 3:
-            logger.info("The resulting collapsed route has less than 3 points, unable to create a fillet.")
+            logger.info("The resulting collapsed route has less than 3 points, skipping string pulling.")
             self.results.string_pulled_linestring = self.results.collapsed_linestring
             return
 
@@ -583,9 +629,11 @@ class MultilayerRouteEngine:
             ]
             if obstacle_hexagons.empty:
                 continue
-            obstacle = obstacle_hexagons.buffer(inradius * 1.01).union_all().intersection(obstacle_area)
+            obstacle_hexagons_1 = build_flat_top_hexagons(obstacle_hexagons, self.hexagon_size)
+            # obstacle = obstacle_hexagons.buffer(inradius * 1.01).union_all().intersection(obstacle_area)
+            obstacle = gpd.GeoSeries(obstacle_hexagons_1).buffer(0.01).union_all().intersection(obstacle_area)
 
-            convex_hull = shapely.convex_hull(shapely.GeometryCollection([obstacle, line_with_obstacle]))
+            convex_hull = shapely.convex_hull(shapely.GeometryCollection([obstacle]))
             if not isinstance(convex_hull, shapely.Polygon):
                 continue
 
@@ -617,7 +665,7 @@ class MultilayerRouteEngine:
 
             taut_points = shapely.MultiPoint(hull_points)
             if taut_points.is_empty or len(taut_points.geoms) < 2:
-                print("stahp")
+                print("handle this situation")
                 continue
 
             new_pieces.append(shapely.LineString([*taut_points.geoms]))
@@ -631,7 +679,10 @@ class MultilayerRouteEngine:
                     overwrite=True,
                 )
                 write_results_to_geopackage(self.out, line_with_obstacle, f"{prefix}line_with_obstacle", overwrite=True)
-                write_results_to_geopackage(self.out, obstacle, f"{prefix}obstacle", overwrite=True)
+                write_results_to_geopackage(
+                    self.out, gpd.GeoSeries(obstacle_hexagons_1), f"{prefix}obstacle_hexagons", overwrite=True
+                )
+                write_results_to_geopackage(self.out, obstacle.buffer(0.1), f"{prefix}obstacle", overwrite=True)
                 write_results_to_geopackage(self.out, obstacle_area, f"{prefix}obstacle_area", overwrite=True)
                 write_results_to_geopackage(self.out, obstacle_hexagons, f"{prefix}obstacle_hexagons", overwrite=True)
                 write_results_to_geopackage(self.out, convex_hull, f"{prefix}convex_hull", overwrite=True)

@@ -7,7 +7,7 @@ from pathlib import Path
 import logging
 from dotenv import load_dotenv
 
-load_dotenv(override=True)  # reads variables from a .env file and sets them in os.environ
+load_dotenv(override=True)
 
 
 class Config:
