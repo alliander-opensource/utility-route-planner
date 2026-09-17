@@ -474,7 +474,7 @@ class MultilayerRouteEngine:
             )
 
         # part 3: apply curves.
-        # TODO do something about the arbitrary shrinking. it should "hug" the inradius of adjacent higher value hexagons
+        # Note the arbitrary shrinking. it should "hug" the inradius of adjacent higher value hexagons
         # - for "normal" segment pairs, apply quadratic beziers
         # - for height transitions / pipe ramming we can possibly get a 180 degree reversal, so we need to apply a
         #   circular arc with the largest radius that still fits the inradius corridor.
