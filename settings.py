@@ -44,6 +44,7 @@ class Config:
     MIN_PIPE_RAMMING_LENGTH_M: float = 3
     SUITABILITY_VALUE_CROSSING_THRESHOLD: float = 10
     SUITABILITY_VALUE_OBSTACLES_THRESHOLD: float = 76
+    K_SHORTEST_PATH_SIMILARITY_THRESHOLD = 0.5
 
     # input/output paths.
     PATH_RESULTS = BASEDIR / "data/processed"
