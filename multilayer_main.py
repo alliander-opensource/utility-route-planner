@@ -89,7 +89,6 @@ def run_benchmark_case(benchmark_case_ids: list[int] = typer.Argument(None)):
 
     # TODO determine proper values for crossings
     # TODO add scores to the linestring (suitability score)
-    # TODO improve the string pulling for height levels
     # TODO add tests for arcfillets
     """
     reset_geopackage(Config.PATH_GEOPACKAGE_MULTILAYER_NETWORK_OUTPUT, truncate=False)
@@ -103,6 +102,18 @@ def run_benchmark_case(benchmark_case_ids: list[int] = typer.Argument(None)):
             reset_geopackage(Config.PATH_GEOPACKAGE_MCDA_OUTPUT, truncate=False)
             benchmark_route = benchmark_routes.get_case(benchmark_case_id)
 
+            # Optionally start/end of route
+            if benchmark_route.custom_start_end.is_empty:
+                start_end = (
+                    gpd.read_file(
+                        benchmark_route.path_geopackage, layer=benchmark_route.layer_name_human_designed_route
+                    )
+                    .iloc[0]
+                    .geometry
+                )
+            else:
+                start_end = benchmark_route.custom_start_end
+            # Optionally overwrite project area
             if benchmark_route.custom_project_area.is_empty:
                 project_area = (
                     gpd.read_file(benchmark_route.path_geopackage, layer=benchmark_route.layer_name_project_area)
@@ -115,9 +126,7 @@ def run_benchmark_case(benchmark_case_ids: list[int] = typer.Argument(None)):
             run_multilayer_network(
                 Config.RASTER_PRESET_NAME_BENCHMARK,
                 benchmark_route.path_geopackage,
-                gpd.read_file(benchmark_route.path_geopackage, layer=benchmark_route.layer_name_human_designed_route)
-                .iloc[0]
-                .geometry,
+                start_end,
                 project_area,
                 benchmark_route.construction_date,
                 benchmark_route.raster_name_prefix,

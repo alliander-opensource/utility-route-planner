@@ -136,7 +136,7 @@ class MultilayerRouteEngine:
             try:
                 self.apply_fillets_and_180_turns()
                 self.apply_bezier_curves(min_bend_radius=get_inradius(self.hexagon_size))
-                self.apply_string_pulling()
+                # self.apply_string_pulling()  # discontinue, too complex
             except Exception:
                 logger.exception("Error during experimental smoothing, skipping.")
 

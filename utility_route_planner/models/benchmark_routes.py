@@ -19,10 +19,17 @@ class BenchmarkRoute:
     construction_date: datetime
     # Optional for running smaller bits of the project
     custom_project_area: shapely.Polygon = shapely.Polygon()
+    custom_start_end: shapely.LineString = shapely.geometry.LineString()
 
 
 @dataclass
 class BenchmarkRouteCollection:
+    """Add optional params like this for e.g., case study 4 (test just a small bit with a bridge):
+
+    custom_project_area=shapely.Point(187024.99,428438.19).buffer(500),
+    custom_start_end=shapely.LineString([(187250.537,428398.519),(186837.005,428637.908)])
+    """
+
     benchmark_routes = {
         1: BenchmarkRoute(
             Config.BASEDIR / "data/examples/case_01.gpkg",
