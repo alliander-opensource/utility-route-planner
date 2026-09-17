@@ -136,7 +136,6 @@ class MultilayerRouteEngine:
             try:
                 self.apply_fillets_and_180_turns()
                 self.apply_bezier_curves(min_bend_radius=get_inradius(self.hexagon_size))
-                # self.apply_string_pulling()  # discontinue, too complex
             except Exception:
                 logger.exception("Error during experimental smoothing, skipping.")
 
@@ -475,8 +474,10 @@ class MultilayerRouteEngine:
             )
 
         # part 3: apply curves.
-        # - for "normal" segment pairs, apply quadratic beziers # TODO do something about the arbitrary shrinking. it should "hug" the inradius of adjacent higher value hexagons
-        # - for height transitions / pipe ramming we can possibly get a 180 degree reversal, so we need to apply a circular arc with the largest radius that still fits the inradius corridor.
+        # TODO do something about the arbitrary shrinking. it should "hug" the inradius of adjacent higher value hexagons
+        # - for "normal" segment pairs, apply quadratic beziers
+        # - for height transitions / pipe ramming we can possibly get a 180 degree reversal, so we need to apply a
+        #   circular arc with the largest radius that still fits the inradius corridor.
 
         new_pieces: list[shapely.LineString] = []
         cursor = shapely.get_point(segments_to_smooth[0].collapsed_linestring, 0)
@@ -545,11 +546,17 @@ class MultilayerRouteEngine:
 
     @time_function
     def apply_string_pulling(self, debug: bool = False):
-        """Apply string pulling"""
-        logger.info("Starting route smoothing through application of string pulling / tangent arc fillets.")
+        """Apply string pulling
 
-        # TODO change MCDA so it resolves on "touches", that way we can use innradius.
-        # TODO retrieve height during edge transition
+        # DISCONTINUED
+
+        This was deemed too complex with too little return. It is a bit over-optimisation as string pulling
+        through a lattice based grid does not make sense in this case due to data accurary limitations.
+
+        """
+        logger.info("Starting route smoothing through application of string pulling")
+
+        # How to retrieve height during edge transition?
         height = 0
 
         # -- part 1: sanity check
