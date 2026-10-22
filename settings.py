@@ -33,17 +33,22 @@ class Config:
     FINAL_RASTER_VALUE_LIMIT_UPPER = 126
 
     # Multilayer network
+    # Layer 2:
     OSM_API_TIMEOUT_IN_SECONDS = 20
     MIN_NODE_SUITABILITY_VALUE = 1
     MAX_NODE_SUITABILITY_VALUE = 126
     HEXAGON_SIZE = 0.5
     HEXAGON_BLOCK_SIZE = 512
     THRESHOLD_EDGE_LENGTH_CROSSING_M: float = 30
+    # Layer 3: Pipe ramming / via generation
     APPLY_PIPE_RAMMING: bool = True
     MAX_PIPE_RAMMING_LENGTH_M: float = 15
     MIN_PIPE_RAMMING_LENGTH_M: float = 3
     SUITABILITY_VALUE_CROSSING_THRESHOLD: float = 10
     SUITABILITY_VALUE_OBSTACLES_THRESHOLD: float = 76
+    RAMMING_BASE_LENGTH_M: float = 36 * 5 / 2
+    RAMMING_IMPEDANCE_M: float = 3
+    # Layer 1:
     K_SHORTEST_PATH_SIMILARITY_THRESHOLD = 0.5
 
     # input/output paths.
