@@ -66,7 +66,6 @@ class GetPotentialPipeRammingCrossings:
         self.osm_graph = osm_graph
         self.osm_nodes, self.osm_edges = osm_graph_to_gdfs(osm_graph)
         self.cost_surface_graph = cost_surface_graph
-        # TODO discuss adding the properties (BGT elements) to the hexagon nodes. That way you can force it to only include sidewalks, ignoring the suitability value.
         self.cost_surface_nodes = cost_surface_nodes
         self.junctions_of_interests = get_empty_geodataframe()
         self.settings = settings
@@ -100,6 +99,10 @@ class GetPotentialPipeRammingCrossings:
         - Add edges between the two cells with a cost that is lower than just crossing the road.
         Start by checking junctions (nodes with more than 2 edges).
         After this, check the remaining street segments and split them if they are long enough.
+
+        # TODO-improvement: adding the properties (BGT elements) to the hexagon nodes. That way you can force it to only
+            include sidewalks, ignoring the suitability value.
+
         """
         logger.info("Start finding potential pipe ramming crossings.")
 
@@ -518,7 +521,7 @@ class GetPotentialPipeRammingCrossings:
         closest_node_linestrings_filtered, valid_rammings = self._filter_rammings_on_execution_space(
             potential_rammings, closest_node_pairs, grid_with_cost_surface, unpassable_area_polygon, prefix
         )
-        # TODO note for paper, optionally, we can filter on length of the crossing here as well. As it can now occur
+        # TODO-improvement: we can filter on length of the crossing here as well. As it can now occur
         #  that we select a suboptimal crossing when the street is very curved.
         selected_rammings = valid_rammings.loc[
             valid_rammings.groupby("index_nearest_crossing")["distance_to_crossing"].idxmin()
