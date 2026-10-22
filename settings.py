@@ -33,6 +33,8 @@ class Config:
     FINAL_RASTER_VALUE_LIMIT_UPPER = 126
 
     # Multilayer network
+    # Layer 1:
+    K_SHORTEST_PATH_SIMILARITY_THRESHOLD = 0.5
     # Layer 2:
     OSM_API_TIMEOUT_IN_SECONDS = 20
     MIN_NODE_SUITABILITY_VALUE = 1
@@ -42,14 +44,14 @@ class Config:
     THRESHOLD_EDGE_LENGTH_CROSSING_M: float = 30
     # Layer 3: Pipe ramming / via generation
     APPLY_PIPE_RAMMING: bool = True
-    MAX_PIPE_RAMMING_LENGTH_M: float = 15
-    MIN_PIPE_RAMMING_LENGTH_M: float = 3
     SUITABILITY_VALUE_CROSSING_THRESHOLD: float = 10
     SUITABILITY_VALUE_OBSTACLES_THRESHOLD: float = 76
-    RAMMING_BASE_LENGTH_M: float = 36 * 5 / 2
+    MAX_PIPE_RAMMING_LENGTH_M: float = 15
+    MIN_PIPE_RAMMING_LENGTH_M: float = 3
+    # Initial cost of getting equipment, now based on asphalt cost. Chosen in such a way that it is always preferable
+    # to pick a ramming over crossing the minimum pipe ramming length.
+    RAMMING_BASE_COST: float = 50
     RAMMING_IMPEDANCE_M: float = 3
-    # Layer 1:
-    K_SHORTEST_PATH_SIMILARITY_THRESHOLD = 0.5
 
     # input/output paths.
     PATH_RESULTS = BASEDIR / "data/processed"

@@ -1238,7 +1238,7 @@ class TestPipeRammingUtils:
             k_min = math.ceil(Config.MIN_PIPE_RAMMING_LENGTH_M / s)
             assert k_min >= 2, f"At h={hexagon_size} m a minimum-length ramming can join adjacent cells."
 
-            costliest_ramming = v_r * (k_min * s + Config.RAMMING_BASE_LENGTH_M) / s
+            costliest_ramming = v_r * (k_min * s + Config.RAMMING_BASE_COST) / s
             cheapest_trench = v_min_wegdeel + (k_min - 1) * closed_paving
             assert costliest_ramming < cheapest_trench, (
                 f"At h={hexagon_size} m: ramming {costliest_ramming:.1f} >= trench {cheapest_trench:.1f}."

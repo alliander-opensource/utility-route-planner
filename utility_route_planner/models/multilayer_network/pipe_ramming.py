@@ -48,7 +48,7 @@ class PipeRammingSettings:
     # Cost per metre of ramming, relative to ideal trenching (value 1).
     ramming_impedance_per_m: float = Config.RAMMING_IMPEDANCE_M
     # Fixed cost of equipment and pits, as an equivalent length of ramming.
-    ramming_base_length_per_m: float = Config.RAMMING_BASE_LENGTH_M
+    ramming_base_cost: float = Config.RAMMING_BASE_COST
     plot_crossings: bool = True
 
 
@@ -542,24 +542,12 @@ class GetPotentialPipeRammingCrossings:
 
         return crossings_to_add
 
-    def get_pipe_ramming_weight(self, length_m: float) -> float:
-        """
-        Weight of a pipe ramming via: w_r = v_r * (L + L_0) / (sqrt(3) * h).
-        Weight of a pipe ramming via: (F + v_r * L) / (sqrt(3) * h).
-
-        L is the ramming length and L_0 the fixed cost as an equivalent length, both in metres.
-        Dividing by the centroid spacing sqrt(3) * h converts metres to grid steps.
-        """
-        # Centroid to neighboring centroid
-        step_length = math.sqrt(3) * self.settings.hexagon_size
-        # return (
-        #         self.settings.ramming_impedance_per_m
-        #         * (length_m + self.settings.ramming_base_length_per_m)
-        #         / step_length
-        # )
-        return (
-            self.settings.ramming_base_length_per_m + self.settings.ramming_impedance_per_m * length_m
-        ) / step_length
+    @staticmethod
+    def get_pipe_ramming_weight(length_m: float, settings: PipeRammingSettings) -> float:
+        """Weight of a pipe ramming via: (F + v_r * L) / (sqrt(3) * h), converting metres to grid steps."""
+        step_length = math.sqrt(3) * settings.hexagon_size  # centroid to neighbouring centroid
+        # * 2 because vanilla edge weights are not halved. This is done in the final cost step.
+        return 2 * (settings.ramming_base_cost + settings.ramming_impedance_per_m * length_m) / step_length
 
     def _filter_all_rammings(
         self,
@@ -669,7 +657,9 @@ class GetPotentialPipeRammingCrossings:
         crossings = []
         for index in crossings_to_add.index:
             # Optionally, only apply this on closed-surface types of roads.
-            crossing_weight = self.get_pipe_ramming_weight(closest_node_linestrings_filtered[index].length)
+            crossing_weight = self.get_pipe_ramming_weight(
+                closest_node_linestrings_filtered[index].length, self.settings
+            )
             crossing_to_add = (
                 int(closest_node_pairs[index].iloc[0]),
                 int(closest_node_pairs[index].iloc[1]),
