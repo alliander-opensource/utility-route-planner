@@ -10,7 +10,6 @@ from typing import Optional
 import shapely
 
 
-# TODO: do we want to only set the node_id on the node objects and move all other parts to dataframe(s)?
 @dataclass
 class NodeInfo(ABC):
     node_id: int = field(init=False)
