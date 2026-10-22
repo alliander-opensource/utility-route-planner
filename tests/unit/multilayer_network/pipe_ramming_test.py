@@ -9,9 +9,11 @@ import pytest
 import geopandas as gpd
 import rustworkx as rx
 import shapely
+import math
 
 from settings import Config
 from tests.integration.conftest import write_criteria_vectors, write_cost_surface_nodes
+from utility_route_planner.models.mcda import load_mcda_preset
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_edge_generator import HexagonEdgeGenerator
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_graph_builder import HexagonGraphBuilder
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_graph_composer import build_and_compose_graph
@@ -276,6 +278,12 @@ class TestPipeRammingTheoryExamples:
     block_size = 32
     prefix: str = "pytest_"
 
+    cost_building = 126
+    cost_asphalt = 36
+    cost_sidewalk = 6
+    cost_trees = 10
+    cost_private = 76
+
     @pytest.fixture
     def setup_theory_examples(self):
         def _setup(road, buildings, private_property, trees, osm_graph, crossing_type: CrossingType):
@@ -382,12 +390,12 @@ class TestPipeRammingTheoryExamples:
             # With obstacles
             (
                 [
-                    [120, 0, shapely.LineString([(1, -18), (99, -18)]).buffer(8, cap_style="flat")],
+                    [cost_building, 0, shapely.LineString([(1, -18), (99, -18)]).buffer(8, cap_style="flat")],
                 ],
                 [
-                    [20, 0, shapely.Point(51.5, -7).buffer(4)],
-                    [20, 0, shapely.Point(58.5, -7).buffer(4)],
-                    [20, 0, shapely.Point(65.5, -7).buffer(4)],
+                    [cost_trees, 0, shapely.Point(51.5, -7).buffer(4)],
+                    [cost_trees, 0, shapely.Point(58.5, -7).buffer(4)],
+                    [cost_trees, 0, shapely.Point(65.5, -7).buffer(4)],
                 ],
                 2,
                 130.5,
@@ -414,12 +422,12 @@ class TestPipeRammingTheoryExamples:
             gpd.GeoDataFrame(
                 data=[
                     # road east west
-                    [30, 0, shapely.LineString([(0, 0), (100, 0)]).buffer(5, cap_style="flat")],
-                    [5, 0, shapely.LineString([(0, 7), (100, 7)]).buffer(2, cap_style="flat")],
-                    [5, 0, shapely.LineString([(0, -7), (100, -7)]).buffer(2, cap_style="flat")],
+                    [self.cost_asphalt, 0, shapely.LineString([(0, 0), (100, 0)]).buffer(5, cap_style="flat")],
+                    [self.cost_sidewalk, 0, shapely.LineString([(0, 7), (100, 7)]).buffer(2, cap_style="flat")],
+                    [self.cost_sidewalk, 0, shapely.LineString([(0, -7), (100, -7)]).buffer(2, cap_style="flat")],
                     # road north east
-                    [5, 0, shapely.LineString([(100, 50), (50, 0)]).buffer(9, cap_style="flat")],
-                    [30, 0, shapely.LineString([(100, 50), (50, 0)]).buffer(5, cap_style="flat")],
+                    [self.cost_sidewalk, 0, shapely.LineString([(100, 50), (50, 0)]).buffer(9, cap_style="flat")],
+                    [self.cost_asphalt, 0, shapely.LineString([(100, 50), (50, 0)]).buffer(5, cap_style="flat")],
                 ],
                 columns=["suitability_value", "relatieveHoogteligging", "geometry"],
                 crs=Config.CRS,
@@ -429,7 +437,7 @@ class TestPipeRammingTheoryExamples:
             .reset_index()
         )
         private_property = gpd.GeoDataFrame(
-            data=[[70, 0, shapely.Polygon([(0, -50), (100, -50), (100, 50), (0, 50), (0, -50)])]],
+            data=[[self.cost_private, 0, shapely.Polygon([(0, -50), (100, -50), (100, 50), (0, 50), (0, -50)])]],
             columns=["suitability_value", "relatieveHoogteligging", "geometry"],
             crs=Config.CRS,
         )
@@ -495,10 +503,13 @@ class TestPipeRammingTheoryExamples:
             # With obstacles
             (
                 [
-                    [120, 0, shapely.LineString([(1, -18), (99, -18)]).buffer(8, cap_style="flat")],
-                    [120, 0, shapely.LineString([(32, 10), (32, 46)]).buffer(8, cap_style="flat")],
+                    [cost_building, 0, shapely.LineString([(1, -18), (99, -18)]).buffer(8, cap_style="flat")],
+                    [cost_building, 0, shapely.LineString([(32, 10), (32, 46)]).buffer(8, cap_style="flat")],
                 ],
-                [[20, 0, shapely.Point(43.6, -8.2).buffer(6)], [20, shapely.Point(58, 19).buffer(4)]],
+                [
+                    [cost_trees, 0, shapely.Point(43.6, -8.2).buffer(6)],
+                    [cost_trees, 0, shapely.Point(58, 19).buffer(4)],
+                ],
                 2,
                 123.7,
                 110.3,
@@ -524,13 +535,13 @@ class TestPipeRammingTheoryExamples:
             gpd.GeoDataFrame(
                 data=[
                     # road east west
-                    [30, 0, shapely.LineString([(0, 0), (100, 0)]).buffer(5, cap_style="flat")],
-                    [5, 0, shapely.LineString([(0, 7), (100, 7)]).buffer(2, cap_style="flat")],
-                    [5, 0, shapely.LineString([(0, -7), (100, -7)]).buffer(2, cap_style="flat")],
+                    [self.cost_asphalt, 0, shapely.LineString([(0, 0), (100, 0)]).buffer(5, cap_style="flat")],
+                    [self.cost_sidewalk, 0, shapely.LineString([(0, 7), (100, 7)]).buffer(2, cap_style="flat")],
+                    [self.cost_sidewalk, 0, shapely.LineString([(0, -7), (100, -7)]).buffer(2, cap_style="flat")],
                     # road north
-                    [5, 0, shapely.LineString([(43, 50), (43, 0)]).buffer(2, cap_style="flat")],
-                    [30, 0, shapely.LineString([(50, 50), (50, 0)]).buffer(5, cap_style="flat")],
-                    [5, 0, shapely.LineString([(57, 50), (57, 0)]).buffer(2, cap_style="flat")],
+                    [self.cost_sidewalk, 0, shapely.LineString([(43, 50), (43, 0)]).buffer(2, cap_style="flat")],
+                    [self.cost_asphalt, 0, shapely.LineString([(50, 50), (50, 0)]).buffer(5, cap_style="flat")],
+                    [self.cost_sidewalk, 0, shapely.LineString([(57, 50), (57, 0)]).buffer(2, cap_style="flat")],
                 ],
                 columns=["suitability_value", "relatieveHoogteligging", "geometry"],
                 crs=Config.CRS,
@@ -540,7 +551,7 @@ class TestPipeRammingTheoryExamples:
             .reset_index()
         )
         private_property = gpd.GeoDataFrame(
-            data=[[70, 0, shapely.Polygon([(0, -50), (100, -50), (100, 50), (0, 50), (0, -50)])]],
+            data=[[self.cost_private, 0, shapely.Polygon([(0, -50), (100, -50), (100, 50), (0, 50), (0, -50)])]],
             columns=["suitability_value", "relatieveHoogteligging", "geometry"],
             crs=Config.CRS,
         )
@@ -605,20 +616,20 @@ class TestPipeRammingTheoryExamples:
             (
                 [
                     # south west
-                    [120, 0, shapely.LineString([(1, -18), (40, -18)]).buffer(8, cap_style="flat")],
-                    [120, 0, shapely.LineString([(32, -18), (32, -49)]).buffer(8, cap_style="flat")],
+                    [cost_building, 0, shapely.LineString([(1, -18), (40, -18)]).buffer(8, cap_style="flat")],
+                    [cost_building, 0, shapely.LineString([(32, -18), (32, -49)]).buffer(8, cap_style="flat")],
                     # north east
-                    [120, 0, shapely.LineString([(1, 18), (40, 18)]).buffer(8, cap_style="flat")],
-                    [120, 0, shapely.LineString([(32, 18), (32, 49)]).buffer(8, cap_style="flat")],
+                    [cost_building, 0, shapely.LineString([(1, 18), (40, 18)]).buffer(8, cap_style="flat")],
+                    [cost_building, 0, shapely.LineString([(32, 18), (32, 49)]).buffer(8, cap_style="flat")],
                     # north west
-                    [120, 0, shapely.LineString([(68, 49), (68, 18)]).buffer(8, cap_style="flat")],
-                    [120, 0, shapely.LineString([(60, 18), (99, 18)]).buffer(8, cap_style="flat")],
+                    [cost_building, 0, shapely.LineString([(68, 49), (68, 18)]).buffer(8, cap_style="flat")],
+                    [cost_building, 0, shapely.LineString([(60, 18), (99, 18)]).buffer(8, cap_style="flat")],
                     # south east
-                    [120, 0, shapely.LineString([(68, -49), (68, -18)]).buffer(8, cap_style="flat")],
-                    [120, 0, shapely.LineString([(60, -18), (99, -18)]).buffer(8, cap_style="flat")],
+                    [cost_building, 0, shapely.LineString([(68, -49), (68, -18)]).buffer(8, cap_style="flat")],
+                    [cost_building, 0, shapely.LineString([(60, -18), (99, -18)]).buffer(8, cap_style="flat")],
                 ],
                 [
-                    [20, 0, shapely.Point(42.573, 8.294).buffer(8)],
+                    [cost_trees, 0, shapely.Point(42.573, 8.294).buffer(8)],
                 ],
                 2,
                 121,
@@ -645,12 +656,12 @@ class TestPipeRammingTheoryExamples:
             gpd.GeoDataFrame(
                 data=[
                     # road east west
-                    [30, 0, shapely.LineString([(0, 0), (100, 0)]).buffer(5, cap_style="flat")],
-                    [5, 0, shapely.LineString([(0, 7), (100, 7)]).buffer(2, cap_style="flat")],
-                    [5, 0, shapely.LineString([(0, -7), (100, -7)]).buffer(2, cap_style="flat")],
+                    [self.cost_asphalt, 0, shapely.LineString([(0, 0), (100, 0)]).buffer(5, cap_style="flat")],
+                    [self.cost_sidewalk, 0, shapely.LineString([(0, 7), (100, 7)]).buffer(2, cap_style="flat")],
+                    [self.cost_sidewalk, 0, shapely.LineString([(0, -7), (100, -7)]).buffer(2, cap_style="flat")],
                     # road north south
-                    [5, 0, shapely.LineString([(50, -50), (50, 50)]).buffer(9, cap_style="flat")],
-                    [30, 0, shapely.LineString([(50, -50), (50, 50)]).buffer(5, cap_style="flat")],
+                    [self.cost_sidewalk, 0, shapely.LineString([(50, -50), (50, 50)]).buffer(9, cap_style="flat")],
+                    [self.cost_asphalt, 0, shapely.LineString([(50, -50), (50, 50)]).buffer(5, cap_style="flat")],
                 ],
                 columns=["suitability_value", "relatieveHoogteligging", "geometry"],
                 crs=Config.CRS,
@@ -660,7 +671,7 @@ class TestPipeRammingTheoryExamples:
             .reset_index()
         )
         private_property = gpd.GeoDataFrame(
-            data=[[70, 0, shapely.Polygon([(0, -50), (100, -50), (100, 50), (0, 50), (0, -50)])]],
+            data=[[self.cost_private, 0, shapely.Polygon([(0, -50), (100, -50), (100, 50), (0, 50), (0, -50)])]],
             columns=["suitability_value", "relatieveHoogteligging", "geometry"],
             crs=Config.CRS,
         )
@@ -730,8 +741,8 @@ class TestPipeRammingTheoryExamples:
             ),
             # With obstacles
             (
-                [[120, 0, shapely.LineString([(2, -26), (44, -18), (63, -36)]).buffer(8, cap_style="flat")]],
-                [[20, 0, shapely.Point(43, 6).buffer(4)]],
+                [[cost_building, 0, shapely.LineString([(2, -26), (44, -18), (63, -36)]).buffer(8, cap_style="flat")]],
+                [[cost_trees, 0, shapely.Point(43, 6).buffer(4)]],
                 8,
                 136,
                 124,
@@ -757,17 +768,17 @@ class TestPipeRammingTheoryExamples:
             gpd.GeoDataFrame(
                 data=[
                     # road north
-                    [30, 0, shapely.LineString([(50, 50), (50, 0)]).buffer(5, cap_style="flat")],
-                    [5, 0, shapely.LineString([(50, 50), (50, 0)]).buffer(8, cap_style="flat")],
+                    [self.cost_asphalt, 0, shapely.LineString([(50, 50), (50, 0)]).buffer(5, cap_style="flat")],
+                    [self.cost_sidewalk, 0, shapely.LineString([(50, 50), (50, 0)]).buffer(8, cap_style="flat")],
                     # road north-east
-                    [30, 0, shapely.LineString([(50, 0), (90, 50)]).buffer(5, cap_style="flat")],
-                    [5, 0, shapely.LineString([(50, 0), (90, 50)]).buffer(8, cap_style="flat")],
+                    [self.cost_asphalt, 0, shapely.LineString([(50, 0), (90, 50)]).buffer(5, cap_style="flat")],
+                    [self.cost_sidewalk, 0, shapely.LineString([(50, 0), (90, 50)]).buffer(8, cap_style="flat")],
                     # road south-west
-                    [30, 0, shapely.LineString([(50, 0), (100, -50)]).buffer(5, cap_style="flat")],
-                    [5, 0, shapely.LineString([(50, 0), (100, -50)]).buffer(8, cap_style="flat")],
+                    [self.cost_asphalt, 0, shapely.LineString([(50, 0), (100, -50)]).buffer(5, cap_style="flat")],
+                    [self.cost_sidewalk, 0, shapely.LineString([(50, 0), (100, -50)]).buffer(8, cap_style="flat")],
                     # road west
-                    [30, 0, shapely.LineString([(50, 0), (0, -10)]).buffer(5, cap_style="flat")],
-                    [5, 0, shapely.LineString([(50, 0), (0, -10)]).buffer(8, cap_style="flat")],
+                    [self.cost_asphalt, 0, shapely.LineString([(50, 0), (0, -10)]).buffer(5, cap_style="flat")],
+                    [self.cost_sidewalk, 0, shapely.LineString([(50, 0), (0, -10)]).buffer(8, cap_style="flat")],
                 ],
                 columns=["suitability_value", "relatieveHoogteligging", "geometry"],
                 crs=Config.CRS,
@@ -777,7 +788,7 @@ class TestPipeRammingTheoryExamples:
             .reset_index()
         )
         private_property = gpd.GeoDataFrame(
-            data=[[70, 0, shapely.Polygon([(0, -50), (100, -50), (100, 50), (0, 50), (0, -50)])]],
+            data=[[self.cost_private, 0, shapely.Polygon([(0, -50), (100, -50), (100, 50), (0, 50), (0, -50)])]],
             columns=["suitability_value", "relatieveHoogteligging", "geometry"],
             crs=Config.CRS,
         )
@@ -843,10 +854,10 @@ class TestPipeRammingTheoryExamples:
             # With obstacles
             (
                 [
-                    [120, 0, shapely.LineString([(0, 15), (60, 15)]).buffer(5, cap_style="flat")],
-                    [120, 0, shapely.LineString([(0, -15), (100, -15)]).buffer(5, cap_style="flat")],
+                    [cost_building, 0, shapely.LineString([(0, 15), (60, 15)]).buffer(5, cap_style="flat")],
+                    [cost_building, 0, shapely.LineString([(0, -15), (100, -15)]).buffer(5, cap_style="flat")],
                 ],
-                [[20, 0, shapely.Point(30, -8).buffer(4)], [20, shapely.Point(65, 9).buffer(4)]],
+                [[cost_trees, 0, shapely.Point(30, -8).buffer(4)], [cost_trees, 0, shapely.Point(65, 9).buffer(4)]],
                 2,
                 124.7,
                 109.6,
@@ -871,19 +882,19 @@ class TestPipeRammingTheoryExamples:
         road = gpd.GeoDataFrame(
             data=[
                 # Asphalt
-                [30, 0, shapely.LineString([(0, 0), (100, 0)]).buffer(5, cap_style="flat")],
+                [self.cost_asphalt, 0, shapely.LineString([(0, 0), (100, 0)]).buffer(5, cap_style="flat")],
                 # Pavement north
-                [5, 0, shapely.LineString([(0, 7), (100, 7)]).buffer(2, cap_style="flat")],
+                [self.cost_sidewalk, 0, shapely.LineString([(0, 7), (100, 7)]).buffer(2, cap_style="flat")],
                 # Pavement south
-                [5, 0, shapely.LineString([(0, -7), (100, -7)]).buffer(2, cap_style="flat")],
+                [self.cost_sidewalk, 0, shapely.LineString([(0, -7), (100, -7)]).buffer(2, cap_style="flat")],
             ],
             columns=["suitability_value", "relatieveHoogteligging", "geometry"],
             crs=Config.CRS,
         )
         private_property = gpd.GeoDataFrame(
             data=[
-                [70, 0, shapely.LineString([(0, 30), (100, 30)]).buffer(21, cap_style="flat")],
-                [70, 0, shapely.LineString([(0, -30), (100, -30)]).buffer(21, cap_style="flat")],
+                [self.cost_private, 0, shapely.LineString([(0, 30), (100, 30)]).buffer(21, cap_style="flat")],
+                [self.cost_private, 0, shapely.LineString([(0, -30), (100, -30)]).buffer(21, cap_style="flat")],
             ],
             columns=["suitability_value", "relatieveHoogteligging", "geometry"],
             crs=Config.CRS,
@@ -950,21 +961,21 @@ class TestPipeRammingTheoryExamples:
             (
                 [
                     [
-                        120,
+                        cost_building,
                         0,
                         shapely.LineString([(55.4, 33.4), (80.5, -32)])
                         .buffer(11, cap_style="flat", single_sided=True)
                         .buffer(-1, cap_style="flat"),
                     ],
                     [
-                        120,
+                        cost_building,
                         0,
                         shapely.LineString([(69.4, -47.7), (48.3, 7.1)])
                         .buffer(11, cap_style="flat", single_sided=True)
                         .buffer(-1, cap_style="flat"),
                     ],
                     [
-                        120,
+                        cost_building,
                         0,
                         shapely.LineString([(17, 8), (53.5, 38.4)])
                         .buffer(11, cap_style="flat", single_sided=True)
@@ -972,11 +983,11 @@ class TestPipeRammingTheoryExamples:
                     ],
                 ],
                 [
-                    [20, 0, shapely.Point(30, -8).buffer(4)],
-                    [20, 0, shapely.Point(39.804, 6.896).buffer(5)],
-                    [20, 0, shapely.Point(47.260, 10.421).buffer(6)],
-                    [20, 0, shapely.Point(87, -30.9).buffer(4)],
-                    [20, 0, shapely.Point(75.1, -47.6).buffer(6.5)],
+                    [cost_trees, 0, shapely.Point(30, -8).buffer(4)],
+                    [cost_trees, 0, shapely.Point(39.804, 6.896).buffer(5)],
+                    [cost_trees, 0, shapely.Point(47.260, 10.421).buffer(6)],
+                    [cost_trees, 0, shapely.Point(87, -30.9).buffer(4)],
+                    [cost_trees, 0, shapely.Point(75.1, -47.6).buffer(6.5)],
                 ],
                 4,
                 248.5,
@@ -1003,9 +1014,9 @@ class TestPipeRammingTheoryExamples:
         road = (
             gpd.GeoDataFrame(
                 data=[
-                    [30, 0, road_linestring.buffer(5, cap_style="flat")],
+                    [self.cost_asphalt, 0, road_linestring.buffer(5, cap_style="flat")],
                     [
-                        5,
+                        self.cost_sidewalk,
                         0,
                         shapely.difference(
                             road_linestring.buffer(8, cap_style="flat"),
@@ -1022,7 +1033,7 @@ class TestPipeRammingTheoryExamples:
         )
         private_property = gpd.GeoDataFrame(
             data=[
-                [70, 0, shapely.LineString([(0, 0), (160, 0)]).buffer(90, cap_style="flat")],
+                [self.cost_private, 0, shapely.LineString([(0, 0), (160, 0)]).buffer(90, cap_style="flat")],
             ],
             columns=["suitability_value", "relatieveHoogteligging", "geometry"],
             crs=Config.CRS,
@@ -1209,3 +1220,26 @@ class TestPipeRammingUtils:
         result = GetPotentialPipeRammingCrossings._validate_node_pairs(s)
         # Should return the input unchanged
         pd.testing.assert_series_equal(result, s)
+
+    def test_sanity_pipe_ramming_settings(self):
+        """A generated ramming is always preferred over trenching the closed paving between its start/end."""
+        preset = load_mcda_preset.load_preset(Config.RASTER_PRESET_NAME_BENCHMARK, "", shapely.Point(0, 0).buffer(1))
+        # Cheapest closed-paving value
+        closed_paving = (
+            preset.criteria["wegdeel"].weight_values["gesloten verharding"]
+            + preset.criteria["wegdeel"].weight_values["voetpad"]
+        )
+        v_min_wegdeel = 6
+        v_r = Config.RAMMING_IMPEDANCE_M
+        assert v_r < closed_paving
+
+        for hexagon_size in (0.5, 1.0):  # every resolution using pipe ramming
+            s = math.sqrt(3) * hexagon_size
+            k_min = math.ceil(Config.MIN_PIPE_RAMMING_LENGTH_M / s)
+            assert k_min >= 2, f"At h={hexagon_size} m a minimum-length ramming can join adjacent cells."
+
+            costliest_ramming = v_r * (k_min * s + Config.RAMMING_BASE_LENGTH_M) / s
+            cheapest_trench = v_min_wegdeel + (k_min - 1) * closed_paving
+            assert costliest_ramming < cheapest_trench, (
+                f"At h={hexagon_size} m: ramming {costliest_ramming:.1f} >= trench {cheapest_trench:.1f}."
+            )
