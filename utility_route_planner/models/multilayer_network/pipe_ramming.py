@@ -2,6 +2,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 import pathlib
+import math
 from dataclasses import dataclass
 
 import numpy as np
@@ -44,6 +45,10 @@ class PipeRammingSettings:
     suitability_value_crossing_threshold: float = Config.SUITABILITY_VALUE_CROSSING_THRESHOLD
     # Cost surface value above which we consider unsuitable for crossing.
     suitability_value_obstacles_threshold: float = Config.SUITABILITY_VALUE_OBSTACLES_THRESHOLD
+    # Cost per metre of ramming, relative to ideal trenching (value 1).
+    ramming_impedance_per_m: float = Config.RAMMING_IMPEDANCE_M
+    # Fixed cost of equipment and pits, as an equivalent length of ramming.
+    ramming_base_length_per_m: float = Config.RAMMING_BASE_LENGTH_M
     plot_crossings: bool = True
 
 
@@ -64,14 +69,10 @@ class GetPotentialPipeRammingCrossings:
         # TODO discuss adding the properties (BGT elements) to the hexagon nodes. That way you can force it to only include sidewalks, ignoring the suitability value.
         self.cost_surface_nodes = cost_surface_nodes
         self.junctions_of_interests = get_empty_geodataframe()
-
-        # Settings for determining what is suitable for crossing.
         self.settings = settings
-
         # Debugging options
         self.out = debug_out
         self.debug = debug
-
         # Output
         self.crossing_collection: list[tuple[int, int, PipeRammingEdgeInfo]] = []
 
@@ -541,6 +542,25 @@ class GetPotentialPipeRammingCrossings:
 
         return crossings_to_add
 
+    def get_pipe_ramming_weight(self, length_m: float) -> float:
+        """
+        Weight of a pipe ramming via: w_r = v_r * (L + L_0) / (sqrt(3) * h).
+        Weight of a pipe ramming via: (F + v_r * L) / (sqrt(3) * h).
+
+        L is the ramming length and L_0 the fixed cost as an equivalent length, both in metres.
+        Dividing by the centroid spacing sqrt(3) * h converts metres to grid steps.
+        """
+        # Centroid to neighboring centroid
+        step_length = math.sqrt(3) * self.settings.hexagon_size
+        # return (
+        #         self.settings.ramming_impedance_per_m
+        #         * (length_m + self.settings.ramming_base_length_per_m)
+        #         / step_length
+        # )
+        return (
+            self.settings.ramming_base_length_per_m + self.settings.ramming_impedance_per_m * length_m
+        ) / step_length
+
     def _filter_all_rammings(
         self,
         cost_surface_nodes_junction: gpd.GeoDataFrame,
@@ -648,19 +668,8 @@ class GetPotentialPipeRammingCrossings:
     ) -> list:
         crossings = []
         for index in crossings_to_add.index:
-            weight = rx.dijkstra_shortest_path_lengths(
-                self.cost_surface_graph,
-                closest_node_pairs[index].iloc[0],
-                lambda x: x.weight,
-                closest_node_pairs[index].iloc[1],
-            )
-            # TODO-discuss: what is the cost of going through the cost surface this way?
-            crossing_weight = round(weight[closest_node_pairs[index].iloc[1]] / 3)
-            if crossing_weight <= 0:
-                logger.warning(
-                    f"Calculated crossing weight for segment group {segment_group} is {crossing_weight}, setting to 1."
-                )
-                crossing_weight = 1
+            # Optionally, only apply this on closed-surface types of roads.
+            crossing_weight = self.get_pipe_ramming_weight(closest_node_linestrings_filtered[index].length)
             crossing_to_add = (
                 int(closest_node_pairs[index].iloc[0]),
                 int(closest_node_pairs[index].iloc[1]),
@@ -668,7 +677,7 @@ class GetPotentialPipeRammingCrossings:
                     osm_id_junction=node_id,
                     segment_group=segment_group,
                     origin=origin,
-                    weight=crossing_weight,
+                    weight=int(crossing_weight),
                     geometry=closest_node_linestrings_filtered[index],
                 ),
             )
