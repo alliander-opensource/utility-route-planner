@@ -50,7 +50,7 @@ class Config:
     MIN_PIPE_RAMMING_LENGTH_M: float = 3
     # Initial cost of getting equipment, now based on asphalt cost. Chosen in such a way that it is always preferable
     # to pick a ramming over crossing the minimum pipe ramming length.
-    RAMMING_BASE_COST: float = 50
+    RAMMING_BASE_COST: float = 83
     RAMMING_IMPEDANCE_M: float = 3
 
     # input/output paths.
