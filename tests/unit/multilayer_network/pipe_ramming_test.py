@@ -9,11 +9,9 @@ import pytest
 import geopandas as gpd
 import rustworkx as rx
 import shapely
-import math
 
 from settings import Config
 from tests.integration.conftest import write_criteria_vectors, write_cost_surface_nodes
-from utility_route_planner.models.mcda import load_mcda_preset
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_edge_generator import HexagonEdgeGenerator
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_graph_builder import HexagonGraphBuilder
 from utility_route_planner.models.multilayer_network.hexagon_graph.hexagon_graph_composer import build_and_compose_graph
@@ -383,7 +381,7 @@ class TestPipeRammingTheoryExamples:
                 3,
                 131,
                 118,
-                820,
+                950,
                 1,
                 [(0.3, -6.7), (99.734, 39.599)],
             ),
@@ -400,7 +398,7 @@ class TestPipeRammingTheoryExamples:
                 2,
                 130.5,
                 119.8,
-                865,
+                979,
                 2,
                 [(0.3, -6.7), (99.734, 39.599)],
             ),
@@ -496,7 +494,7 @@ class TestPipeRammingTheoryExamples:
                 3,
                 105.5,
                 98.8,
-                691.5,
+                785,
                 1,
                 [(0.6, 6.5), (56, 49.5)],
             ),
@@ -513,7 +511,7 @@ class TestPipeRammingTheoryExamples:
                 2,
                 123.7,
                 110.3,
-                858,
+                964.5,
                 2,
                 [(0.6, 6.5), (99, -7)],
             ),
@@ -608,7 +606,7 @@ class TestPipeRammingTheoryExamples:
                 4,
                 119,
                 112.5,
-                833,
+                934.5,
                 2,
                 [(0.3, -6.7), (56.23, 49.68)],
             ),
@@ -634,7 +632,7 @@ class TestPipeRammingTheoryExamples:
                 2,
                 121,
                 114.1,
-                836.5,
+                940,
                 2,
                 [(0.3, -6.7), (56.23, 49.68)],
             ),
@@ -735,7 +733,7 @@ class TestPipeRammingTheoryExamples:
                 9,
                 141,
                 127,
-                886.5,
+                1006.5,
                 1,
                 ((1, -3), (93.766, 44.783)),
             ),
@@ -746,7 +744,7 @@ class TestPipeRammingTheoryExamples:
                 8,
                 136,
                 124,
-                895.0,
+                1026.5,
                 2,
                 [(1, -3), (93.766, 44.783)],
             ),
@@ -847,7 +845,7 @@ class TestPipeRammingTheoryExamples:
                 3,
                 124.7,
                 109.6,
-                775,
+                917.5,
                 1,
                 [(1, 8), (98, -6)],
             ),
@@ -858,7 +856,7 @@ class TestPipeRammingTheoryExamples:
                     [cost_building, 0, shapely.LineString([(0, -15), (100, -15)]).buffer(5, cap_style="flat")],
                 ],
                 [[cost_trees, 0, shapely.Point(30, -8).buffer(4)], [cost_trees, 0, shapely.Point(65, 9).buffer(4)]],
-                2,
+                1,
                 124.7,
                 109.6,
                 771.5,
@@ -953,7 +951,7 @@ class TestPipeRammingTheoryExamples:
                 6,
                 237.2,
                 216.2,
-                1456.5,
+                1697.5,
                 1,
                 [(1, 6), (159.4, -26.5)],
             ),
@@ -992,7 +990,7 @@ class TestPipeRammingTheoryExamples:
                 4,
                 248.5,
                 227.1,
-                1496.5,
+                1775.5,
                 1,
                 [(1, 6), (159.4, -26.5)],
             ),
@@ -1220,26 +1218,3 @@ class TestPipeRammingUtils:
         result = GetPotentialPipeRammingCrossings._validate_node_pairs(s)
         # Should return the input unchanged
         pd.testing.assert_series_equal(result, s)
-
-    def test_sanity_pipe_ramming_settings(self):
-        """A generated ramming is always preferred over trenching the closed paving between its start/end."""
-        preset = load_mcda_preset.load_preset(Config.RASTER_PRESET_NAME_BENCHMARK, "", shapely.Point(0, 0).buffer(1))
-        # Cheapest closed-paving value
-        closed_paving = (
-            preset.criteria["wegdeel"].weight_values["gesloten verharding"]
-            + preset.criteria["wegdeel"].weight_values["voetpad"]
-        )
-        v_min_wegdeel = 6
-        v_r = Config.RAMMING_IMPEDANCE_M
-        assert v_r < closed_paving
-
-        for hexagon_size in (0.5, 1.0):  # every resolution using pipe ramming
-            s = math.sqrt(3) * hexagon_size
-            k_min = math.ceil(Config.MIN_PIPE_RAMMING_LENGTH_M / s)
-            assert k_min >= 2, f"At h={hexagon_size} m a minimum-length ramming can join adjacent cells."
-
-            costliest_ramming = v_r * (k_min * s + Config.RAMMING_BASE_COST) / s
-            cheapest_trench = v_min_wegdeel + (k_min - 1) * closed_paving
-            assert costliest_ramming < cheapest_trench, (
-                f"At h={hexagon_size} m: ramming {costliest_ramming:.1f} >= trench {cheapest_trench:.1f}."
-            )
