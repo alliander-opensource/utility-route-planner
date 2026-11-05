@@ -20,7 +20,7 @@ def test_pipe_ramming_preferred_over_asphalt_trench():
     length = (n_asphalt + 1) * step  # costliest ramming over those cells
 
     # Each extra asphalt cell adds more to the trench than to the ramming, so the narrowest band binds.
-    assert ASPHALT_VALUE > settings.ramming_impedance_per_m * step
+    assert ASPHALT_VALUE > settings.ramming_impedance_per_m
     # The via must exist for the narrowest band, otherwise the route trenches regardless of cost.
     assert length >= settings.min_pipe_ramming_length_m
 
